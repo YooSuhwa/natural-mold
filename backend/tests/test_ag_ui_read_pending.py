@@ -8,9 +8,12 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.agent_runtime.ag_ui_visibility import ChildVisibility
 from app.exceptions import NotFoundError
-from app.services import ag_ui_read_pending, conversation_run_service
-from app.services.ag_ui_legacy_child_binding import LegacyChildBinding
-from app.services.ag_ui_pending_checkpoint import PendingCheckpoint
+from app.services import (
+    ag_ui_legacy_child_binding,
+    ag_ui_pending_checkpoint,
+    ag_ui_read_pending,
+    conversation_run_service,
+)
 from tests.authz.unit_scope_fixture import unit_context
 from tests.test_conversation_run_message_links import _create_run, _seed_conversation
 
@@ -26,10 +29,10 @@ async def test_current_batch_authority_expiry_and_checkpoint_identity(
     await db.commit()
     ctx = unit_context(chat.user_id)
     deadline = datetime.now(UTC) + timedelta(days=2)
-    binding = LegacyChildBinding(
+    binding = ag_ui_legacy_child_binding.LegacyChildBinding(
         "real-child-role", "task-call", "tools:task-1|model:task-2", run.id
     )
-    checkpoint = PendingCheckpoint(
+    checkpoint = ag_ui_pending_checkpoint.PendingCheckpoint(
         "head",
         [
             {"id": "root", "ns": [], "value": {"type": "ask_user"}},

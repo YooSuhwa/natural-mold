@@ -16,6 +16,7 @@ from app.exceptions import NotFoundError
 from app.models.conversation import Conversation
 from app.models.conversation_run import ConversationRun
 from app.services import conversation_run_service
+from app.services.ag_ui_historical_child_visibility import historical_child_visibility
 from app.services.ag_ui_pending_checkpoint import read_pending_checkpoint
 from app.services.ag_ui_pending_child_authority import read_pending_child_authority
 
@@ -74,6 +75,9 @@ async def constrain_legacy_child_visibility(
     """Fence journal replay before its first child frame, also for superseded interrupts."""
     if not visibility.allow_legacy_details or run.status != "interrupted":
         return visibility
+    historical = await historical_child_visibility(db, conversation, context, run)
+    if historical is not None:
+        return historical
     # The default legacy journal policy predates recipient-level grants. A
     # superseding turn cannot authorize frames belonging to this old physical run.
     proof = await _read_run_proof(db, conversation, context, run)

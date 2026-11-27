@@ -67,6 +67,7 @@ class _Reader:
             or not before.tool_call_ids <= after.tool_call_ids
             or not before.namespaces <= after.namespaces
             or not before.bindings <= after.bindings
+            or not before.historical_bindings <= after.historical_bindings
             or not previous.artifacts <= target.artifacts
         ):
             return False

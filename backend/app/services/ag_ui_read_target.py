@@ -58,17 +58,18 @@ def cursor_scope_for(
     tool_continuations: tuple[ToolContinuation, ...],
 ) -> CursorScope:
     branch = orjson.dumps([start_checkpoint, conversation.active_branch_checkpoint_id])
-    access = orjson.dumps(
-        [
-            visibility.allow_legacy_details,
-            sorted(visibility.tool_call_ids),
-            sorted(visibility.namespaces),
-            sorted(visibility.bindings),
-            sorted(artifacts),
-            parent_id,
-            [asdict(call) for call in sorted(tool_continuations, key=lambda item: item.public_id)],
-        ]
-    )
+    grants = [
+        visibility.allow_legacy_details,
+        sorted(visibility.tool_call_ids),
+        sorted(visibility.namespaces),
+        sorted(visibility.bindings),
+        sorted(artifacts),
+        parent_id,
+        [asdict(call) for call in sorted(tool_continuations, key=lambda item: item.public_id)],
+    ]
+    if visibility.historical_bindings:
+        grants.append(sorted(visibility.historical_bindings))
+    access = orjson.dumps(grants)
     return CursorScope(
         thread_id=str(conversation.id),
         public_run_id=public_id,
