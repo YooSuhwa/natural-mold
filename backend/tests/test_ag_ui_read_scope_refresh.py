@@ -229,7 +229,11 @@ async def test_new_child_and_file_continue_live_after_identical_prefix(
     assert [e["type"] for e in all_events].count("RUN_STARTED") == 1
     assert all_events[-1]["type"] == "RUN_FINISHED"
     [started] = [e for e in all_events if e["type"] == "SUBAGENT_STARTED"]
-    assert started["parentToolCallId"] == CALL and started["parentMessageId"] == "issuer"
+    [issuer] = [
+        e for e in all_events if e["type"] == "TOOL_CALL_START" and e["toolCallName"] == "task"
+    ]
+    assert started["parentToolCallId"] == issuer["toolCallId"]
+    assert started["parentMessageId"] == issuer["parentMessageId"]
     [card] = [e for e in all_events if e.get("activityType") == "moldy.file_event"]
     assert card["content"]["version_id"] == str(turn.version_id)
     assert b"private caption" not in orjson.dumps(all_events)
@@ -312,10 +316,12 @@ async def test_revoked_scope_stops_before_next_committed_batch(
     assert str(turn.file_id).encode() not in body
 
 
-async def test_slow_reader_revalidates_before_delivering_prefetched_file(
+@pytest.mark.parametrize("elapsed", [0.0, 60.0], ids=["immediate", "slow"])
+async def test_reader_revalidates_before_delivering_prefetched_file(
     db: AsyncSession,
     child_case: ChildCase,
     monkeypatch: pytest.MonkeyPatch,
+    elapsed: float,
 ) -> None:
     turn = LiveTurn(db, child_case)
     file = await turn.grant_file()
@@ -328,7 +334,7 @@ async def test_slow_reader_revalidates_before_delivering_prefetched_file(
 
     file.status = "deleted"
     await db.commit()
-    now[0] += 60
+    now[0] += elapsed
     after_revocation = [event async for event in stream]
     assert after_revocation[-1]["type"] == "RUN_ERROR"
     assert after_revocation[-1]["code"] == "AG_UI_SNAPSHOT_REQUIRED"
