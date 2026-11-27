@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 from collections.abc import Sequence
 from typing import Any
 
@@ -153,6 +154,68 @@ async def test_allowlist_clone_shares_lineage() -> None:
     latest = await saver.aget_tuple(_config())
 
     assert latest is not None and latest.config == child
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("outcome", ["commit", "error", "cancel"])
+async def test_writes_wait_for_their_own_successful_put(
+    monkeypatch: pytest.MonkeyPatch, outcome: str
+) -> None:
+    upstream = CountingSaver()
+    saver = await _lease(upstream)
+    clone = saver.with_allowlist([("tests", "Marker")])
+    entered, release = asyncio.Event(), asyncio.Event()
+    save = upstream.aput
+
+    async def delayed(*args: Any, **kwargs: Any) -> Any:
+        entered.set()
+        await release.wait()
+        if outcome == "error":
+            raise OSError("checkpoint commit failed")
+        return await save(*args, **kwargs)
+
+    # Only the upstream saver is slowed. An allowlist clone shares the same
+    # lease's pending commits, while a second lease on this thread does not.
+    monkeypatch.setattr(upstream, "aput", delayed)
+    checkpoint = empty_checkpoint()
+    key = checkpoint["id"]
+    put = asyncio.create_task(saver.aput(_config(), checkpoint, {}, {}))
+    await entered.wait()
+    with pytest.raises(CheckpointLineageDeniedError, match="parent"):
+        await _put(clone, _config(), "second root")
+    with pytest.raises(CheckpointLineageDeniedError, match="checkpoint"):
+        await saver.aget_tuple(_config(key))
+    other = await _lease(upstream)
+    with pytest.raises(CheckpointLineageDeniedError, match="writes"):
+        await other.aput_writes(_config(key), [("value", "foreign")], "other")
+    with pytest.raises(CheckpointLineageDeniedError, match="writes"):
+        await clone.aput_writes(_config(key, ns="tools:other"), [], "wrong-namespace")
+    with pytest.raises(CheckpointLineageDeniedError, match="run"):
+        await clone.aput_writes(_config(key, run="other-run"), [], "wrong-run")
+
+    writes = asyncio.create_task(clone.aput_writes(_config(key), [("value", "ok")], "t", "~t"))
+    cancelled_waiter = asyncio.create_task(clone.aput_writes(_config(key), [], "cancelled"))
+    await asyncio.sleep(0)
+    assert not writes.done() and upstream.write_paths == []
+    cancelled_waiter.cancel()
+    with pytest.raises(asyncio.CancelledError):
+        await cancelled_waiter
+
+    if outcome == "cancel":
+        put.cancel()
+    release.set()
+    if outcome == "commit":
+        await put
+        await writes
+        assert upstream.write_paths == ["~t"]
+    else:
+        with pytest.raises(OSError if outcome == "error" else asyncio.CancelledError):
+            await put
+        with pytest.raises(CheckpointLineageDeniedError, match="writes"):
+            await writes
+        with pytest.raises(CheckpointLineageDeniedError, match="checkpoint"):
+            await saver.aget_tuple(_config(key))
+        assert upstream.write_paths == []
 
 
 @pytest.mark.asyncio

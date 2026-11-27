@@ -266,7 +266,9 @@ async def materialize_prepared_lease(
             configurable["checkpoint_id"] = inputs.checkpoint_id
         lease = replace(
             lease,
-            runnable=root,
+            # Later supersteps must not submit writes before the saver has
+            # received their checkpoint. LangGraph propagates this to subgraphs.
+            runnable=root.bind(durability="sync"),
             child_runnables=runnables,
             messages=inputs.messages,
             config=MappingProxyType({"configurable": configurable}),
