@@ -137,6 +137,7 @@ async def test_checkpoint_root_has_real_controls_and_new_parser_can_drop_only_ac
     assert "rawEvent" not in str(wire) and "private model" not in str(wire)
     assert wire["messages"][-1] == {"id": "answer", "role": "assistant", "content": "saved"}
     assert wire["interruptRunId"] is None
+    assert wire["approvalDecisions"] == []
 
 
 @pytest.mark.asyncio

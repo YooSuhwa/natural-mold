@@ -4,10 +4,11 @@ from __future__ import annotations
 
 from collections import Counter, defaultdict
 from collections.abc import Iterable, Mapping, Sequence
+from dataclasses import dataclass
 from itertools import chain
 from typing import Any
 
-from app.agent_runtime.ag_ui_v1_children import PublicChildren
+from app.agent_runtime.ag_ui_v1_children import PublicChildren, public_subagent_id
 from app.agent_runtime.ag_ui_v1_issuance import public_tool_call_id, public_tool_result_id
 from app.agent_runtime.ag_ui_visibility import ChildVisibility
 from app.schemas.ag_ui_snapshot import AgUiSnapshotMessageLink
@@ -179,10 +180,44 @@ def filter_checkpoint_calls(
     return result
 
 
+@dataclass(frozen=True, slots=True)
+class ChildControlOrigin:
+    physical: str
+    public: str
+    binding: tuple[str, tuple[str, ...], str]
+
+    @classmethod
+    def from_issuer(
+        cls,
+        child: Row,
+        thread_id: str | None,
+        physical: str,
+        public: str,
+        visibility: ChildVisibility,
+    ) -> ChildControlOrigin | None:
+        """Bind the original display issuer to the SQL-proved task, call and namespace."""
+        handle = child.get("childTaskId")
+        if not thread_id or not handle or not child.get("parentMessageId"):
+            return None
+        matches = [
+            binding
+            for binding in visibility.bindings
+            if binding[2] == handle
+            and binding[1]
+            and public_subagent_id(thread_id, binding[1]) == child["subagentRunId"]
+            and public_tool_call_id(
+                public, child.get("parentSubagentRunId"), child["parentMessageId"], binding[0]
+            )
+            == child.get("parentToolCallId")
+        ]
+        return cls(physical, public, matches[0]) if len(matches) == 1 else None
+
+
 def visible_child_controls(
     children: Sequence[Row],
     messages: Sequence[Row],
     links: Sequence[AgUiSnapshotMessageLink],
+    origins: Mapping[str, ChildControlOrigin] | None = None,
 ) -> list[Row]:
     """Expose a namespace-verified task handle only beside its actual public delegation."""
     by_call = _issuers(zip(messages, links, strict=True))
@@ -190,7 +225,9 @@ def visible_child_controls(
     result = []
     for child in children:
         if child.get("childTaskId"):
-            physical = child.get("physicalRunId")
+            origin = (origins or {}).get(child["subagentRunId"])
+            physical = origin.physical if origin else child.get("physicalRunId")
+            expected_public = origin.public if origin else child.get("runId")
             cid = child.get("parentToolCallId")
             lane = child.get("parentSubagentRunId")
             issuers = by_call.get((physical, lane, cid), set()) if physical and cid else set()
@@ -201,7 +238,11 @@ def visible_child_controls(
                 if (
                     name == DELEGATION_TOOL
                     and (parent is None or parent == issuer)
-                    and (not child.get("runId") or not public or child["runId"] == public)
+                    and (
+                        expected_public == public
+                        if origin
+                        else (not expected_public or not public or expected_public == public)
+                    )
                 ):
                     result.append(child)
                     continue
