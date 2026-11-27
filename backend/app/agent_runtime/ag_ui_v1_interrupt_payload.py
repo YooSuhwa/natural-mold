@@ -8,6 +8,7 @@ from typing import Any
 
 from pydantic import ValidationError
 
+from app.agent_runtime.ag_ui_v1_memo_files import private_memo_file_call, redacted_file_args
 from app.agent_runtime.memory_event_projection import MEMORY_TOOL_NAMES
 from app.agent_runtime.protocol_egress import project_and_redact_protocol_data
 from app.agent_runtime.tools.ask_user import AskUserInput
@@ -253,7 +254,10 @@ def _approvals(value: Mapping[str, Any]) -> JsonObject | None:
         config = _matching_config(configs, index, name)
         if config is None or not isinstance(allowed := config.get("allowed_decisions"), list):
             return None
-        kinds = [kind for kind in _DECISIONS if kind in allowed]
+        private_file = private_memo_file_call(name, args)
+        kinds = [
+            kind for kind in _DECISIONS if kind in allowed and not (private_file and kind == "edit")
+        ]
         if not kinds:
             return None
         session_consent = config.get("session_consent_eligible") is True and "approve" in kinds
@@ -261,7 +265,9 @@ def _approvals(value: Mapping[str, Any]) -> JsonObject | None:
         if session_consent:
             review["session_consent_eligible"] = True
         public_configs.append(review)
-        if name == "ask_user":
+        if private_file:
+            safe_args = redacted_file_args(name)
+        elif name == "ask_user":
             safe_args = _ask_args(args)
             if safe_args is None:
                 return None
@@ -279,6 +285,7 @@ def _approvals(value: Mapping[str, Any]) -> JsonObject | None:
             and "\nArgs:" not in description
             and "<redacted>" not in json.dumps(safe_args, ensure_ascii=False)
             and safe_args == args
+            and not private_file
             and name not in MEMORY_TOOL_NAMES
         ):
             public_action["description"] = description

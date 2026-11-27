@@ -275,11 +275,17 @@ def test_usage_bridge_binds_real_model_start_finish_and_ignores_exact_derived_du
         },
         event_id="finish",
     )
+    from ag_ui.core import TextMessageStartEvent
+
+    activities.observe_visible_messages(
+        [TextMessageStartEvent(message_id="verified-model", role="assistant")]
+    )
     assert _frames(activities, start, parent="verified-model") == []
     assert _frames(activities, finish, parent="verified-model") == []
     usage = _custom(
         "usage",
         {
+            "run_id": PHYSICAL,
             "prompt_tokens": 17,
             "completion_tokens": 5,
             "tokens_per_second": 3.0,
@@ -363,3 +369,188 @@ def test_archived_message_metadata_preserves_observed_provider_totals() -> None:
     assert totals and [(u.provider, u.model, u.total_tokens) for u in totals] == [
         ("acme", "old", 7)
     ]
+
+
+def test_native_tool_cards_require_issued_visible_calls_and_concordant_messages() -> None:
+    from app.agent_runtime.ag_ui_v1 import AgUiV1Projector, ChildVisibility
+    from app.agent_runtime.ui_data_projection import ui_data_from_tool_result
+
+    stream = AgUiV1Projector(
+        thread_id=THREAD,
+        run_id=PUBLIC,
+        source_run_id=PHYSICAL,
+        child_visibility=ChildVisibility(False, frozenset(), frozenset()),
+    )
+    stream.project(
+        _event(
+            "messages",
+            {
+                "type": "ai",
+                "id": "allowed-message",
+                "content": "작업",
+                "tool_calls": [{"name": "execute_in_skill", "id": "call/allowed:1", "args": {}}],
+            },
+        )
+    )
+    stream.project(
+        _event(
+            "messages",
+            {
+                "type": "ai",
+                "id": "hidden-message",
+                "tool_calls": [{"name": "task", "id": "revoked-task", "args": {}}],
+            },
+        )
+    )
+    stream.project(
+        _event("messages", {"type": "ai", "id": "other-message", "content": "다른 메시지"})
+    )
+    [native] = ui_data_from_tool_result(
+        "execute_in_skill", "허용된 출력", tool_call_id="call/allowed:1"
+    )
+
+    def project_card(data: dict[str, Any], suffix: str) -> list[dict[str, Any]]:
+        return [
+            item.model_dump(mode="json", by_alias=True, exclude_none=True)
+            for item in stream.project(
+                _custom("moldy.ui_data", data, event_id=f"result:ui_data:{suffix}")
+            )
+        ]
+
+    [allowed] = project_card({**native, "message_id": "allowed-message"}, "allowed")
+    assert allowed["content"]["props"] == {"lines": "허용된 출력"}
+    assert allowed["content"]["public_tool_call_id"] == allowed["content"]["tool_call_id"]
+    assert allowed["content"]["message_id"] == allowed["content"]["public_message_id"]
+    for changes in (
+        {"tool_call_id": "revoked-task"},
+        {"tool_call_id": "absent"},
+        {"tool_call_id": None, "message_id": "hidden-message"},
+        {"tool_call_id": None, "message_id": "absent"},
+        {"message_id": "other-message"},
+        {"tool_call_id": None, "toolCallId": "revoked-task"},
+        {"tool_call_id": None, "public_tool_call_id": "fake-proof"},
+    ):
+        assert project_card({**native, **changes, "props": {"lines": SECRET}}, "invalid") == []
+    assert project_card({"type": "terminal", "props": {"lines": SECRET}}, "0") == []
+    [independent] = project_card(
+        {"type": "demo_note", "props": {"text": "독립 안내"}}, "independent"
+    )
+    assert independent["content"]["props"] == {"text": "독립 안내"}
+
+
+def test_public_usage_requires_a_real_post_visibility_receipt_in_both_journal_formats() -> None:
+    from app.agent_runtime.ag_ui_v1 import AgUiV1Projector, ChildVisibility
+    from app.agent_runtime.protocol_usage import collect_protocol_usage_event
+
+    stream = AgUiV1Projector(
+        thread_id=THREAD,
+        run_id=PUBLIC,
+        source_run_id=PHYSICAL,
+        child_visibility=ChildVisibility(False, frozenset(), frozenset()),
+    )
+    visible = _event(
+        "messages",
+        {
+            "type": "ai",
+            "id": "visible-model",
+            "content": "답변",
+            "usage_metadata": {"input_tokens": 9, "output_tokens": 3},
+        },
+        event_id="visible-source",
+    )
+    hidden = _event(
+        "messages",
+        {
+            "type": "ai",
+            "id": "hidden-model",
+            "content": "hidden",
+            "usage_metadata": {"input_tokens": 70, "output_tokens": 10},
+        },
+        event_id="hidden-source",
+    )
+    hidden["namespace"] = ["tools:revoked"]
+    stream.project(visible)
+    stream.project(hidden)
+
+    def receipt(source: StoredProtocolEvent) -> StoredProtocolEvent:
+        result, _ = collect_protocol_usage_event(
+            source,
+            next_seq=3,
+            seen_keys=set(),
+            usage_sink=None,
+            cost_per_input_token=None,
+            cost_per_output_token=None,
+        )
+        assert result is not None
+        return result
+
+    hidden_result = receipt(hidden)
+    hidden_result["namespace"] = []  # forged root re-envelope after the source was denied
+    assert stream.project(hidden_result) == []
+    real = receipt(visible)
+    payload = real["data"]["payload"]
+    for forged in (
+        _custom("usage", {**payload, "prompt_tokens": 999999}, event_id="invented:usage"),
+        _custom("moldy.usage", payload, event_id=real["id"]),
+        _custom("usage", {**payload, "assistant_msg_id": "foreign-model"}, event_id=real["id"]),
+        _custom("usage", {**payload, "run_id": PUBLIC}, event_id=real["id"]),
+    ):
+        assert stream.project(forged) == []
+    [card] = stream.project(real)
+    assert card.model_dump(by_alias=True)["content"]["public_message_id"] == "visible-model"
+    legacy = _event("custom:usage", payload, event_id=real["id"])
+    assert stream.project(legacy) == []  # duplicate public snapshot
+    # A fresh stream reading only the historical method gets the identical public card.
+    restored = AgUiV1Projector(thread_id=THREAD, run_id=PUBLIC, source_run_id=PHYSICAL)
+    restored.project(visible)
+    assert restored.project(legacy) == [card]
+
+
+@pytest.mark.parametrize(("name", "visible"), [("execute_in_skill", True), ("task", False)])
+def test_only_a_visible_tool_can_surface_its_otherwise_textless_model_id(
+    name: str, visible: bool
+) -> None:
+    from app.agent_runtime.ag_ui_v1 import AgUiV1Projector, ChildVisibility
+    from app.agent_runtime.protocol_usage import collect_protocol_usage_event
+
+    stream = AgUiV1Projector(
+        thread_id=THREAD,
+        run_id=PUBLIC,
+        source_run_id=PHYSICAL,
+        child_visibility=ChildVisibility(False, frozenset(), frozenset()),
+    )
+    issued = _event(
+        "messages",
+        {
+            "id": "tool-only-model",
+            "type": "ai",
+            "content": "",
+            "tool_calls": [{"id": "call/one", "name": name, "args": {}}],
+            "usage_metadata": {"input_tokens": 5, "output_tokens": 2},
+        },
+        event_id="provider",
+    )
+    wire = stream.project(issued)
+    receipt, _ = collect_protocol_usage_event(
+        issued,
+        next_seq=2,
+        seen_keys=set(),
+        usage_sink=None,
+        cost_per_input_token=None,
+        cost_per_output_token=None,
+    )
+    assert receipt is not None
+    cards = stream.project(receipt)
+    assert bool(cards) is visible
+    if visible:
+        assert (
+            cards[0].model_dump(by_alias=True)["content"]["public_message_id"] == "tool-only-model"
+        )
+    else:
+        assert "tool-only-model" not in str(wire)
+    assert (
+        stream.finish("completed")[-1].model_dump(mode="json", by_alias=True)["usage"][0][
+            "totalTokens"
+        ]
+        == 7
+    )

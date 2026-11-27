@@ -16,6 +16,11 @@ from ag_ui.core import (
     ToolCallStartEvent,
 )
 
+from app.agent_runtime.ag_ui_v1_memo_files import (
+    private_memo_file_call,
+    public_grep_result,
+    redacted_file_args,
+)
 from app.agent_runtime.memory_event_projection import MEMORY_TOOL_NAMES
 from app.agent_runtime.message_utils import content_to_text
 from app.agent_runtime.protocol_egress import project_and_redact_protocol_data
@@ -164,6 +169,11 @@ class _Call:
     output_deltas: list[str] = field(default_factory=list)
     args_closed: bool = False
     result_sent: bool = False
+    private_file: bool = False
+
+    @property
+    def private_result(self) -> bool:
+        return self.private_file or self.name in _PRIVATE_RESULTS
 
 
 class PublicToolCalls:
@@ -257,6 +267,9 @@ class PublicToolCalls:
                     # Never publish partial argument strings that could contain a
                     # sensitive field whose value cannot yet be parsed.
                     args = _ABSENT
+            call.private_file |= private_memo_file_call(call.name, args)
+            if call.private_file:
+                args = redacted_file_args(call.name)
             if args is not _ABSENT and args != "":
                 safe = project_and_redact_protocol_data(
                     "tools",
@@ -386,9 +399,15 @@ class PublicToolCalls:
         name = _identifier(data.get("name") or data.get("tool_name"))
         if event in ("tool-started", "tool-start", "start"):
             call, events = self._open(owner, raw_id, name, None)
-            if call and not call.args_closed:
-                call.args = data.get("args", data.get("input", call.args))
-                events.extend(self._end_args(call))
+            if call:
+                args = data.get("args", data.get("input", _ABSENT))
+                if call.args_closed and args is not _ABSENT:
+                    # The executed path can differ from the model's proposal after review.
+                    call.private_file |= private_memo_file_call(call.name, args)
+                elif not call.args_closed:
+                    if args is not _ABSENT:
+                        call.args = args
+                    events.extend(self._end_args(call))
             return events
 
         call = self._visible(owner, raw_id)
@@ -400,7 +419,7 @@ class PublicToolCalls:
         if event == "tool-output-delta":
             delta = data.get("delta")
             if isinstance(delta, str):
-                if call.name not in _PRIVATE_RESULTS:
+                if not call.private_result:
                     call.output_deltas.append(delta)
                 elif not call.output_deltas:
                     call.output_deltas.append(REDACTED_MEMORY_FIELD)
@@ -434,7 +453,7 @@ class PublicToolCalls:
             value = "".join(call.output_deltas)
         if value is _ABSENT and not failed:
             return events
-        if call.name in _PRIVATE_RESULTS:
+        if call.private_result:
             # Memory writers return the original content and rationale inside JSON
             # text. They remain private even when the engine only supplies a string.
             result = REDACTED_MEMORY_FIELD
@@ -444,6 +463,8 @@ class PublicToolCalls:
             content = _result_content(value)
             if content is _ABSENT:
                 return events
+            if call.name == "grep":
+                content = public_grep_result(content)
             public = project_and_redact_protocol_data(
                 "tools",
                 {"name": call.name, "tool_call_id": raw_id, "content": content},

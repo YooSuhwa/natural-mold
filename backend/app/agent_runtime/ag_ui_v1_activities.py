@@ -4,11 +4,18 @@ from __future__ import annotations
 
 import hashlib
 import json
-from collections.abc import Mapping
+from collections.abc import Mapping, Sequence
 from typing import Any
 from uuid import UUID
 
-from ag_ui.core import ActivitySnapshotEvent, BaseEvent, StateSnapshotEvent, TokenUsage
+from ag_ui.core import (
+    ActivitySnapshotEvent,
+    BaseEvent,
+    StateSnapshotEvent,
+    TextMessageStartEvent,
+    TokenUsage,
+    ToolCallStartEvent,
+)
 
 from app.agent_runtime.ag_ui_v1_activity_payloads import (
     canonical_uuid,
@@ -83,6 +90,45 @@ def _public_card(
         return None
     if name == "file_event":
         card = public_file(payload, event, readable_versions)
+    elif name == "usage":
+        # The native side-effect writer binds receipts to a single source ID,
+        # namespace, and physical run. Older journals used a direct stream method.
+        data = event["data"]
+        current = (
+            event["method"] == "custom"
+            and data.keys() == {"name", "payload"}
+            and data["name"] == "usage"
+        )
+        legacy = event["method"] == "custom:usage" and "payload" not in data
+        if not (current or legacy) or not (
+            payload.get("run_id") == event["run_id"]
+            and event["upstream_event_id"] == event["id"]
+            and event["id"].endswith(":usage")
+        ):
+            return None
+        card = public_usage(payload)
+    elif name == "ui_data":
+        # The public attachment keys are calculated from the issued tool and
+        # visible message. Unknown spellings must not turn a claimed attachment
+        # into a seemingly independent card.
+        if any(
+            key in payload
+            for key in (
+                "toolCallId",
+                "messageId",
+                "assistant_msg_id",
+                "public_tool_call_id",
+                "public_message_id",
+            )
+        ):
+            return None
+        card = public_ui_data(payload)
+        if card and not card.get("tool_call_id") and not card.get("message_id"):
+            # Native tool side-effects carry an indexed receipt. A damaged
+            # receipt with no attachment cannot be shown as an independent card.
+            _, sep, index = event["id"].rpartition(":ui_data:")
+            if sep and index.isdecimal():
+                return None
     elif name == "run_steer":
         thread = canonical_uuid(event["thread_id"])
         if (
@@ -133,8 +179,26 @@ class PublicActivities:
     ) -> None:
         self._readable_versions = readable_artifact_versions
         self._usage = RunUsage()
+        self._visible_messages: set[tuple[str | None, str]] = set()
         self._snapshots: dict[str, dict[str, Any]] = {}
         self._states: dict[str | None, dict[str, Any]] = {}
+
+    def observe_visible_messages(self, frames: Sequence[BaseEvent]) -> None:
+        """Only emitted model text and tools establish a card's public attachment."""
+        for frame in frames:
+            if isinstance(frame, TextMessageStartEvent):
+                self._visible_messages.add((frame.subagent_run_id, frame.message_id))
+            elif isinstance(frame, ToolCallStartEvent) and frame.parent_message_id:
+                self._visible_messages.add((frame.subagent_run_id, frame.parent_message_id))
+
+    def observe_values_parent(
+        self, event: StoredProtocolEvent, *, subagent_run_id: str | None
+    ) -> None:
+        """Recognize a usage receipt's source before removing private checkpoint state."""
+        if isinstance(event["data"], Mapping):
+            self._usage.observe_values_parent(
+                event["data"], event_id=event["id"], subagent_run_id=subagent_run_id
+            )
 
     def terminal_usage(self) -> list[TokenUsage] | None:
         return self._usage.terminal_usage()
@@ -196,6 +260,22 @@ class PublicActivities:
                 public_message_id=public_message_id,
                 event_id=event["id"],
             )
+            if (
+                not public_message_id
+                or (subagent_run_id, public_message_id) not in self._visible_messages
+            ):
+                return []
+            if "assistant_msg_id" in content:
+                content["assistant_msg_id"] = public_message_id
+        if name == "ui_data":
+            if content.get("tool_call_id"):
+                if not public_tool_call_id:
+                    return []
+                content["tool_call_id"] = public_tool_call_id
+            if content.get("message_id"):
+                if not public_message_id:
+                    return []
+                content["message_id"] = public_message_id
         if name in ("ui_data", "usage"):
             content["run_id"] = run_id
         if public_tool_call_id and name in ("ui_data", "mcp_app") and content.get("tool_call_id"):
