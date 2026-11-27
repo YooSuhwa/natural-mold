@@ -68,6 +68,7 @@ async def check_targeted_approval(gate: Gate, model: ResearchModel, tid: str, ri
         terminal.get("type") == "interrupt",
         "targeted child did not ask for protected approval",
     )
+    require(not model.protected_results, "protected lookup returned a result before approval")
     [waiting] = terminal["interrupts"]
     iid, sid = waiting["id"], waiting["subagentRunId"]
     [action] = waiting["metadata"]["moldy"]["action_requests"]
@@ -225,6 +226,11 @@ async def check_targeted_approval(gate: Gate, model: ResearchModel, tid: str, ri
             outcome=terminal.get("outcome", {}).get("type"),
             failureCode=terminal.get("code"),
             histories=model.histories,
+            protectedToolResults=model.protected_results,
+        )
+        require(
+            model.protected_results == [True],
+            "the approved target did not receive exactly one successful lookup of the seeded file",
         )
         require(
             terminal["type"] == "RUN_FINISHED"
