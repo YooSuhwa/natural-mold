@@ -11,6 +11,7 @@ from httpx import AsyncClient
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.authz.company_catalog import CREDENTIAL_ORGS_KEY, with_designation
+from app.models.conversation_run import ConversationRun
 from app.models.organization import OrganizationMember, OrganizationRoleGrant, Tenant
 from app.services.chat import image_description_provider as provider
 
@@ -301,4 +302,91 @@ async def test_upload_caps_and_cancel_signal_win_before_key_open(
     with pytest.raises(provider.ImageDescriptionDenied) as cancelled:
         await case.resolve(db, dispatch=True)
     assert cancelled.value.code == "access_denied"
+    open_key.assert_not_awaited()
+
+
+async def test_queued_pin_matches_accepted_run_without_opening_key(
+    case: Case, db: AsyncSession, private_scopes: PrivateScopes, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # Queue acceptance can precede the creation of its run row.
+    run = case.run
+    await db.delete(run)
+    await db.commit()
+    open_key = AsyncMock(side_effect=AssertionError("a pin cannot open the provider key"))
+    monkeypatch.setattr(provider, "open_values", open_key)
+    ids = {"conversation_id": run.conversation_id, "attachment_id": case.attachment.id}
+    pin = await provider.resolve_queued_image_description_target(db, context=case.context, **ids)
+    with pytest.raises(provider.ImageDescriptionDenied):
+        await provider.resolve_queued_image_description_target(
+            db, context=private_scopes.second, **ids
+        )
+    case.run = ConversationRun(
+        conversation_id=run.conversation_id,
+        agent_id=run.agent_id,
+        user_id=run.user_id,
+        tenant_id=run.tenant_id,
+        org_id=run.org_id,
+        source="chat",
+        run_source="CHAT",
+        status="running",
+        is_active=True,
+        credential_subject_user_id=run.credential_subject_user_id,
+        resource_owner_user_id=run.resource_owner_user_id,
+        invoker_type="user",
+    )
+    db.add(case.run)
+    await db.commit()
+    target = await case.resolve(db)
+    assert target.policy_fingerprint == pin.policy_fingerprint
+    assert target.model_id == pin.model_id == case.model.id
+    open_key.assert_not_awaited()
+
+
+async def test_policy_disabled_then_restored_invalidates_queued_pin(
+    case: Case,
+    db: AsyncSession,
+    raw_client: AsyncClient,
+    org_fixture: OrgFixture,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    open_key = AsyncMock(side_effect=AssertionError("rechecking a queue pin cannot decrypt"))
+    monkeypatch.setattr(provider, "open_values", open_key)
+    db.add(
+        OrganizationRoleGrant(
+            tenant_id=case.context.tenant_id,
+            org_id=case.org.id,
+            role="admin",
+            principal_type="user",
+            principal_id=case.context.user_id,
+        )
+    )
+    await db.commit()
+    ids = {"conversation_id": case.run.conversation_id, "attachment_id": case.attachment.id}
+    original = await provider.resolve_queued_image_description_target(
+        db, context=case.context, **ids
+    )
+    url = f"/api/orgs/{case.org.id}"
+    current = await raw_client.get(url)
+    assert current.status_code == 200
+    settings = current.json()["settings"]["image_description"]
+    disabled = await raw_client.patch(
+        url,
+        headers={**org_fixture.session.headers(), "If-Match": current.headers["etag"]},
+        json={"settings": {"image_description": None}},
+    )
+    assert disabled.status_code == 200
+    with pytest.raises(provider.ImageDescriptionDenied) as unavailable:
+        await provider.resolve_queued_image_description_target(db, context=case.context, **ids)
+    assert unavailable.value.code == "policy_disabled"
+    restored = await raw_client.patch(
+        url,
+        headers={**org_fixture.session.headers(), "If-Match": disabled.headers["etag"]},
+        json={"settings": {"image_description": settings}},
+    )
+    assert restored.status_code == 200
+    assert restored.json()["settings"]["image_description"] == settings
+    fresh = await provider.resolve_queued_image_description_target(db, context=case.context, **ids)
+    assert fresh.model_id == original.model_id
+    assert fresh.policy_fingerprint != original.policy_fingerprint
+    assert fresh.policy_fingerprint == (await case.resolve(db)).policy_fingerprint
     open_key.assert_not_awaited()

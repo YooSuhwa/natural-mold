@@ -25,6 +25,7 @@ from app.schemas.conversation import MessageCreate
 from app.schemas.conversation_scope import ConversationAutoTitle
 from app.services import chat_service
 from app.services.agent_execution_owner import OwnedExecutionRequest, accept_owned_execution
+from app.services.chat.image_description_admission import freeze_direct_admission
 from app.services.conversation_audit_service import record_conversation_audit
 from app.services.conversation_run_worker import start_conversation_run
 from app.services.conversation_stream_service import resolve_agent_context, sse_response
@@ -77,6 +78,14 @@ async def start_conversation_with_message(
             db,
             conversation_id=conv.id,
             context=context,
+            attachment_ids=[a.id for a in data.attachments],
+        )
+        await freeze_direct_admission(
+            db,
+            context=context,
+            conversation_id=conv.id,
+            run_id=accepted.run_id,
+            root_model_id=cfg.model_id,
             attachment_ids=[a.id for a in data.attachments],
         )
 
@@ -220,6 +229,14 @@ async def send_message(
             db,
             conversation_id=conversation_id,
             context=context,
+            attachment_ids=[a.id for a in data.attachments],
+        )
+        await freeze_direct_admission(
+            db,
+            context=context,
+            conversation_id=conversation_id,
+            run_id=accepted.run_id,
+            root_model_id=cfg.model_id,
             attachment_ids=[a.id for a in data.attachments],
         )
     await record_conversation_audit(

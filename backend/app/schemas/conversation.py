@@ -106,6 +106,22 @@ class MessageAttachmentBrief(BaseModel):
     model_config = {"from_attributes": True}
 
 
+class ImageDescriptionReady(BaseModel):
+    status: Literal["ready"] = "ready"
+    text: str
+
+
+class ImageDescriptionUnavailable(BaseModel):
+    status: Literal["unavailable"] = "unavailable"
+    reason: str
+
+
+class ImageDescriptionUse(BaseModel):
+    message_id: str
+    runtime_message_id: str | None = None
+    image_description: ImageDescriptionReady | ImageDescriptionUnavailable
+
+
 class FileItem(BaseModel):
     """Unified conversation file-list entry (D12): generated artifact OR sent
     attachment, normalized to one shape.
@@ -134,6 +150,8 @@ class FileItem(BaseModel):
     editable: bool
     # attached → how the run passed it to the model (``attachment_form``); None if unrecorded.
     model_input: str | None = None
+    image_description: ImageDescriptionReady | ImageDescriptionUnavailable | None = None
+    image_description_uses: list[ImageDescriptionUse] = Field(default_factory=list)
 
 
 class MessageCreate(BaseModel):

@@ -59,6 +59,7 @@ CHILDREN: Final = MappingProxyType(
         "agent_api_threads": _rule(_CONVERSATION, Parent("agent_deployments", "deployment_id")),
         "agent_purge_cleanup_items": _rule(Parent("agent_purge_receipts", "receipt_id")),
         "artifact_versions": _rule(Parent("conversation_artifacts", "artifact_id")),
+        "image_description_charges": _rule(Parent("conversation_runs", "run_id")),
         "chat_image_descriptions": _rule(
             _CONVERSATION,
             Parent("message_attachments", "attachment_id"),

@@ -9,7 +9,7 @@ from app.config import settings
 from app.migrations.org_authz_v1.rls_policies import create_policy_sql, enable_sql, table_policy
 
 revision = "i44_chat_image_descriptions"
-down_revision = "i39_skill_approval_default"
+down_revision = "i43_chat_recovery"
 branch_labels = None
 depends_on = None
 
@@ -17,7 +17,21 @@ _TABLE = "chat_image_descriptions"
 
 
 def upgrade() -> None:
+    with op.batch_alter_table("token_usages") as usage:
+        usage.add_column(sa.Column("auxiliary_run_id", sa.Uuid(), nullable=True))
+        usage.create_foreign_key(
+            "fk_token_usages_auxiliary_run",
+            "conversation_runs",
+            ["auxiliary_run_id"],
+            ["id"],
+            ondelete="CASCADE",
+        )
+        usage.create_index("ix_token_usages_auxiliary_run_id", ["auxiliary_run_id"])
     op.add_column("message_attachments", sa.Column("content_sha256", sa.String(64), nullable=True))
+    op.add_column(
+        "conversation_run_inputs",
+        sa.Column("image_description_admission", sa.JSON(none_as_null=True), nullable=True),
+    )
     op.create_table(
         _TABLE,
         sa.Column("id", sa.Uuid(), primary_key=True),
@@ -82,16 +96,44 @@ def upgrade() -> None:
     )
     for column in ("conversation_id", "run_id"):
         op.create_index(f"ix_{_TABLE}_{column}", _TABLE, [column])
+    op.create_table(
+        "image_description_charges",
+        sa.Column("id", sa.Uuid(), primary_key=True),
+        sa.Column(
+            "run_id",
+            sa.Uuid(),
+            sa.ForeignKey("conversation_runs.id", ondelete="CASCADE"),
+            nullable=False,
+        ),
+        sa.Column("model_id", sa.Uuid(), nullable=False),
+        sa.Column("model_name", sa.String(200), nullable=False),
+        sa.Column("credential_scope", sa.String(16), nullable=False),
+        sa.Column("input_rate", sa.Numeric(12, 8), nullable=False),
+        sa.Column("output_rate", sa.Numeric(12, 8), nullable=False),
+        sa.Column("settlement_digest", sa.String(64), nullable=True),
+        sa.CheckConstraint(
+            "credential_scope IN ('tenant', 'personal') AND input_rate >= 0 AND output_rate >= 0",
+            name="ck_image_description_charges_pricing",
+        ),
+    )
+    op.create_index("ix_image_description_charges_run_id", "image_description_charges", ["run_id"])
     bind = op.get_bind()
     if bind.dialect.name == "postgresql":
         quote = bind.dialect.identifier_preparer.quote
-        for statement in create_policy_sql(quote, table_policy(quote, _TABLE)):
-            op.execute(sa.text(statement))
+        for name in (_TABLE, "image_description_charges"):
+            for statement in create_policy_sql(quote, table_policy(quote, name)):
+                op.execute(sa.text(statement))
         if settings.db_rls_enabled:
-            for statement in enable_sql(quote, [_TABLE]):
+            for statement in enable_sql(quote, [_TABLE, "image_description_charges"]):
                 op.execute(sa.text(statement))
 
 
 def downgrade() -> None:
+    with op.batch_alter_table("token_usages") as usage:
+        usage.drop_index("ix_token_usages_auxiliary_run_id")
+        usage.drop_constraint("fk_token_usages_auxiliary_run", type_="foreignkey")
+        usage.drop_column("auxiliary_run_id")
+    op.drop_table("image_description_charges")
     op.drop_table(_TABLE)
+    op.drop_column("conversation_run_inputs", "image_description_admission")
     op.drop_column("message_attachments", "content_sha256")

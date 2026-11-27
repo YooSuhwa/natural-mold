@@ -7,7 +7,7 @@ from app.config import settings
 from app.migrations.org_authz_v1.rls_policies import create_policy_sql, enable_sql, table_policy
 
 revision = "i45_goal_sandboxes"
-down_revision = "i43_chat_recovery"
+down_revision = "i44_chat_image_descriptions"
 branch_labels = None
 depends_on = None
 

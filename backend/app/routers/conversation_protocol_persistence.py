@@ -24,6 +24,7 @@ from app.routers.conversation_protocol_start import (
 from app.schemas.conversation_scope import ConversationAutoTitle, ConversationPromotion
 from app.services import chat_service, conversation_run_queue_service, conversation_run_service
 from app.services.agent_execution_owner import OwnedExecutionRequest, accept_owned_execution
+from app.services.chat.image_description_admission import capture_admission
 from app.services.chat_resource_context_integration import (
     QueuedResourceContextInput,
     freeze_queued_resource_context_payload,
@@ -123,6 +124,14 @@ async def persist_queued_run_start(
             context=context,
             attachment_ids=attachment_ids,
         )
+        if enqueue_result.created:
+            queued.image_description_admission = await capture_admission(
+                db,
+                context=context,
+                conversation_id=conversation.id,
+                root_model_id=cfg.model_id,
+                attachment_ids=attachment_ids,
+            )
         if cfg.runtime_profile == "skill_builder" and cfg.draft_workspace_path:
             from app.services import skill_draft_workspace
 

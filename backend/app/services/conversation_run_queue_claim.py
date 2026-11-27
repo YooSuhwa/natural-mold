@@ -18,6 +18,7 @@ from app.models.conversation_run import ConversationRun, utc_now_naive
 from app.models.conversation_run_input import ConversationRunInput
 from app.services import conversation_run_service
 from app.services.agent_execution_owner import OwnedExecutionRequest, accept_owned_execution
+from app.services.chat.image_description_admission import ADMISSION_KEY
 from app.services.conversation_run_queue_blocked import pause_blocked_queue
 from app.services.conversation_run_queue_mutations import (
     lock_owned_conversation,
@@ -132,6 +133,11 @@ async def claim_next_input(
         source="chat",
         input_preview=None,
         run_metadata={
+            **(
+                {ADMISSION_KEY: queued.image_description_admission}
+                if queued.image_description_admission
+                else {}
+            ),
             "queue_input_id": str(queued.id),
             "client_request_id": queued.client_request_id,
             "checkpoint_id": queued.checkpoint_id,

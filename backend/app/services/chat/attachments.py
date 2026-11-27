@@ -24,9 +24,10 @@ from app.authz.scoping import private_scope_predicate
 from app.error_codes import conversation_not_found
 from app.models.conversation import Conversation
 from app.models.message_attachment import MessageAttachment
-from app.schemas.conversation import FileItem
+from app.schemas.conversation import FileItem, ImageDescriptionUse
 from app.services.artifact_service import list_conversation_artifacts
-from app.services.chat.attachment_inputs import recorded_attachment_forms
+from app.services.chat.attachment_inputs import recorded_attachment_inputs
+from app.services.chat.image_descriptions import DescriptionRun
 
 logger = logging.getLogger(__name__)
 
@@ -256,25 +257,46 @@ async def list_conversation_files(
         .scalars()
         .all()
     )
-    forms = await recorded_attachment_forms(db, conversation_id=conversation_id, context=context)
-    items.extend(
-        FileItem(
-            source="attached",
-            id=str(att.id),
-            name=att.filename,
-            mime_type=att.mime_type,
-            extension=(Path(att.filename).suffix.lstrip(".") or None),
-            kind=None,
-            size_bytes=att.size_bytes,
-            preview_url=att.url,
-            download_url=att.url,
-            message_id=att.message_id,
-            created_at=att.created_at,
-            editable=False,
-            model_input=forms.get(str(att.id)),
+    records = await recorded_attachment_inputs(db, conversation_id=conversation_id, context=context)
+    for attachment in attach_rows:
+        key = str(attachment.id)
+        history = records.get(key)
+        uses: list[ImageDescriptionUse] = []
+        original = None
+        for message_id, entry in history.descriptions.items() if history else ():
+            if entry is None:
+                continue
+            run_id, ref = entry
+            resolver = DescriptionRun.for_run(context, conversation_id, run_id)
+            description = await resolver.resolve(ref, read_db=db)
+            uses.append(
+                ImageDescriptionUse(
+                    message_id=message_id,
+                    runtime_message_id=ref.get("runtime_message_id"),
+                    image_description=description,
+                )
+            )
+            if message_id == attachment.message_id:
+                original = description
+        items.append(
+            FileItem(
+                source="attached",
+                id=key,
+                name=attachment.filename,
+                mime_type=attachment.mime_type,
+                extension=(Path(attachment.filename).suffix.lstrip(".") or None),
+                kind=None,
+                size_bytes=attachment.size_bytes,
+                preview_url=attachment.url,
+                download_url=attachment.url,
+                message_id=attachment.message_id,
+                created_at=attachment.created_at,
+                editable=False,
+                model_input=history.form if history else None,
+                image_description=original,
+                image_description_uses=uses,
+            )
         )
-        for att in attach_rows
-    )
 
     items.sort(key=lambda f: f.created_at, reverse=True)
     return items

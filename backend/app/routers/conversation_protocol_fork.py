@@ -110,6 +110,7 @@ async def _fork_overwrite_input(
         checkpoint_id,
         append=append_messages,
         drop_trailing_assistant=drop_trailing_assistant,
+        track_attachment_input=True,
     )
 
 

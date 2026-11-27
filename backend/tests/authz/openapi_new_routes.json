@@ -6136,6 +6136,16 @@
               "title": "Conversation Id",
               "type": "string"
             }
+          },
+          {
+            "in": "query",
+            "name": "read_only",
+            "required": false,
+            "schema": {
+              "default": false,
+              "title": "Read Only",
+              "type": "boolean"
+            }
           }
         ],
         "responses": {
@@ -6318,6 +6328,16 @@
             "schema": {
               "title": "Thread Id",
               "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "read_only",
+            "required": false,
+            "schema": {
+              "default": false,
+              "title": "Read Only",
+              "type": "boolean"
             }
           }
         ],
@@ -39075,6 +39095,27 @@
           "title": "Id",
           "type": "string"
         },
+        "image_description": {
+          "anyOf": [
+            {
+              "$ref": "#/components/schemas/ImageDescriptionReady"
+            },
+            {
+              "$ref": "#/components/schemas/ImageDescriptionUnavailable"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Image Description"
+        },
+        "image_description_uses": {
+          "items": {
+            "$ref": "#/components/schemas/ImageDescriptionUse"
+          },
+          "title": "Image Description Uses",
+          "type": "array"
+        },
         "kind": {
           "anyOf": [
             {
@@ -40831,6 +40872,207 @@
         }
       },
       "title": "HistoryRequest",
+      "type": "object"
+    },
+    "ImageDescriptionPolicy-Input": {
+      "additionalProperties": false,
+      "properties": {
+        "base_url": {
+          "maxLength": 500,
+          "minLength": 1,
+          "title": "Base Url",
+          "type": "string"
+        },
+        "max_cost_usd": {
+          "anyOf": [
+            {
+              "exclusiveMinimum": 0.0,
+              "maximum": 10.0,
+              "type": "number"
+            },
+            {
+              "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d{0,8}0*$",
+              "type": "string"
+            }
+          ],
+          "default": "0.50",
+          "title": "Max Cost Usd"
+        },
+        "max_input_bytes": {
+          "default": 4194304,
+          "maximum": 8388608.0,
+          "minimum": 1.0,
+          "title": "Max Input Bytes",
+          "type": "integer"
+        },
+        "max_output_tokens": {
+          "default": 256,
+          "maximum": 1024.0,
+          "minimum": 1.0,
+          "title": "Max Output Tokens",
+          "type": "integer"
+        },
+        "model_id": {
+          "format": "uuid",
+          "title": "Model Id",
+          "type": "string"
+        },
+        "provider": {
+          "enum": [
+            "openai",
+            "openai_compatible",
+            "openrouter"
+          ],
+          "title": "Provider",
+          "type": "string"
+        },
+        "timeout_seconds": {
+          "default": 15,
+          "maximum": 60.0,
+          "minimum": 1.0,
+          "title": "Timeout Seconds",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "model_id",
+        "provider",
+        "base_url"
+      ],
+      "title": "ImageDescriptionPolicy",
+      "type": "object"
+    },
+    "ImageDescriptionPolicy-Output": {
+      "additionalProperties": false,
+      "properties": {
+        "base_url": {
+          "maxLength": 500,
+          "minLength": 1,
+          "title": "Base Url",
+          "type": "string"
+        },
+        "max_cost_usd": {
+          "default": "0.50",
+          "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d{0,8}0*$",
+          "title": "Max Cost Usd",
+          "type": "string"
+        },
+        "max_input_bytes": {
+          "default": 4194304,
+          "maximum": 8388608.0,
+          "minimum": 1.0,
+          "title": "Max Input Bytes",
+          "type": "integer"
+        },
+        "max_output_tokens": {
+          "default": 256,
+          "maximum": 1024.0,
+          "minimum": 1.0,
+          "title": "Max Output Tokens",
+          "type": "integer"
+        },
+        "model_id": {
+          "format": "uuid",
+          "title": "Model Id",
+          "type": "string"
+        },
+        "provider": {
+          "enum": [
+            "openai",
+            "openai_compatible",
+            "openrouter"
+          ],
+          "title": "Provider",
+          "type": "string"
+        },
+        "timeout_seconds": {
+          "default": 15,
+          "maximum": 60.0,
+          "minimum": 1.0,
+          "title": "Timeout Seconds",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "model_id",
+        "provider",
+        "base_url"
+      ],
+      "title": "ImageDescriptionPolicy",
+      "type": "object"
+    },
+    "ImageDescriptionReady": {
+      "properties": {
+        "status": {
+          "const": "ready",
+          "default": "ready",
+          "title": "Status",
+          "type": "string"
+        },
+        "text": {
+          "title": "Text",
+          "type": "string"
+        }
+      },
+      "required": [
+        "text"
+      ],
+      "title": "ImageDescriptionReady",
+      "type": "object"
+    },
+    "ImageDescriptionUnavailable": {
+      "properties": {
+        "reason": {
+          "title": "Reason",
+          "type": "string"
+        },
+        "status": {
+          "const": "unavailable",
+          "default": "unavailable",
+          "title": "Status",
+          "type": "string"
+        }
+      },
+      "required": [
+        "reason"
+      ],
+      "title": "ImageDescriptionUnavailable",
+      "type": "object"
+    },
+    "ImageDescriptionUse": {
+      "properties": {
+        "image_description": {
+          "anyOf": [
+            {
+              "$ref": "#/components/schemas/ImageDescriptionReady"
+            },
+            {
+              "$ref": "#/components/schemas/ImageDescriptionUnavailable"
+            }
+          ],
+          "title": "Image Description"
+        },
+        "message_id": {
+          "title": "Message Id",
+          "type": "string"
+        },
+        "runtime_message_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Runtime Message Id"
+        }
+      },
+      "required": [
+        "message_id",
+        "image_description"
+      ],
+      "title": "ImageDescriptionUse",
       "type": "object"
     },
     "InboxDecision": {
@@ -48458,6 +48700,16 @@
           "title": "Goal Sandbox Enabled",
           "type": "boolean"
         },
+        "image_description": {
+          "anyOf": [
+            {
+              "$ref": "#/components/schemas/ImageDescriptionPolicy-Output"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
         "registration_policy": {
           "anyOf": [
             {
@@ -48517,6 +48769,16 @@
             }
           ],
           "title": "Goal Sandbox Enabled"
+        },
+        "image_description": {
+          "anyOf": [
+            {
+              "$ref": "#/components/schemas/ImageDescriptionPolicy-Input"
+            },
+            {
+              "type": "null"
+            }
+          ]
         },
         "registration_policy": {
           "anyOf": [
@@ -51355,6 +51617,13 @@
         "id": {
           "title": "Id",
           "type": "string"
+        },
+        "partial_output": {
+          "additionalProperties": {
+            "$ref": "#/components/schemas/app__schemas__conversation_refs__JsonValue-Output"
+          },
+          "title": "Partial Output",
+          "type": "object"
         },
         "status": {
           "title": "Status",

@@ -33,6 +33,10 @@ class TokenUsage(NullableOrgScope, Base):
         nullable=True,
         unique=True,
     )
+    # Multiple auxiliary model calls can contribute separate measured postings to one chat run.
+    auxiliary_run_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("conversation_runs.id", ondelete="CASCADE"), nullable=True, index=True
+    )
     # NULL: a background job's model call (memory consolidation, ``invoker_type='job'``).
     conversation_id: Mapped[uuid.UUID | None] = mapped_column(
         ForeignKey("conversations.id", ondelete="CASCADE"), nullable=True, index=True

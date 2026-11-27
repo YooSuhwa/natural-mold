@@ -95,7 +95,7 @@ async def test_single_approved_request(
     [
         {},
         completion(" "),
-        completion("secret" * 2000),
+        completion("글" * 8001),
         completion("\x00"),
         completion("sensitive", prompt=True),
         completion("sensitive", prompt=-12),
@@ -130,6 +130,12 @@ async def test_redirect_and_provider_errors_send_once(
         await Request().send()
     assert raised.value.__context__ is None
     assert sent == [Request().endpoint]
+
+
+async def test_exact_database_character_limit_is_accepted(monkeypatch: pytest.MonkeyPatch) -> None:
+    text = "글" * 8000
+    respond_with(monkeypatch, lambda _: httpx.Response(200, json=completion(text)))
+    assert await Request().send() == (text, 5, 2)
 
 
 async def test_invalid_endpoint_never_sends(monkeypatch: pytest.MonkeyPatch) -> None:

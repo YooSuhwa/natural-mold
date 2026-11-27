@@ -20,12 +20,16 @@ from app.authz.error_codes import authorization_error
 from app.authz.org_context import OrgContext
 from app.authz.principal import Principal
 from app.authz.private_actor import require_private_actor
+from app.authz.run_agent_loader import require_shared_run_agent, run_agent_scope_predicate
 from app.authz.run_decisions import fresh_run_decision_scope, require_decided
 from app.authz.runtime import runtime_authz
+from app.authz.scoping import private_scope_predicate
 from app.authz.service_types import Verdict
 from app.credentials.boundary import open_values
 from app.credentials.company_use import company_credential_usable
 from app.exceptions import AppError
+from app.models.agent import Agent
+from app.models.conversation import Conversation
 from app.models.conversation_run import ConversationRun
 from app.models.credential import Credential
 from app.models.message_attachment import MessageAttachment
@@ -37,6 +41,7 @@ from app.services.chat.image_description_wire import (
     ImageDescriptionWireError,
     send_image_description,
 )
+from app.tenancy.attribution import attribute_run
 
 CredentialScope = Literal["personal", "tenant"]
 ImageDescriptionReason = Literal[
@@ -192,6 +197,30 @@ async def resolve_image_description_target(
     require_running: bool = False,
 ) -> ImageDescriptionTarget:
     """Recheck current authority. Read/accept can pin a target but never open a key."""
+    return await _authorized_target(
+        db, context, run_id, conversation_id, attachment_id, require_running
+    )
+
+
+async def resolve_queued_image_description_target(
+    db: AsyncSession,
+    *,
+    context: OrgContext,
+    conversation_id: UUID,
+    attachment_id: UUID,
+) -> ImageDescriptionTarget:
+    """Pin the input before a queued run exists, using normal chat identity attribution."""
+    return await _authorized_target(db, context, None, conversation_id, attachment_id, False)
+
+
+async def _authorized_target(
+    db: AsyncSession,
+    context: OrgContext,
+    run_id: UUID | None,
+    conversation_id: UUID,
+    attachment_id: UUID,
+    require_running: bool,
+) -> ImageDescriptionTarget:
     try:
         with fresh_run_decision_scope():
             return await _resolve_target(
@@ -203,10 +232,53 @@ async def resolve_image_description_target(
         raise ImageDescriptionDenied("model_unavailable") from None
 
 
+async def _credential_subject(
+    db: AsyncSession,
+    context: OrgContext,
+    run_id: UUID | None,
+    conversation_id: UUID,
+    require_running: bool,
+) -> UUID:
+    if run_id is None:
+        agent = await db.scalar(
+            select(Agent)
+            .join(Conversation, Conversation.agent_id == Agent.id)
+            .where(
+                Conversation.id == conversation_id,
+                private_scope_predicate(Conversation, context),
+                run_agent_scope_predicate(context),
+                Agent.archived_at.is_(None),
+            )
+            .execution_options(populate_existing=True)
+        )
+        if agent is None:
+            raise ImageDescriptionDenied("access_denied")
+        await require_shared_run_agent(agent, context)
+        return attribute_run("chat", context, agent).credential_subject_user_id
+    run = await db.scalar(
+        select(ConversationRun)
+        .where(
+            ConversationRun.id == run_id,
+            ConversationRun.conversation_id == conversation_id,
+            ConversationRun.tenant_id == context.tenant_id,
+            ConversationRun.org_id == context.org_id,
+            private_run_predicate(context),
+        )
+        .execution_options(populate_existing=True)
+    )
+    if not run or run.run_source != "CHAT" or run.credential_subject_user_id is None:
+        raise ImageDescriptionDenied("access_denied")
+    if require_running and (
+        run.status != "running" or not run.is_active or run.cancel_requested_at
+    ):
+        raise ImageDescriptionDenied("access_denied")
+    return run.credential_subject_user_id
+
+
 async def _resolve_target(
     db: AsyncSession,
     context: OrgContext,
-    run_id: UUID,
+    run_id: UUID | None,
     conversation_id: UUID,
     attachment_id: UUID,
     require_running: bool,
@@ -220,23 +292,7 @@ async def _resolve_target(
     if configured is None:
         raise ImageDescriptionDenied("policy_disabled")
     policy = ImageDescriptionPolicy.model_validate(configured)
-    run = await db.scalar(
-        select(ConversationRun)
-        .where(
-            ConversationRun.id == run_id,
-            ConversationRun.conversation_id == conversation_id,
-            ConversationRun.tenant_id == tenant.id,
-            ConversationRun.org_id == org.id,
-            private_run_predicate(context),
-        )
-        .execution_options(populate_existing=True)
-    )
-    if not run or run.run_source != "CHAT" or run.credential_subject_user_id is None:
-        raise ImageDescriptionDenied("access_denied")
-    if require_running and (
-        run.status != "running" or not run.is_active or run.cancel_requested_at
-    ):
-        raise ImageDescriptionDenied("access_denied")
+    subject_id = await _credential_subject(db, context, run_id, conversation_id, require_running)
     attachment = await db.scalar(
         select(MessageAttachment)
         .where(
@@ -250,7 +306,7 @@ async def _resolve_target(
         raise ImageDescriptionDenied("access_denied")
     if not 0 < attachment.size_bytes <= policy.max_input_bytes:
         raise ImageDescriptionDenied("size_limit")
-    subject = replace(context, user_id=run.credential_subject_user_id)
+    subject = replace(context, user_id=subject_id)
     if subject.user_id != context.user_id:
         await require_private_actor(db, subject)
     model = await db.get(Model, policy.model_id, populate_existing=True)

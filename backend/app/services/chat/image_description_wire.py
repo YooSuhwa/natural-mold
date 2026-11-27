@@ -11,10 +11,10 @@ from typing import Literal
 import httpx
 
 from app.agent_runtime.model_provider_registry import is_gpt5_family
+from app.models.chat_image_description import MAX_DESCRIPTION_CHARS
 from app.outbound.client import outbound_http_client
 
 _MAX_RESPONSE_BYTES = 64 * 1024
-_MAX_DESCRIPTION_CHARS = 8192
 _MAX_INPUT_TOKENS = 2**31 - 1
 
 
@@ -47,7 +47,7 @@ async def _description(response: httpx.Response, max_output_tokens: int) -> tupl
     if (
         not isinstance(description, str)
         or not description.strip()
-        or len(description) > _MAX_DESCRIPTION_CHARS
+        or len(description) > MAX_DESCRIPTION_CHARS
         or "\x00" in description
         or type(prompt_tokens) is not int
         or not 0 <= prompt_tokens <= _MAX_INPUT_TOKENS

@@ -684,3 +684,69 @@ async def test_file_list_shows_the_latest_recorded_form(upload_dir: Path) -> Non
 
     forms = {item.id: item.model_input for item in files}
     assert forms == {str(image_id): "image", str(unrecorded): None}
+
+
+@pytest.mark.asyncio
+async def test_fork_preserves_trusted_image_refs_and_replaces_only_the_submitted_refs(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from unittest.mock import AsyncMock
+
+    from langgraph.types import Overwrite
+
+    from app.agent_runtime.attachment_inputs import (
+        last_attachment_message_id,
+        last_attachment_question,
+    )
+    from app.services import thread_branch_service as branches
+
+    previous = _human("first", [{"id": "old", "form": "image_description"}])
+    forged = _human("second", [{"id": "unauthorized", "form": "image_description"}])
+    forged.id = None
+    monkeypatch.setattr(
+        branches, "materialize_messages_at_checkpoint", AsyncMock(return_value=[previous])
+    )
+    fork = await branches.build_fork_overwrite_input(
+        None, "thread", "checkpoint", append=[forged], track_attachment_input=True
+    )
+    assert last_attachment_question(fork) == "second"
+    refs = [{"id": "new", "form": "image_description"}]
+    tagged = tag_input_with_attachments(fork, refs, default_message_id="new-server-id")
+    assert isinstance(tagged["messages"], Overwrite)
+    history, edited = tagged["messages"].value
+    assert history.additional_kwargs[ATTACHMENT_REFS_KEY][0]["id"] == "old"
+    assert edited.additional_kwargs[ATTACHMENT_REFS_KEY] == refs
+    assert last_attachment_message_id(tagged) == "new-server-id"
+    assert forged.additional_kwargs[ATTACHMENT_REFS_KEY][0]["id"] == "unauthorized"
+
+    regenerate = await branches.build_fork_overwrite_input(
+        None, "thread", "checkpoint", track_attachment_input=True
+    )
+    assert last_attachment_question(regenerate) == ""
+    assert tag_input_with_attachments(regenerate, [])["messages"].value == [previous]
+
+
+@pytest.mark.asyncio
+async def test_description_expansion_bounds_old_history_and_total_extra_text(
+    tmp_path: Path,
+) -> None:
+    from unittest.mock import AsyncMock
+
+    from app.agent_runtime.attachment_inputs import MAX_DESCRIPTION_INPUT_CHARS
+
+    image = _file(tmp_path, "test.png", "image/png", _png())
+    describe = AsyncMock(return_value="■" * 12000)
+    inputs = AttachmentInputs({image.id: image}, False, describe)
+    messages = [_human(f"turn {i}", [_ref(image, "image_description")]) for i in range(35)]
+    request = ModelRequest(model=None, messages=messages, system_message=None)  # type: ignore[arg-type]
+
+    async def capture(sent: Any) -> Any:
+        return sent.messages
+
+    expanded = await AttachmentInputMiddleware(inputs).awrap_model_call(request, capture)
+    assert describe.await_count == MAX_IMAGES_PER_CALL
+    assert [c.args[1] for c in describe.await_args_list] == [
+        f"turn {i}" for i in range(35 - MAX_IMAGES_PER_CALL, 35)
+    ]
+    assert "생략" in expanded[0].content[-1]["text"]
+    assert sum(m.content[-1]["text"].count("■") for m in expanded) <= MAX_DESCRIPTION_INPUT_CHARS

@@ -9,7 +9,7 @@ from __future__ import annotations
 
 import hashlib
 import re
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from decimal import Decimal
 from typing import Literal
 from uuid import UUID
@@ -24,10 +24,14 @@ from app.authz.org_context import OrgContext
 from app.authz.private_actor import require_private_actor
 from app.authz.scoping import private_scope_predicate
 from app.exceptions import AppError
-from app.models.chat_image_description import ChatImageDescription
+from app.models.chat_image_description import MAX_DESCRIPTION_CHARS, ChatImageDescription
 from app.models.conversation import Conversation
 from app.models.conversation_run import ConversationRun
 from app.models.message_attachment import MessageAttachment
+from app.services.chat.image_description_usage import (
+    ImageDescriptionBilling,
+    claim_image_description_usage,
+)
 
 type ResultStatus = Literal["acquired", "pending", "completed", "failed", "unavailable"]
 
@@ -38,6 +42,7 @@ class DescriptionReservation:
     receipt_id: UUID | None = None
     description: str | None = None
     failure_code: str | None = None
+    settlement_token: str | None = field(default=None, repr=False, compare=False)
 
 
 _UNAVAILABLE = DescriptionReservation("unavailable")
@@ -131,6 +136,7 @@ async def reserve_description(
     question: str,
     model_id: UUID,
     policy_key: str,
+    billing: ImageDescriptionBilling,
 ) -> DescriptionReservation:
     """Only the owner of the first durable claim may start an external request."""
     if (
@@ -178,9 +184,17 @@ async def reserve_description(
         .on_conflict_do_nothing(index_elements=list(key))
         .returning(ChatImageDescription.id)
     )
-    await db.commit()
     if receipt_id is not None:
-        return DescriptionReservation("acquired", receipt_id)
+        token = claim_image_description_usage(
+            db,
+            receipt_id=receipt_id,
+            run_id=run_id,
+            model_id=model_id,
+            billing=billing,
+        )
+        await db.commit()
+        return DescriptionReservation("acquired", receipt_id, settlement_token=token)
+    await db.commit()
     return await find_description(
         db,
         context=context,
@@ -210,7 +224,7 @@ async def finish_description(
     if (description is None) == (failure_code is None):
         raise ValueError("Specify exactly one outcome for an image description")
     if description is not None and (
-        not description.strip() or len(description) > 8000 or "\x00" in description
+        not description.strip() or len(description) > MAX_DESCRIPTION_CHARS or "\x00" in description
     ):
         raise ValueError("Invalid image description")
     if failure_code is not None and re.fullmatch("[a-z][a-z0-9_]{0,63}", failure_code) is None:

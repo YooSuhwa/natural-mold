@@ -21,6 +21,7 @@ from app.services.chat.image_description_receipts import (
     finish_description,
     reserve_description,
 )
+from app.services.chat.image_description_usage import ImageDescriptionBilling
 from tests.authz.unit_scope_fixture import unit_context
 from tests.conftest import TEST_USER_ID, TestSession
 from tests.integration._seed import seed_conversation_with_agent
@@ -66,12 +67,15 @@ async def seed_receipt_request(db: AsyncSession, conversation_id: UUID) -> dict[
         "question": "어떤 모양인가요?",
         "model_id": uuid4(),
         "policy_key": "test policy 1",
+        "billing": ImageDescriptionBilling(
+            "test-vision", "tenant", Decimal("0.001"), Decimal("0.002")
+        ),
     }
 
 
 def _lookup_for(request: dict[str, Any]) -> dict[str, Any]:
     lookup = request.copy()
-    del lookup["run_id"]
+    del lookup["run_id"], lookup["billing"]
     lookup["question_sha256"] = hashlib.sha256(lookup.pop("question").encode()).hexdigest()
     return lookup
 

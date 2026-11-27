@@ -56,6 +56,7 @@ from app.models.guardrail_template import (
     GuardrailTemplateVersion,
 )
 from app.models.health_check_history import HealthCheckHistory
+from app.models.image_description_charge import ImageDescriptionCharge
 from app.models.job import Job, JobWorker
 from app.models.marketplace import (
     MarketplaceInstallation,
@@ -159,6 +160,7 @@ __all__ = [
     "AuthzShadowDiff",
     "BuilderSession",
     "ChatImageDescription",
+    "ImageDescriptionCharge",
     "Conversation",
     "ConversationArtifact",
     "ConversationGoal",

@@ -20,6 +20,8 @@ from sqlalchemy.orm import Mapped, mapped_column
 from app.database import Base
 from app.models.conversation_run import utc_now_naive
 
+MAX_DESCRIPTION_CHARS = 8_000
+
 
 class ChatImageDescription(Base):
     __tablename__ = "chat_image_descriptions"
@@ -35,7 +37,7 @@ class ChatImageDescription(Base):
         ),
         CheckConstraint(
             "(status = 'pending' AND description IS NULL AND failure_code IS NULL) OR "
-            "(status = 'completed' AND length(description) BETWEEN 1 AND 8000 "
+            f"(status = 'completed' AND length(description) BETWEEN 1 AND {MAX_DESCRIPTION_CHARS} "
             "AND description IS NOT NULL AND failure_code IS NULL) OR "
             "(status = 'failed' AND description IS NULL AND failure_code IS NOT NULL)",
             name="ck_chat_image_description_result",
@@ -70,7 +72,7 @@ class ChatImageDescription(Base):
     question_sha256: Mapped[str] = mapped_column(String(64))
     policy_sha256: Mapped[str] = mapped_column(String(64))
     status: Mapped[str] = mapped_column(String(12))
-    description: Mapped[str | None] = mapped_column(String(8000))
+    description: Mapped[str | None] = mapped_column(String(MAX_DESCRIPTION_CHARS))
     failure_code: Mapped[str | None] = mapped_column(String(64))
     input_tokens: Mapped[int | None] = mapped_column(Integer)
     output_tokens: Mapped[int | None] = mapped_column(Integer)

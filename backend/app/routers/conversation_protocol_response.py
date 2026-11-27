@@ -21,6 +21,7 @@ from app.routers.conversation_protocol_persistence import QueuedRunStart
 from app.routers.conversation_protocol_start import RunStartEntry
 from app.schemas.conversation_scope import ConversationAutoTitle, ConversationPromotion
 from app.services import chat_service, conversation_run_service
+from app.services.chat.image_description_admission import freeze_direct_admission
 from app.services.chat_resource_context_payload import resource_context_user_message
 from app.services.conversation_audit_service import record_conversation_audit
 
@@ -126,6 +127,14 @@ async def finalize_direct_run_start(
             db,
             conversation_id=conversation.id,
             context=context,
+            attachment_ids=attachment_ids,
+        )
+        await freeze_direct_admission(
+            db,
+            context=context,
+            conversation_id=conversation.id,
+            run_id=run_id,
+            root_model_id=cfg.model_id,
             attachment_ids=attachment_ids,
         )
         if cfg.runtime_profile == "skill_builder" and cfg.draft_workspace_path:
