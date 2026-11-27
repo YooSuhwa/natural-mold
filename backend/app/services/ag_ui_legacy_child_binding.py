@@ -8,6 +8,7 @@ from typing import Any
 from uuid import UUID
 
 from langchain_core.messages import AIMessage
+from langchain_core.runnables import RunnableConfig
 from langgraph._internal._constants import PUSH, TASKS
 from langgraph.checkpoint.base import BaseCheckpointSaver, CheckpointTuple
 from langgraph.pregel._algo import _uuid5_str, _xxhash_str
@@ -66,6 +67,17 @@ def _pending(saved: CheckpointTuple) -> dict[str, tuple[str, Interrupt]]:
                 return {}
             found[value.id] = (task_id, value)
     return found
+
+
+async def _issuing_message(
+    saver: BaseCheckpointSaver[Any], saved: CheckpointTuple
+) -> AIMessage | None:
+    try:
+        history = await _checkpoint_messages(saver, saved)
+    except (KeyError, TypeError, ValueError, AttributeError, IndexError):
+        # An unreadable retained reducer cannot establish a delegated identity.
+        return None
+    return next((item for item in reversed(history) if isinstance(item, AIMessage)), None)
 
 
 def _call_matches(message: AIMessage | None, call_id: str, role: str) -> bool:
@@ -149,15 +161,8 @@ async def read_legacy_child_bindings(
         groups.setdefault(task_id, []).append(ident)
 
     result: dict[str, LegacyChildBinding | None] = {}
-    message: AIMessage | None = None
     has_calls = any(_contains_task(calls) for calls in dispatches.values())
-    if has_calls:
-        try:
-            history = await _checkpoint_messages(saver, saved)
-        except (KeyError, TypeError, ValueError, AttributeError, IndexError):
-            # An unreadable retained reducer cannot establish a delegated identity.
-            history = ()
-        message = next((item for item in reversed(history) if isinstance(item, AIMessage)), None)
+    message = await _issuing_message(saver, saved) if has_calls else None
     owners = {str(key): key for key in lineage}
     for task_id, ids in groups.items():
         calls = dispatches.get(task_id)
@@ -204,3 +209,76 @@ async def read_legacy_child_bindings(
             ):
                 result[ident] = binding
     return result
+
+
+async def read_historical_child_bindings(
+    saver: BaseCheckpointSaver[Any],
+    saved: CheckpointTuple,
+    *,
+    tenant_id: UUID,
+    lineage: set[UUID],
+) -> tuple[LegacyChildBinding, ...] | None:
+    """Identify the direct children of this historical root issuance for read projections.
+
+    An empty tuple denotes a root without a task dispatch. None means that its
+    ownership or any dispatched child cannot be established. Each returned namespace
+    identifies only its issuing child; it conveys no permission on nested delegates.
+    """
+    values = saved.config.get("configurable", {})
+    thread = values.get("thread_id")
+    root_id = values.get("checkpoint_id")
+    owners = {str(key): key for key in lineage}
+    stamp = saved.metadata.get("moldy_run_id")
+    if (
+        not isinstance(thread, str)
+        or not thread
+        or values.get("checkpoint_ns") != ""
+        or not isinstance(root_id, str)
+        or not root_id
+        or saved.checkpoint.get("id") != root_id
+        or not owners
+        or saved.metadata.get(CHECKPOINT_TENANT_KEY, str(tenant_id)) != str(tenant_id)
+        or (stamp is not None and (not isinstance(stamp, str) or stamp not in owners))
+    ):
+        return None
+    dispatches = _tool_dispatches(saved)
+    if dispatches is None:
+        return None
+    delegated = {task: calls for task, calls in dispatches.items() if _contains_task(calls)}
+    if not delegated:
+        return ()
+    message = await _issuing_message(saver, saved)
+    if message is None:
+        return None
+    bindings: dict[str, LegacyChildBinding] = {}
+    for task, calls in delegated.items():
+        if len(calls) != 1:
+            return None
+        namespace = f"tools:{task}"
+        child_config: RunnableConfig = {
+            "configurable": {"thread_id": thread, "checkpoint_ns": namespace}
+        }
+        # A later resume can move the head in this namespace. Ask for a retained
+        # checkpoint of the issuing physical run and its exact old parent.
+        required: dict[str, Any] = {"parents": {"": root_id}}
+        if stamp is not None:
+            required["moldy_run_id"] = stamp
+        row = None
+        async for candidate in saver.alist(child_config, filter=required, limit=1):
+            row = candidate
+        if row is None:
+            return None
+        binding = _proven_child(
+            saved,
+            row,
+            call=calls[0],
+            namespace=namespace,
+            thread=thread,
+            tenant=str(tenant_id),
+            lineage=owners,
+            message=message,
+        )
+        if binding is None or binding.tool_call_id in bindings:
+            return None
+        bindings[binding.tool_call_id] = binding
+    return tuple(bindings.values())
