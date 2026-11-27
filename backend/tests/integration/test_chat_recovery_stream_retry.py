@@ -119,9 +119,7 @@ async def test_gateway_retry_fences_replaced_worker_before_second_send(
         middleware = DirectStreamRetryMiddleware(
             fallbacks=models[1:], initial_delay=0, check_authority=admission
         )
-        graph = create_agent(
-            model=models[0], middleware=[middleware], checkpointer=InMemorySaver()
-        )
+        graph = create_agent(model=models[0], middleware=[middleware], checkpointer=InMemorySaver())
         config = {"configurable": {"thread_id": str(conversation_id)}}
 
         async def old_worker() -> None:

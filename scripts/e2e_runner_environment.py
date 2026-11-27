@@ -109,9 +109,7 @@ def build_lane_environment(
             "E2E_TEST_HELPERS_ENABLED": "true",
             "CHECKPOINTER_POOL_MIN_SIZE": "1",
             "CHECKPOINTER_POOL_MAX_SIZE": "2",
-            "E2E_AUTH_STATE_PATH": str(
-                run_root / "frontend/auth" / project / f"{lane}-user.json"
-            ),
+            "E2E_AUTH_STATE_PATH": str(run_root / "frontend/auth" / project / f"{lane}-user.json"),
             "E2E_NEXT_BUILD_DIR": str(run_root / "frontend/.next" / project),
             "E2E_RESULTS_DIR": str(run_root / "frontend/test-results" / project),
             "PLAYWRIGHT_JUNIT_OUTPUT_NAME": str(
