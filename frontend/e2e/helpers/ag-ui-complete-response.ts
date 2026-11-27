@@ -219,6 +219,7 @@ export async function installCompletedAgUiResponseObserver(page: Page, apiBase: 
       if (
         !item.stop?.headersReceived ||
         item.physicalReceipt !== signal.physicalRunId ||
+        item.completedPhysical ||
         item.cancelledTerminal
       )
         item.invalid = true
