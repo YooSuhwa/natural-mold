@@ -25,6 +25,7 @@ from app.models.authz_reconcile_run import AuthzReconcileRun
 from app.models.builder_session import BuilderSession
 from app.models.conversation import Conversation
 from app.models.conversation_artifact import ArtifactVersion, ConversationArtifact
+from app.models.conversation_goal import ConversationGoal, GoalAttempt, GoalTransitionIntent
 from app.models.conversation_history import (
     ConversationHistoryCheckpoint,
     ConversationHistoryEvent,
@@ -155,6 +156,7 @@ __all__ = [
     "BuilderSession",
     "Conversation",
     "ConversationArtifact",
+    "ConversationGoal",
     "ConversationHistoryCheckpoint",
     "ConversationHistoryEvent",
     "ConversationHistoryManifest",
@@ -171,6 +173,8 @@ __all__ = [
     "DailySpendAgent",
     "DailySpendModel",
     "DailySpendUser",
+    "GoalAttempt",
+    "GoalTransitionIntent",
     "GuardrailEvent",
     "GuardrailModelSetting",
     "GuardrailPseudonym",

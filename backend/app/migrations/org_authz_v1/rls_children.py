@@ -74,6 +74,14 @@ CHILDREN: Final = MappingProxyType(
         "conversation_run_metrics": _rule(Parent("conversation_runs", "run_id")),
         "credential_audit_logs": _rule(Parent("credentials", "credential_id")),
         "credential_oauth_states": _rule(Parent("credentials", "credential_id")),
+        "goal_attempts": _rule(
+            Parent("conversation_goals", "goal_id"),
+            Parent("conversation_runs", "run_id"),
+            Parent("conversation_run_inputs", "followup_input_id", optional=True),
+        ),
+        "goal_transition_intents": _rule(
+            Parent("conversation_goals", "goal_id"), Parent("conversation_runs", "run_id")
+        ),
         "marketplace_item_acl": _rule(Parent("marketplace_items", "item_id")),
         "marketplace_versions": _rule(Parent("marketplace_items", "item_id"), catalog_read=True),
         "marketplace_publication_links": _rule(
