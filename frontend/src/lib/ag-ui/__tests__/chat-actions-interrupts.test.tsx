@@ -80,6 +80,43 @@ function setup(initial: readonly AgUiInterrupt[]) {
 }
 
 describe('Moldy choices on the native AG-UI pending interrupts', () => {
+  it('projects identical rich question arguments from a live slot and an explicitly granted historical slot', () => {
+    const args = {
+      mode: 'option_list',
+      title: '출력 형식',
+      question: '어떤 형식으로 받을까요?',
+      options: ['HTML', 'Markdown'],
+    }
+    const base = { id: 'question', reason: 'moldy.ask_user', subagentRunId: 'child' }
+    const live = { ...base, metadata: { moldy: { type: 'ask_user', ...args } } }
+    const restored = {
+      ...base,
+      metadata: {
+        moldy: { ...live.metadata.moldy, legacyInterruptAccess: true, actionable: true },
+      },
+    }
+    const [result] = moldyAgUiInterruptPayloads([restored])
+    expect([result]).toEqual(moldyAgUiInterruptPayloads([live]))
+    expect(result.action_requests).toEqual([{ name: 'ask_user', args }])
+    expect(restored.metadata.moldy).toMatchObject({ legacyInterruptAccess: true, actionable: true })
+  })
+
+  it('preserves similarly named fields inside reviewed tool arguments', () => {
+    const args = { actionable: false, legacyInterruptAccess: 'user-supplied' }
+    const slot = {
+      id: 'review',
+      reason: 'moldy.tool_approval',
+      metadata: {
+        moldy: {
+          action_requests: [{ name: 'annotate', args }],
+          review_configs: [{ action_name: 'annotate', allowed_decisions: ['approve'] }],
+          legacyInterruptAccess: true,
+        },
+      },
+    }
+    expect(moldyAgUiInterruptPayloads([slot])[0].action_requests[0].args).toEqual(args)
+  })
+
   it('groups auth re-asks per owner even when attempts arrive out of order', () => {
     const slots = [
       auth('current-id', 2),

@@ -2,6 +2,7 @@
 
 import { createContext, useContext, useMemo, type ReactNode } from 'react'
 import { useAuiState } from '@assistant-ui/react'
+import { indexAgUiToolCards } from './activity-card-owner'
 import { useSetAtom } from 'jotai'
 import type { DeepAgentFile } from '@/lib/chat/langgraph-runtime/deepagents-state'
 import { chatRightRailAtom } from '@/lib/stores/chat-right-rail'
@@ -17,6 +18,7 @@ interface ActivityScope {
   readonly activities: readonly AgUiActivitySnapshot[]
   readonly links: readonly AgUiMessageLink[]
   readonly index: ReturnType<typeof indexMoldyMessageActivities>
+  readonly toolCards: ReturnType<typeof indexAgUiToolCards>
   readonly stateFiles: {
     readonly files: readonly DeepAgentFile[]
     readonly openPreview: (file: DeepAgentFile) => void
@@ -59,6 +61,7 @@ export function AgUiActivityProvider({
       activities,
       links,
       index: indexMoldyMessageActivities(fileActivities, links),
+      toolCards: indexAgUiToolCards(activities),
       stateFiles,
     }),
     [conversationId, activities, links, fileActivities, stateFiles],

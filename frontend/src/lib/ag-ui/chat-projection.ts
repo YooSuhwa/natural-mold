@@ -115,33 +115,45 @@ function scopedExtras(
   for (const activity of activities) {
     if (typeof activity.content.type !== 'string') continue
     const content = activity.content
-    const ownerId =
-      activity.parentMessageId ??
-      (typeof content.message_id === 'string' ? content.message_id : undefined) ??
-      (typeof content.public_message_id === 'string' ? content.public_message_id : undefined)
-    const physicalRun =
-      activity.physicalRunId ?? (typeof content.run_id === 'string' ? content.run_id : undefined)
-    // A tool-only response can emit a card before any text starts. The explicit
-    // call then identifies its owner only within the same physical run and lane.
-    const callId = content.tool_call_id
-    const candidates = ownerId
-      ? aliases.get(ownerId)
-      : physicalRun && typeof callId === 'string'
-        ? calls.get(callId)
-        : undefined
-    const owners = (candidates ?? []).filter(
+    const ownerIds = [
+      activity.parentMessageId,
+      content.public_message_id,
+      content.message_id,
+    ].filter((claim) => claim != null)
+    const publicCallId = content.public_tool_call_id
+    const toolBound =
+      publicCallId != null || content.tool_call_id != null || activity.parentToolCallId != null
+    let candidates: readonly SavedRecord[] | undefined
+    if (toolBound) {
+      // Only the public ID on the native tool call can prove a bound card's issuer.
+      if (!activity.physicalRunId || typeof publicCallId !== 'string' || !publicCallId) continue
+      if (activity.parentToolCallId && activity.parentToolCallId !== publicCallId) continue
+      candidates = calls.get(publicCallId)
+    } else if (typeof ownerIds[0] === 'string') {
+      candidates = aliases.get(ownerIds[0])
+    }
+    const owners = candidates?.filter(
       ({ link, childId }) =>
-        childId === activity.subagentRunId && (!physicalRun || link.physicalRunId === physicalRun),
+        childId === activity.subagentRunId &&
+        (!activity.physicalRunId || link.physicalRunId === activity.physicalRunId) &&
+        (content.run_id == null || link.runId === content.run_id),
     )
-    if (owners.length !== 1) continue
+    if (owners?.length !== 1) continue
+    const owner = owners[0]
+    if (!ownerIds.every((id) => id === owner.message.id || id === owner.link.uiMessageId)) continue
     const resolved = resolveDataUI(activity.content.type, content.props)
     if (!resolved) continue
-    addToGroup(extras, owners[0].message.id, {
+    addToGroup(extras, owner.message.id, {
       id: activity.messageId,
       role: 'activity',
       activityType: activity.activityType,
       subagentRunId: activity.subagentRunId,
-      content: { type: activity.content.type, props: resolved.props },
+      content: {
+        type: activity.content.type,
+        props: resolved.props,
+        public_message_id: owner.message.id,
+        ...(toolBound && { public_tool_call_id: publicCallId }),
+      },
     })
   }
   return extras

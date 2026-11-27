@@ -20,7 +20,7 @@ const getEmpty = () => EMPTY
 const finish = async () => {}
 const ignoreResolved = () => {}
 
-function isActionable(reason: string, value: unknown): boolean {
+function isActionable(reason: string, value: unknown): value is Record<string, unknown> {
   if (!value || typeof value !== 'object' || Array.isArray(value)) return false
   switch (reason) {
     case 'moldy.tool_approval':
@@ -49,7 +49,12 @@ export function moldyAgUiInterruptPayloads(
   for (const interrupt of interrupts) {
     const value = interrupt.metadata?.moldy
     if (!interrupt.id.trim() || !isActionable(interrupt.reason, value)) continue
-    const payload = standardPayloadFromInterrupt({ id: interrupt.id, value })
+    // Native ask_user passes its fields through to the tool UI. Keep the
+    // checkpoint's access markers only on the original AG-UI interrupt.
+    const toolInput = { ...value }
+    delete toolInput.actionable
+    delete toolInput.legacyInterruptAccess
+    const payload = standardPayloadFromInterrupt({ id: interrupt.id, value: toolInput })
     if (!payload) continue
     const group = JSON.stringify([
       interrupt.subagentRunId ?? null,

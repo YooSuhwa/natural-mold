@@ -56,6 +56,44 @@ function activity(messageId: string) {
 }
 
 describe('AG-UI history session', () => {
+  it('binds queued activities to the first matching claim without reopening a finished run', () => {
+    const session = sessionFor(async () => snapshot())
+    const runId = 'queued-run'
+    const context = { source: 'run' as const, runId }
+    session.onRunAccepted({ runId, physicalRunId: null })
+    session.onPublicEvent({ type: EventType.RUN_STARTED, threadId, runId }, context)
+    session.onPublicEvent(activity('queued-activity'), context)
+    const provisional = session.getSnapshot()
+    expect(provisional.activeRunId).toBe(runId)
+    expect(provisional.physicalRunId).toBeNull()
+    expect(provisional.activities[0]?.physicalRunId).toBeUndefined()
+    expect([...provisional.liveActivityIds]).toEqual(['queued-activity'])
+
+    session.onRunClaimed({ runId: 'other-run', physicalRunId: physical })
+    expect(session.getSnapshot()).toBe(provisional)
+    session.onRunClaimed({ runId, physicalRunId: physical })
+    const claimed = session.getSnapshot()
+    expect(claimed).toMatchObject({
+      activeRunId: runId,
+      physicalRunId: physical,
+      terminalSequence: 0,
+      activities: [{ messageId: 'queued-activity', physicalRunId: physical }],
+    })
+    expect([...claimed.liveActivityIds]).toEqual(['queued-activity'])
+    session.onRunClaimed({ runId, physicalRunId: physical })
+    expect(session.getSnapshot()).toBe(claimed)
+
+    session.onPublicEvent(
+      { type: EventType.RUN_FINISHED, threadId, runId, outcome: { type: 'success' } },
+      context,
+    )
+    const finished = session.getSnapshot()
+    expect(finished).toMatchObject({ activeRunId: null, physicalRunId: null, terminalSequence: 1 })
+    session.onRunClaimed({ runId, physicalRunId: physical })
+    expect(session.getSnapshot()).toBe(finished)
+    session.dispose()
+  })
+
   it('keeps a late tool card on the answer that issued its public call ID', () => {
     const session = sessionFor(async () => snapshot())
     const context = { source: 'run' as const, runId: 'accepted' }
