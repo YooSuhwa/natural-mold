@@ -306,6 +306,37 @@ export function nestAgUiHistoryChildren(
 export function indexAgUiSubagents(
   messages: readonly ThreadMessage[],
 ): ReadonlyMap<string, AgUiSubagentSnapshot> {
+  // Only public root task arguments may supply a missing child brief. The SDK
+  // nests the run under its issuing call, but unrelated turns can reuse a call ID.
+  const rootCalls = groupByKey(
+    messages.flatMap((message) =>
+      message.role === 'assistant'
+        ? message.content.filter((part) => part.type === 'tool-call')
+        : [],
+    ),
+    (call) => call.toolCallId,
+  )
+  function publicRootBrief(
+    message: ThreadAssistantMessage,
+    part: ToolCallMessagePart,
+    meta: Record<string, unknown>,
+  ): string | undefined {
+    const issuer = part.parentId ?? meta.parentMessageId
+    if (
+      part.toolName !== 'task' ||
+      typeof issuer !== 'string' ||
+      !issuer ||
+      rootCalls.get(part.toolCallId)?.length !== 1 ||
+      part.messages?.length !== 1 ||
+      (issuer !== message.id && issuer !== agUiMetadata(message).messageId) ||
+      (meta.parentMessageId !== undefined && meta.parentMessageId !== issuer)
+    )
+      return undefined
+    return isRecord(part.args) && typeof part.args.description === 'string'
+      ? part.args.description
+      : undefined
+  }
+
   const candidates: AgUiSubagentSnapshot[] = []
   function walk(message: ThreadMessage, ancestors: readonly string[], parentCallId: string | null) {
     if (message.role !== 'assistant' || ancestors.length >= MAX_CHILD_DEPTH) return
@@ -361,7 +392,12 @@ export function indexAgUiSubagents(
               : state === 'completed'
                 ? 'complete'
                 : 'error',
-          taskInput: typeof meta.description === 'string' ? meta.description : undefined,
+          taskInput:
+            typeof meta.description === 'string'
+              ? meta.description
+              : ancestors.length === 0
+                ? publicRootBrief(message, part, meta)
+                : undefined,
           output: typeof meta.result === 'string' ? meta.result : undefined,
           error:
             child.status.type === 'incomplete' && typeof child.status.error === 'string'

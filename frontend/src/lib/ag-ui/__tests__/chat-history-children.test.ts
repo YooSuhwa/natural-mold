@@ -402,3 +402,121 @@ describe('public tool ownership for child data cards', () => {
     },
   )
 })
+
+describe('public task descriptions for legacy child runs', () => {
+  const callId = `tool-${'1'.repeat(64)}`
+  const wireId = `message-${'2'.repeat(64)}`
+  const brief = 'Summarize the public report.'
+
+  function sdkChild(id: string, meta: { parentMessageId?: string; description?: string } = {}) {
+    return fromThreadMessageLike(
+      {
+        id,
+        role: 'assistant',
+        content: [],
+        metadata: { custom: { agui: { name: 'Researcher', ...meta } } },
+      },
+      id,
+      { type: 'running' },
+    )
+  }
+
+  function rootCall({
+    name = 'task',
+    description = brief,
+    issuer = wireId,
+    nested = [],
+  }: {
+    name?: string
+    description?: string | { privateValue: string }
+    issuer?: string | null
+    nested?: ThreadMessage[]
+  } = {}): ThreadAssistantMessage {
+    const result = fromThreadMessageLike(
+      {
+        id: 'database-parent',
+        role: 'assistant',
+        metadata: { custom: { agui: { messageId: wireId } } },
+        content: [
+          {
+            type: 'tool-call',
+            toolCallId: callId,
+            toolName: name,
+            args: { description },
+            ...(issuer !== null && { parentId: issuer }),
+            messages: nested,
+          },
+        ],
+      },
+      'database-parent',
+      { type: 'running' },
+    )
+    if (result.role !== 'assistant') throw new Error('Expected parent fixture')
+    return result
+  }
+
+  it('recovers a live brief from the unique root task using its wire issuer alias', () => {
+    const root = rootCall({ nested: [sdkChild('worker')] })
+    expect(indexAgUiSubagents([root]).get('worker')).toMatchObject({
+      parentMessageId: 'database-parent',
+      taskInput: brief,
+      outcome: 'running',
+    })
+  })
+
+  it('uses the verified parent recorded by history even when the root part lacks a parentId', () => {
+    const roots = nestAgUiHistoryChildren(
+      [rootCall({ issuer: null })],
+      [],
+      [child('worker', callId, { parentMessageId: wireId })],
+    )
+    expect(indexAgUiSubagents(roots).get('worker')?.taskInput).toBe(brief)
+  })
+
+  it('prefers the explicit public description from the child event', () => {
+    const nested = sdkChild('worker', { description: 'Brief sent by the child event' })
+    expect(indexAgUiSubagents([rootCall({ nested: [nested] })]).get('worker')?.taskInput).toBe(
+      'Brief sent by the child event',
+    )
+  })
+
+  it('withholds the brief for duplicate root calls, multiple children, or a conflicting issuer', () => {
+    const worker = sdkChild('worker')
+    const duplicate = { ...rootCall({ description: 'Other turn' }), id: 'other-turn' }
+    const cases = [
+      [rootCall({ nested: [worker] }), duplicate],
+      [rootCall({ nested: [worker, sdkChild('sibling')] })],
+      [rootCall({ issuer: 'wrong-issuer', nested: [worker] })],
+      [rootCall({ nested: [sdkChild('worker', { parentMessageId: 'wrong-issuer' })] })],
+      [rootCall({ issuer: null, nested: [worker] })],
+    ]
+    for (const roots of cases) {
+      const index = indexAgUiSubagents(roots)
+      expect(index.get('worker')?.taskInput).toBeUndefined()
+      expect(index.get('sibling')?.taskInput).toBeUndefined()
+    }
+  })
+
+  it('ignores unrelated tool descriptions and structured values', () => {
+    for (const args of [{ name: 'lookup' }, { description: { privateValue: 'hidden' } }]) {
+      const root = rootCall({ ...args, nested: [sdkChild('worker')] })
+      expect(indexAgUiSubagents([root]).get('worker')?.taskInput).toBeUndefined()
+    }
+  })
+
+  it('does not borrow a brief from a child-owned task', () => {
+    const inner = rootCall({
+      description: 'Nested private input',
+      nested: [sdkChild('grandchild')],
+    })
+    const nested = {
+      ...inner,
+      id: 'child',
+      metadata: { ...inner.metadata, custom: { agui: { name: 'Child', messageId: wireId } } },
+    }
+    const index = indexAgUiSubagents([rootCall({ nested: [nested] })])
+    expect(index.get('child')?.taskInput).toBe(brief)
+    expect(index.get('grandchild')?.depth).toBe(2)
+    expect(index.get('grandchild')?.taskInput).toBeUndefined()
+  })
+})

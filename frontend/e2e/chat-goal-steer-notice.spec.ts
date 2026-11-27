@@ -1,6 +1,6 @@
 import { createHash, randomUUID } from 'node:crypto'
 import { readFile } from 'node:fs/promises'
-import type { APIRequestContext, BrowserContext, Page } from '@playwright/test'
+import type { APIRequestContext, BrowserContext, Page, TestInfo } from '@playwright/test'
 import {
   API_BASE,
   E2E_EMAIL,
@@ -18,12 +18,79 @@ import {
 import { isSeededScriptedModel } from './helpers/scripted-model'
 import { records, sendMessageForRun, stringField, waitForRunStatus } from './langgraph-v3-helpers'
 
+const delegatedBrief = 'E2E_SUBAGENT_SLOW summarize scoped LangGraph v3 work.'
 const resultFile = 'e2e-runtime-policy-artifact.md'
 const resultBytes = 'E2E runtime artifact final content.\n'
 
 function object(value: unknown): Record<string, unknown> {
   if (!isRecord(value)) throw new Error('Expected a JSON object')
   return value
+}
+
+async function collectChildProof(
+  chat: Page,
+  request: APIRequestContext,
+  testInfo: TestInfo,
+  ids: { conversationId: string; homeOrgId: string; goalId: string; originalRun: string },
+) {
+  const base = `${API_BASE}/api/conversations/${ids.conversationId}`
+  const rows = (values: unknown) => (Array.isArray(values) ? values.filter(isRecord) : [])
+  async function scopedRead(url: string) {
+    const response = await request.get(url, { timeout: 5000 }).catch(() => null)
+    const data: unknown = response?.ok() ? await response.json().catch(() => null) : null
+    return { status: response?.status() ?? 0, body: isRecord(data) ? data : {} }
+  }
+  const pills = chat.locator('.moldy-tool-pill')
+  const [goal, run, snapshot, pillCount, expectedBriefVisible, steerButtonVisible] =
+    await Promise.all([
+      scopedRead(`${base}/goal`),
+      scopedRead(`${base}/runs/${ids.originalRun}`),
+      scopedRead(`${base}/ag-ui/snapshot`),
+      pills.count(),
+      pills.getByText(delegatedBrief, { exact: true }).first().isVisible(),
+      chat.locator('[data-moldy-run-steer-send]').isVisible(),
+    ])
+  const children = rows(snapshot.body.subagents).filter(
+    (child) => child.physicalRunId === ids.originalRun && !child.parentSubagentRunId,
+  )
+  const bound = rows(snapshot.body.messages)
+    .filter((message) => message.role === 'assistant' && !message.subagentRunId)
+    .flatMap((message) =>
+      rows(message.toolCalls).filter(
+        (call) =>
+          children.some(
+            (child) => child.parentMessageId === message.id && child.parentToolCallId === call.id,
+          ) &&
+          isRecord(call.function) &&
+          call.function.name === 'task',
+      ),
+    )
+  const eligibleBriefs = bound.filter((call) => {
+    if (!isRecord(call.function) || typeof call.function.arguments !== 'string') return false
+    try {
+      const args: unknown = JSON.parse(call.function.arguments)
+      return isRecord(args) && args.description === delegatedBrief
+    } catch {
+      return false
+    }
+  }).length
+  await testInfo.attach('goal-live-child-proof', {
+    contentType: 'application/json',
+    body: JSON.stringify({
+      ...ids,
+      scopedGoalStatus: goal.status,
+      scopedRunStatus: run.status,
+      scopedSnapshotStatus: snapshot.status,
+      runStatus: run.body.id === ids.originalRun ? run.body.status : null,
+      childCount: children.length,
+      boundTaskCalls: bound.length,
+      eligibleBriefs,
+      expectedBriefOnParent: eligibleBriefs > 0,
+      pillCount,
+      expectedBriefVisible,
+      steerButtonVisible,
+    }),
+  })
 }
 
 async function openTab(page: Page, path: string) {
@@ -225,22 +292,34 @@ test('a goal edited during a tool call delivers one verified result after a fres
       last_evidence: null,
     })
     await editor.close()
-    await expect(
-      chat
-        .locator('.moldy-tool-pill')
-        .getByText('E2E_SUBAGENT_SLOW summarize scoped LangGraph v3 work.', { exact: true })
-        .first(),
-    ).toBeVisible()
+    const proofIds = {
+      conversationId: cid,
+      homeOrgId: homeId,
+      goalId: stringField(created.goal, 'id', 'goal'),
+      originalRun: runId,
+    }
+    const pill = chat.locator('.moldy-tool-pill').getByText(delegatedBrief, { exact: true }).first()
+    try {
+      await expect(pill).toBeVisible()
+    } catch (error) {
+      await collectChildProof(chat, request, testInfo, proofIds)
+      throw error
+    }
     const steerUrl = `${base}/runs/${runId}/steers`
-    await chat
-      .locator('textarea[data-moldy-composer-input="true"]')
-      .last()
-      .fill('E2E_DAILY_GREETING use the latest brief.')
-    const receipt = chat.waitForResponse(
-      (res) => res.url() === steerUrl && res.request().method() === 'POST',
-    )
-    await chat.locator('[data-moldy-run-steer-send]').click()
-    const submitted = object(await apiJson(await receipt, 'submit active instruction'))
+    const [submitted] = await Promise.all([
+      (async () => {
+        await chat
+          .locator('textarea[data-moldy-composer-input="true"]')
+          .last()
+          .fill('E2E_DAILY_GREETING use the latest brief.')
+        const receipt = chat.waitForResponse(
+          (res) => res.url() === steerUrl && res.request().method() === 'POST',
+        )
+        await chat.locator('[data-moldy-run-steer-send]').click()
+        return object(await apiJson(await receipt, 'submit active instruction'))
+      })(),
+      collectChildProof(chat, request, testInfo, proofIds),
+    ])
     expect(submitted.status).toBe('pending')
     await chat.close()
     await waitForRunStatus(request, cid, runId, 'completed')
@@ -342,6 +421,8 @@ test('a goal edited during a tool call delivers one verified result after a fres
       contentType: 'application/json',
       body: JSON.stringify({
         conversationId: cid,
+        orgId: homeId,
+        artifactId: stringField(evidence, 'artifact_id', 'evidence'),
         originalRun: runId,
         steerId: submitted.id,
         steerStatus: 'applied',
