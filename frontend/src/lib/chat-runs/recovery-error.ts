@@ -22,11 +22,12 @@ export function recoveryErrorCode(value: unknown): RecoveryErrorCode | undefined
   return recoveryErrorCodes.find((code) => code === value)
 }
 
-/** Replaying the previous input could repeat an external action or exceed its send budget. */
+/** Require review before replaying input with prior effects, output, or an exhausted send budget. */
 export function blocksInputRetry(code: RecoveryErrorCode | undefined): boolean {
   return (
     code === 'recovery_effect_unconfirmed' ||
     code === 'recovery_steer_unconfirmed' ||
+    code === 'recovery_output_started' ||
     code === 'recovery_model_attempt_limit' ||
     code === 'recovery_model_attempt_unproven'
   )
