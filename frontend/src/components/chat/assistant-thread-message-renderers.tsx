@@ -40,7 +40,7 @@ import { quotedResourcesFromText } from '@/lib/chat/context/quoted-resource-mess
 import { QuotedResourceMessage } from '@/components/chat/side-chat/quoted-resource-message'
 
 function UserMessage() {
-  const { isBuilder, isIndependentJob, showMessageTimestamp, user } =
+  const { isBuilder, readOnlyConversation, showMessageTimestamp, user } =
     useAssistantThreadDynamicContext()
   const messageId = useAuiState((s) => s.message?.id)
   const text = useAuiState((s) =>
@@ -52,8 +52,8 @@ function UserMessage() {
   const quotedResources = quotedResourcesFromText(text)
   const metaRow = (
     <MessageMetaRow>
-      {!isIndependentJob && <BranchPicker />}
-      {!isIndependentJob && <EditButton />}
+      {!readOnlyConversation && <BranchPicker />}
+      {!readOnlyConversation && <EditButton />}
       <CopyButton />
       {showMessageTimestamp && <MessageTimestamp />}
     </MessageMetaRow>
@@ -116,7 +116,7 @@ function AssistantMessage() {
     builderAgentSubtitle,
     deepAgentsState,
     isBuilder,
-    isIndependentJob,
+    readOnlyConversation,
     showMessageTimestamp,
   } = useAssistantThreadDynamicContext()
   const messageId = useAuiState((s) => s.message?.id)
@@ -129,10 +129,10 @@ function AssistantMessage() {
   const isFailedNotice = terminalNotice === 'failed'
   const metaRow = isFailedNotice ? null : (
     <MessageMetaRow>
-      {!isIndependentJob && <BranchPicker />}
+      {!readOnlyConversation && <BranchPicker />}
       <CopyButton />
       <PinSummaryButton />
-      {!isIndependentJob && <RegenerateButton />}
+      {!readOnlyConversation && <RegenerateButton />}
       <FeedbackButtons />
       <TokenUsagePopover />
       {showMessageTimestamp && <MessageTimestamp />}
@@ -175,7 +175,7 @@ function AssistantMessage() {
             <div className="moldy-chat-failed-notice-content min-w-0 flex-1 space-y-2">
               <AssistantMessageParts />
               <MessageRunSummary />
-              {!isIndependentJob && <RetryButton />}
+              {!readOnlyConversation && <RetryButton />}
             </div>
           </div>
         ) : (

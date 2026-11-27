@@ -56,7 +56,7 @@ export {
 } from '@/components/chat/assistant-message-parts'
 
 export interface AssistantThreadProps {
-  isIndependentJob?: boolean
+  readOnlyConversation?: boolean
   threadHeader?: ReactNode
   agentImageUrl?: string | null
   agentImagePublicAsset?: boolean
@@ -89,7 +89,7 @@ export interface AssistantThreadProps {
 }
 
 export function AssistantThread({
-  isIndependentJob = false,
+  readOnlyConversation = false,
   threadHeader,
   agentImageUrl,
   agentImagePublicAsset = false,
@@ -137,7 +137,7 @@ export function AssistantThread({
       builderAgentSubtitle,
       deepAgentsState,
       isBuilder,
-      isIndependentJob,
+      readOnlyConversation,
       showMessageTimestamp,
       user,
     }),
@@ -149,7 +149,7 @@ export function AssistantThread({
       builderAgentSubtitle,
       deepAgentsState,
       isBuilder,
-      isIndependentJob,
+      readOnlyConversation,
       showMessageTimestamp,
       user,
     ],
@@ -220,7 +220,7 @@ export function AssistantThread({
               <ThreadPrimitive.Messages>
                 {({ message }) => {
                   const Component =
-                    message.composer.isEditing && !isIndependentJob
+                    message.composer.isEditing && !readOnlyConversation
                       ? ASSISTANT_THREAD_MESSAGE_COMPONENTS.UserEditComposer
                       : message.role === 'user'
                         ? ASSISTANT_THREAD_MESSAGE_COMPONENTS.UserMessage
@@ -237,7 +237,7 @@ export function AssistantThread({
             <DataComponent key={`data-${index}`} />
           ))}
           <ReconnectIndicator />
-          {isIndependentJob ? null : isBuilder ? (
+          {readOnlyConversation ? null : isBuilder ? (
             <Suspense fallback={<BuilderComposerFallback />}>
               <BuilderComposer modelLabel={builderModelLabel} />
             </Suspense>

@@ -110,6 +110,7 @@ vi.mock('@/lib/hooks/use-conversations', () => ({
           ? undefined
           : {
               messages: result.data,
+              conversation_source: result.source === undefined ? 'ui' : result.source,
               active_checkpoint_id: null,
               total_cost: 0,
             },
@@ -205,7 +206,7 @@ describe('ChatPage', () => {
     mockUseAgent.mockReturnValue({ data: undefined })
     mockUseConversationTitle.mockReturnValue('Test Conversation')
     mockUseMessages.mockReturnValue({
-      data: undefined,
+      data: [],
       isLoading: false,
     })
     mockStreamChat.mockClear()
@@ -230,6 +231,27 @@ describe('ChatPage', () => {
       />,
     )
     expect(screen.getByPlaceholderText('메시지 입력...')).toBeInTheDocument()
+  })
+
+  it.each([
+    ['cold', { data: undefined, isLoading: false }],
+    ['loading', { data: undefined, isLoading: true }],
+    ['unidentified', { data: [], source: null, isLoading: false }],
+    ['failed', { data: [], source: 'ui', isLoading: false, isError: true }],
+    ['independent', { data: [], source: 'independent_job', isLoading: false }],
+  ])('withholds the composer for a %s existing conversation', (_stage, history) => {
+    mockUseMessages.mockReturnValue(history)
+    render(
+      <ChatPage
+        params={
+          { agentId: 'agent-1', conversationId: 'conv-1' } as unknown as Promise<{
+            agentId: string
+            conversationId: string
+          }>
+        }
+      />,
+    )
+    expect(screen.queryByPlaceholderText('메시지 입력...')).toBeNull()
   })
 
   it('renders loading skeletons when messages loading', () => {

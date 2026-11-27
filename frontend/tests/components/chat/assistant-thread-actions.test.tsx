@@ -184,7 +184,7 @@ describe('AssistantThread message actions', () => {
   })
 
   it('keeps history and copy available on an independent job without exposing a new turn or fork', () => {
-    render(<AssistantThread isIndependentJob />)
+    render(<AssistantThread readOnlyConversation />)
     expect(screen.getAllByText('메시지').length).toBeGreaterThan(0)
     expect(screen.getAllByRole('button', { name: '복사' }).length).toBeGreaterThan(0)
     expect(screen.queryByRole('textbox', { name: 'message input' })).toBeNull()

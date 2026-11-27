@@ -55,6 +55,7 @@ import { AgentReadinessGate } from '@/components/readiness/agent-readiness-gate'
 import { ExportDialog } from '@/components/chat/export-dialog'
 import { SideChatWorkspace } from '@/components/chat/side-chat/side-chat-workspace'
 import { SideChatPanel, ConversationDetailRail } from '@/components/chat/side-chat/side-chat-panel'
+import { Button } from '@/components/ui/button'
 import { Skeleton } from '@/components/ui/skeleton'
 
 const EMPTY_MESSAGES: Message[] = []
@@ -103,10 +104,12 @@ export default function ChatPage({
   const isPromotedDraftRoute = conversationId === 'new' && !isDraftConversation
   // W7-4 — envelope에서 conversation 누적 비용을 가져와 토큰 바에 흘림. 같은
   // query observer 하나에서 messages와 cost를 함께 파생해 채팅 트리 리렌더를 줄인다.
-  const { data: envelope, isLoading: messagesLoading } = useMessagesEnvelope(
-    messageEnvelopeConversationId,
-    shouldLoadMessageEnvelope,
-  )
+  const {
+    data: envelope,
+    isLoading: messagesLoading,
+    isError: historyFailed,
+    refetch: retryHistory,
+  } = useMessagesEnvelope(messageEnvelopeConversationId, shouldLoadMessageEnvelope)
   const messages = envelope?.messages ?? EMPTY_MESSAGES
   const markConversationRead = useMarkConversationRead(agentId)
   const { mutate: markRead, isPending: isMarkingRead } = markConversationRead
@@ -215,6 +218,9 @@ export default function ChatPage({
   const isIndependentJob =
     envelope?.conversation_source === 'independent_job' ||
     jobList?.parent_job?.child_conversation_id === activeConversationId
+  const sourceUnavailable =
+    !isDraftConversation && (historyFailed || !envelope?.conversation_source)
+  const readOnlyConversation = isIndependentJob || sourceUnavailable
   const titleConversationId = routeConversationId
   const resolvedConversationTitle = useConversationTitle(
     agentId,
@@ -454,7 +460,7 @@ export default function ChatPage({
 
   return (
     <SideChatWorkspace
-      disabled={isIndependentJob}
+      disabled={readOnlyConversation}
       key={activeConversationId ?? 'draft'}
       conversationId={useLangGraphRuntime ? activeConversationId : null}
       title={currentTitle ?? agent?.name ?? ''}
@@ -478,18 +484,26 @@ export default function ChatPage({
             {activeConversationId && jobList ? (
               <IndependentJobPanel
                 conversationId={activeConversationId}
-                runId={isIndependentJob ? null : independentJobs.runId}
+                runId={readOnlyConversation ? null : independentJobs.runId}
                 list={jobList}
                 onJob={independentJobs.applyJob}
               />
             ) : null}
-            {activeConversationId && !isIndependentJob ? (
+            {activeConversationId && !readOnlyConversation ? (
               <ConversationGoalCard
                 key={activeConversationId}
                 conversationId={activeConversationId}
                 onCreating={isDraftConversation ? retainDraftConversation : undefined}
                 onCreated={handleGoalCreated}
               />
+            ) : null}
+            {sourceUnavailable && !messagesLoading && (historyFailed || envelope) ? (
+              <div role="alert" className="flex items-center gap-2 border-b px-4 py-2 text-sm">
+                <span>{t('sourceUnavailable')}</span>
+                <Button size="sm" variant="outline" onClick={() => void retryHistory()}>
+                  {t('retrySource')}
+                </Button>
+              </div>
             ) : null}
             <PinnedConversationSummary conversationId={activeConversationId} />
             <AgentReadinessGate
@@ -514,9 +528,9 @@ export default function ChatPage({
             ) : (
               <ToolIconProvider iconIds={toolIconIds} mcpServers={mcpServerNames}>
                 <ChatRuntimeSection
-                  enableRunSteer={!isIndependentJob}
+                  enableRunSteer={!readOnlyConversation}
                   activeConversationId={activeConversationId}
-                  isIndependentJob={isIndependentJob}
+                  readOnlyConversation={readOnlyConversation}
                   activeRun={envelope?.active_run ?? null}
                   agentId={agentId}
                   agentImageUrl={agent?.image_url}

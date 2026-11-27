@@ -2792,6 +2792,8 @@
       "expired": "만료됨"
     },
     "page": {
+      "sourceUnavailable": "대화 유형을 확인할 수 없습니다.",
+      "retrySource": "다시 확인",
       "settings": "설정",
       "newConversation": "새 대화",
       "emptyState": "대화를 시작해보세요.",

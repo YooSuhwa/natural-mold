@@ -2792,6 +2792,8 @@
       "expired": "Expired"
     },
     "page": {
+      "sourceUnavailable": "The chat type could not be verified.",
+      "retrySource": "Check again",
       "settings": "Settings",
       "newConversation": "New Conversation",
       "emptyState": "Empty State",
