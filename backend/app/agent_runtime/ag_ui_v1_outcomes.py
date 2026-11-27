@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from collections.abc import Callable, Mapping, Sequence
+from collections.abc import Callable, Collection, Mapping, Sequence
 
 from ag_ui.core import Interrupt, RunErrorEvent, RunFinishedEvent
 from ag_ui.core.events import (
@@ -118,6 +118,8 @@ class PendingInterrupts:
         *,
         resolve_owner: Callable[[tuple[str, ...]], str | None],
         expires_at: Mapping[str, str] | None = None,
+        legacy_child_ids: Collection[str] = (),
+        passive: bool = False,
     ) -> None:
         """Replace journal slots with the caller's authorized current checkpoint slots."""
         prior = self._by_id
@@ -140,6 +142,40 @@ class PendingInterrupts:
                 subagent_run_id=owner,
                 expires_at=expires_at.get(interrupt["id"]) if expires_at else None,
             )
+
+        if (
+            passive
+            or set(self._by_id) != {item["id"] for item in interrupts}
+            or any(not item.response_schema for item in self._by_id.values())
+        ):
+            self.mark_passive()
+        elif legacy_child_ids:
+            for ident in legacy_child_ids:
+                item = self._by_id.get(ident)
+                if item and item.subagent_run_id and item.response_schema:
+                    self._set_access(item, passive=False)
+
+    def _set_access(self, item: Interrupt, *, passive: bool) -> None:
+        metadata = dict(item.metadata or {})
+        current = metadata.get("moldy")
+        fields = dict(current) if isinstance(current, Mapping) else {}
+        if passive:
+            fields.pop("legacyInterruptAccess", None)
+            fields["actionable"] = False
+        else:
+            fields["legacyInterruptAccess"] = True
+        metadata["moldy"] = fields
+        self._by_id[item.id] = item.model_copy(
+            update={
+                "metadata": metadata,
+                "response_schema": None if passive else item.response_schema,
+            }
+        )
+
+    def mark_passive(self) -> None:
+        """Show authorized slot descriptions when a complete resume is unavailable."""
+        for item in tuple(self._by_id.values()):
+            self._set_access(item, passive=True)
 
     def public(self) -> list[Interrupt]:
         return [] if self._conflicting_ids else list(self._by_id.values())

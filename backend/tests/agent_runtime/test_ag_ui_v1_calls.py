@@ -58,7 +58,8 @@ def test_recorded_delegation_is_one_call_and_one_result() -> None:
     ]
     start, args, _, result = frames
     assert start["parentMessageId"] == calls.parent_id(None, "call-research") == "boss-task"
-    assert {frame["toolCallId"] for frame in frames} == {"call-research"}
+    assert {frame["toolCallId"] for frame in frames} == {calls.public_id(None, "call-research")}
+    assert start["toolCallId"] != "call-research"
     assert json.loads(args["delta"]) == {
         "description": "fixture only",
         "subagent_type": "researcher",
@@ -155,7 +156,10 @@ def test_interleaved_parallel_chunk_indices_keep_their_own_arguments() -> None:
         for frame in _wire(events)
         if frame["type"] == "TOOL_CALL_ARGS"
     }
-    assert args_by_id == {"a": {"q": "first"}, "b": {"q": "second"}}
+    assert args_by_id == {
+        calls.public_id(None, "a"): {"q": "first"},
+        calls.public_id(None, "b"): {"q": "second"},
+    }
 
 
 def test_owner_isolation_preserves_parent_mapping_for_colliding_provider_call_ids() -> None:
@@ -174,7 +178,7 @@ def test_owner_isolation_preserves_parent_mapping_for_colliding_provider_call_id
         events.extend(calls.close(owner))
     frames = _wire(events)
     ids = {owner: calls.public_id(owner, "call") for owner in (None, "child-a", "child-b")}
-    assert ids[None] == "call"
+    assert ids[None] != "call"
     assert all(ids.values()) and len(set(ids.values())) == 3
     for owner, parent, value in [
         (None, "p", "root"),
@@ -266,7 +270,7 @@ def test_error_is_owned_by_the_tool_and_marked_in_namespaced_metadata() -> None:
     events.extend(calls.tool(error, owner=None, event_id="2"))
     events.extend(calls.close(None))
     (result,) = [frame for frame in _wire(events) if frame["type"] == "TOOL_CALL_RESULT"]
-    assert result["toolCallId"] == "call"
+    assert result["toolCallId"] == calls.public_id(None, "call")
     assert result["metadata"] == {"moldy": {"isError": True}}
     assert "isError" not in result
 
@@ -409,7 +413,9 @@ def test_late_provider_identity_can_bind_earlier_indexed_fragments() -> None:
         "TOOL_CALL_ARGS",
         "TOOL_CALL_END",
     ]
-    assert args["toolCallId"] == "late" and json.loads(args["delta"]) == {"q": "seoul"}
+    assert args["toolCallId"] == calls.public_id(None, "late") and json.loads(args["delta"]) == {
+        "q": "seoul"
+    }
 
 
 @pytest.mark.parametrize(
@@ -443,7 +449,7 @@ def test_provider_result_message_id_is_stable_and_scoped_to_its_owner() -> None:
         return ids[0], ids[1]
 
     root_id, child_id = get_ids()
-    assert root_id == "provider-result"
+    assert root_id != "provider-result"
     assert child_id != root_id
     assert get_ids() == (root_id, child_id)
 
@@ -652,3 +658,83 @@ def test_tool_identity_and_owner_policy_must_both_authorize_a_delegation() -> No
         owner="permitted",
         event_id="unnamed",
     )
+
+
+def test_two_issuances_in_one_physical_run_keep_their_own_results_and_replayed_proposals() -> None:
+    calls = PublicToolCalls("physical", _allow)
+    events: list[BaseEvent] = []
+    for parent in ("first", "second"):
+        events.extend(calls.message(_proposal(), owner=None, parent_id=parent, event_id=parent))
+        events.extend(
+            calls.tool(
+                {"event": "tool-finished", "tool_call_id": "call", "content": parent},
+                owner=None,
+                event_id=f"finish-{parent}",
+            )
+        )
+    assert calls.message(_proposal(), owner=None, parent_id="first", event_id="copy") == []
+    starts = [f for f in _wire(events) if f["type"] == "TOOL_CALL_START"]
+    results = [f for f in _wire(events) if f["type"] == "TOOL_CALL_RESULT"]
+    assert len(starts) == len(results) == 2
+    assert results[0]["messageId"] != results[1]["messageId"]
+    first, second = [s["toolCallId"] for s in starts]
+    assert first != second
+    assert calls.root_issuances == {("first", "call"): first, ("second", "call"): second}
+    assert [(r["toolCallId"], r["content"]) for r in results] == [
+        (first, "first"),
+        (second, "second"),
+    ]
+    assert not calls.unresolved_tool_calls
+
+
+def test_simultaneous_issuances_with_ambiguous_native_result_keep_distinct_proposals() -> None:
+    calls = PublicToolCalls("physical", _allow)
+    for parent in ("a", "b"):
+        assert calls.message(_proposal(), owner=None, parent_id=parent, event_id=parent)
+    assert len(set(calls.root_issuances.values())) == 2
+    assert (
+        calls.tool(
+            {"event": "tool-finished", "tool_call_id": "call", "content": "ambiguous"},
+            owner=None,
+            event_id="finish",
+        )
+        == []
+    )
+    assert not calls.unresolved_tool_calls
+    assert calls.public_id(None, "call") is None
+
+
+def test_current_resume_proof_restores_a_result_only_message_and_its_privacy() -> None:
+    calls = PublicToolCalls("original", _allow)
+    calls.message(
+        {
+            "type": "ai",
+            "id": "issuer",
+            "tool_calls": [
+                {
+                    "id": "call",
+                    "name": "read_file",
+                    "args": {"file_path": "/agents/00000000-0000-4000-8000-000000000001/AGENTS.md"},
+                }
+            ],
+        },
+        owner=None,
+        parent_id="issuer",
+        event_id="request",
+    )
+    calls.close(None)
+    [proof] = calls.unresolved_tool_calls
+    resumed = PublicToolCalls("followup", _allow, tool_continuations=[proof])
+    frames = _wire(
+        resumed.message(
+            {"type": "tool", "tool_call_id": "call", "content": "memo"},
+            owner=None,
+            parent_id="",
+            event_id="out",
+        )
+    )
+    assert frames[0]["toolCallId"] == frames[-1]["toolCallId"] == proof.public_id
+    assert frames[0]["parentMessageId"] == "issuer"
+    assert frames[-1]["type"] == "TOOL_CALL_RESULT"
+    assert frames[-1]["content"] == REDACTED_MEMORY_FIELD
+    assert not resumed.unresolved_tool_calls

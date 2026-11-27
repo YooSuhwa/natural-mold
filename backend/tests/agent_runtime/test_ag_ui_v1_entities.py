@@ -214,7 +214,10 @@ def test_allowed_parent_call_id_does_not_grant_an_unrelated_nested_delegation() 
     }
     assert message(entities, record)
     assert not message(entities, record, owner="sibling")
-    assert entities.public_delegation_tool_id(None, "duplicate") == "duplicate"
+    assert entities.public_delegation_tool_id(None, "duplicate") == entities.public_tool_id(
+        None, "duplicate"
+    )
+    assert entities.public_tool_id(None, "duplicate")
     assert entities.public_delegation_tool_id("sibling", "duplicate") is None
     allowed_parents.clear()
     assert entities.public_tool_id(None, "duplicate") is None

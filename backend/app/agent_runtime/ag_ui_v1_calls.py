@@ -6,7 +6,6 @@ import json
 from collections.abc import Callable, Iterable, Mapping
 from dataclasses import dataclass, field
 from typing import Any
-from uuid import NAMESPACE_URL, uuid5
 
 from ag_ui.core import (
     BaseEvent,
@@ -16,6 +15,11 @@ from ag_ui.core import (
     ToolCallStartEvent,
 )
 
+from app.agent_runtime.ag_ui_v1_issuance import (
+    ToolContinuation,
+    public_tool_call_id,
+    public_tool_result_id,
+)
 from app.agent_runtime.ag_ui_v1_memo_files import (
     private_memo_file_call,
     public_grep_result,
@@ -81,11 +85,6 @@ _PRIVATE_BLOCK_TYPES = {
 
 def _identifier(value: object) -> str | None:
     return value if isinstance(value, str) and value.strip() else None
-
-
-def _derived_id(kind: str, run_id: str, owner: str | None, raw: str) -> str:
-    identity = json.dumps(["ag-ui", "1.0", kind, run_id, owner, raw], ensure_ascii=False)
-    return f"{kind}-{uuid5(NAMESPACE_URL, identity)}"
 
 
 def _public_value(value: Any) -> Any:
@@ -164,6 +163,7 @@ class _Call:
     name: str
     parent_id: str | None
     owner: str | None
+    source_message_id: str | None = None
     args: Any = _ABSENT
     fragments: list[str] = field(default_factory=list)
     output_deltas: list[str] = field(default_factory=list)
@@ -185,6 +185,7 @@ class PublicToolCalls:
         allow_tool: Callable[[str | None, str], bool],
         *,
         secret_values: Iterable[str] | None = None,
+        tool_continuations: Iterable[ToolContinuation] = (),
         allow_scoped_tool: Callable[[str | None, str, str | None], bool] | None = None,
     ) -> None:
         self._run_id = run_id
@@ -192,6 +193,20 @@ class PublicToolCalls:
         self._allow_scoped = allow_scoped_tool
         self._secrets = tuple(secret_values) if secret_values is not None else None
         self._calls: dict[tuple[str | None, str], _Call] = {}
+        self._model_sources: dict[tuple[str | None, str], str] = {}
+        self._issuers: dict[tuple[str | None, str, str | None], _Call] = {}
+        self._ambiguous: set[tuple[str | None, str]] = set()
+        # Multiple outstanding issuances under a provider-local ID are ambiguous.
+        # Only a unique, server-proven predecessor can supply its original identity.
+        self._continuations: dict[tuple[str | None, str], ToolContinuation] = {}
+        ambiguous: set[tuple[str | None, str]] = set()
+        for continuation in tool_continuations:
+            key = (continuation.owner, continuation.raw_id)
+            if key in self._continuations and continuation != self._continuations[key]:
+                ambiguous.add(key)
+            self._continuations[key] = continuation
+        for key in ambiguous:
+            del self._continuations[key]
         self._denied: set[tuple[str | None, str]] = set()
         self._slots: dict[tuple[str | None, str, int], _Slot] = {}
 
@@ -201,7 +216,7 @@ class PublicToolCalls:
         )
 
     def _visible(self, owner: str | None, raw_id: str | None) -> _Call | None:
-        if not raw_id or (owner, raw_id) in self._denied:
+        if not raw_id or (owner, raw_id) in self._denied or (owner, raw_id) in self._ambiguous:
             return None
         call = self._calls.get((owner, raw_id))
         if call is not None and self._authorized(owner, call.name, raw_id):
@@ -220,11 +235,58 @@ class PublicToolCalls:
         call = self._visible(owner, raw_id)
         return call.parent_id if call else None
 
+    @property
+    def root_issuances(self) -> dict[tuple[str | None, str], str]:
+        return {
+            (call.parent_id, call.raw_id): call.public_id
+            for call in self._issuers.values()
+            if call.owner is None
+            and (None, call.raw_id) not in self._denied
+            and self._authorized(None, call.name, call.raw_id)
+        }
+
+    @property
+    def unresolved_tool_calls(self) -> tuple[ToolContinuation, ...]:
+        pending = self._continuations.copy()
+        for key, call in self._calls.items():
+            if not call.result_sent and key not in self._denied:
+                pending[key] = ToolContinuation(
+                    call.owner,
+                    call.raw_id,
+                    call.name,
+                    call.public_id,
+                    call.parent_id,
+                    call.source_message_id,
+                    call.private_result,
+                )
+        return tuple(
+            item
+            for key, item in pending.items()
+            if key not in self._denied
+            and key not in self._ambiguous
+            and self._authorized(item.owner, item.name, item.raw_id)
+        )
+
     def _open(
         self, owner: str | None, raw_id: str, name: str | None, parent_id: str | None
     ) -> tuple[_Call | None, list[BaseEvent]]:
         key = (owner, raw_id)
         existing = self._calls.get(key)
+        if parent_id:
+            issuer = (owner, raw_id, parent_id)
+            if issuer in self._issuers and (not existing or existing.parent_id != parent_id):
+                return None, []  # A prior message snapshot arrived after the next issuance.
+            if (
+                existing
+                and existing.parent_id != parent_id
+                and (existing.result_sent or existing.parent_id)
+            ):
+                if not existing.result_sent:
+                    # Without an identifying message, a native result cannot
+                    # choose between two simultaneously outstanding issuances.
+                    self._ambiguous.add(key)
+                existing = None
+                self._denied.discard(key)
         if key in self._denied:
             return None, []
         if existing:
@@ -239,9 +301,20 @@ class PublicToolCalls:
         if not self._authorized(owner, name, raw_id):
             self._denied.add(key)
             return None, []
-        public_id = raw_id if owner is None else _derived_id("tool", self._run_id, owner, raw_id)
-        call = _Call(raw_id, public_id, name, parent_id, owner)
+        original = self._continuations.pop(key, None)
+        carried = parent_id is None and original is not None and original.name == name
+        if carried and original is not None:
+            public_id = original.public_id
+            parent_id = original.parent_message_id
+            source_id = original.source_message_id
+        else:
+            public_id = public_tool_call_id(self._run_id, owner, parent_id, raw_id)
+            source_id = self._model_sources.get((owner, parent_id)) if parent_id else None
+        call = _Call(raw_id, public_id, name, parent_id, owner, source_message_id=source_id)
+        if carried and original is not None:
+            call.private_file = original.private_result
         self._calls[key] = call
+        self._issuers[owner, raw_id, parent_id] = call
         return call, [
             ToolCallStartEvent(
                 tool_call_id=public_id,
@@ -349,6 +422,9 @@ class PublicToolCalls:
                 owner=owner,
                 event_id=event_id,
             )
+        source_id = _identifier(data.get("message_id") or data.get("id"))
+        if source_id:
+            self._model_sources[owner, parent_id] = source_id
         event = data.get("event")
         index = data.get("index", 0)
         if event in ("content-block-start", "content-block-finish") and isinstance(index, int):
@@ -391,6 +467,15 @@ class PublicToolCalls:
                 )
         return events
 
+    def permits_synthetic(self, owner: str | None, raw_id: object, source_id: str | None) -> bool:
+        if not source_id or not isinstance(raw_id, str):
+            return False
+        call = self._visible(owner, raw_id)
+        if call:
+            return call.source_message_id == source_id
+        continuation = self._continuations.get((owner, raw_id))
+        return bool(continuation and continuation.source_message_id == source_id)
+
     def tool(self, data: Mapping[str, Any], *, owner: str | None, event_id: str) -> list[BaseEvent]:
         raw_id = _identifier(data.get("tool_call_id"))
         if not raw_id:
@@ -411,6 +496,21 @@ class PublicToolCalls:
             return events
 
         call = self._visible(owner, raw_id)
+        if call is None and event in (
+            "tool-finished",
+            "tool-result",
+            "finish",
+            "tool-error",
+            "error",
+        ):
+            # Some graph versions resume directly with a ToolMessage. A matching
+            # current predecessor proof supplies the issuer; result content alone
+            # cannot establish a tool's identity.
+            original = self._continuations.get((owner, raw_id))
+            if original and (name is None or name == original.name):
+                call, opened = self._open(owner, raw_id, original.name, None)
+                if call:
+                    return [*opened, *self.tool(data, owner=owner, event_id=event_id)]
         if call is None or call.result_sent:
             return []
         if name and call.name != name:
@@ -475,15 +575,10 @@ class PublicToolCalls:
                 if isinstance(public, str)
                 else json.dumps(public, ensure_ascii=False, separators=(",", ":"))
             )
-        message_id = _identifier(message.get("id")) if message is not None else None
-        if owner is None and message_id and message_id not in (call.public_id, call.parent_id):
-            result_id = message_id
-        else:
-            result_id = _derived_id("result", self._run_id, owner, raw_id)
         events.append(
             ToolCallResultEvent(
                 tool_call_id=call.public_id,
-                message_id=result_id,
+                message_id=public_tool_result_id(call.public_id),
                 content=result,
                 metadata={"moldy": {"isError": True}} if failed else None,
                 subagent_run_id=owner,
@@ -498,7 +593,7 @@ class PublicToolCalls:
         for key in list(self._slots):
             if key[0] == owner and (parent_id is None or key[1] == parent_id):
                 del self._slots[key]
-        for call in self._calls.values():
+        for call in self._issuers.values():
             if call.owner == owner and (parent_id is None or call.parent_id == parent_id):
                 events.extend(
                     self._end_args(call, disclose=self._visible(owner, call.raw_id) is not None)

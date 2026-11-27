@@ -48,7 +48,7 @@ def wire(events: Sequence[BaseEvent]) -> list[dict[str, Any]]:
 
 def test_permissions_require_the_witnessed_call_and_exact_namespace() -> None:
     stream = projector()
-    stream.project(
+    issued = stream.project(
         event(
             "messages",
             {
@@ -77,7 +77,9 @@ def test_permissions_require_the_witnessed_call_and_exact_namespace() -> None:
     )
     opened, todos = wire(stream.project(event("lifecycle", {**start, "namespace": list(CHILD)})))
     assert opened["type"] == "SUBAGENT_STARTED"
-    assert opened["parentToolCallId"] == "call"
+    assert opened["parentToolCallId"] == next(
+        frame["toolCallId"] for frame in wire(issued) if frame["type"] == "TOOL_CALL_START"
+    )
     assert opened["parentMessageId"] == "issuer"
     assert todos["activityType"] == "moldy.subagent_todos"
     owner = opened["subagentRunId"]
@@ -123,9 +125,12 @@ def test_interrupted_child_status_and_unprovable_child_action() -> None:
             ],
         )
     )
-    assert final[-1]["type"] == "RUN_ERROR"
+    [visible] = final[-1]["outcome"]["interrupts"]
+    assert visible["id"] == "visible"
+    assert visible["metadata"]["moldy"]["actionable"] is False
+    assert "responseSchema" not in visible
     assert "SECRET" not in json.dumps(final)
-    assert "visible" not in json.dumps(final)
+    assert "hidden" not in json.dumps(final)
 
 
 def test_authority_change_requires_full_rebuild_even_after_silent_rows() -> None:
@@ -256,3 +261,35 @@ def test_structural_graph_path_is_not_an_issuing_child() -> None:
     )
     assert started["parentToolCallId"] == call
     assert stream.child_task_handles == {started["subagentRunId"]: "task-row"}
+
+
+@pytest.mark.parametrize("legacy", [True, False])
+def test_checkpoint_only_child_receives_lifecycle_and_authoritative_expiry(legacy: bool) -> None:
+    stream = projector(
+        policy=ChildVisibility(legacy, POLICY.tool_call_ids, POLICY.namespaces, POLICY.bindings)
+    )
+    result = wire(
+        stream.finish(
+            "interrupted",
+            interrupts=[
+                {
+                    "id": "verified",
+                    "ns": list(CHILD),
+                    "value": {"type": "ask_user", "question": "Continue?"},
+                }
+            ],
+            expires_at={"verified": "2026-11-28T14:00:00Z"},
+            legacy_child_ids={"verified"},
+        )
+    )
+    assert [item["type"] for item in result] == [
+        "RUN_STARTED",
+        "SUBAGENT_STARTED",
+        "SUBAGENT_FINISHED",
+        "RUN_FINISHED",
+    ]
+    [slot] = result[-1]["outcome"]["interrupts"]
+    assert slot["subagentRunId"] == result[1]["subagentRunId"]
+    assert result[2]["outcome"]["interruptIds"] == ["verified"]
+    assert slot["expiresAt"] == "2026-11-28T14:00:00Z"
+    assert bool(slot["metadata"]["moldy"].get("legacyInterruptAccess")) is legacy
