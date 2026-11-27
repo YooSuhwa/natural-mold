@@ -31,7 +31,7 @@ from app.tenancy.checkpoint_audit import run_configurable
 from tests.authz.runtime_prototype import ScriptedModel
 from tests.authz.unit_scope_fixture import unit_context
 from tests.integration.ag_ui_legacy_checks import OldRun, assert_standard_resume
-from tests.integration.ag_ui_legacy_live import old_run as old_run
+from tests.integration.test_ag_ui_archived_child_approval import old_run as old_run
 from tests.test_ag_ui_read_pending_native_legacy import _reader_client
 from tests.test_ag_ui_v1_read_recovery import _sign_in
 from tests.test_conversation_run_message_links import _create_run, _seed_conversation
