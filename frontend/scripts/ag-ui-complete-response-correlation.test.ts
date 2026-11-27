@@ -1,4 +1,5 @@
 import { EventEmitter } from 'node:events'
+import { setImmediate as nextTurn } from 'node:timers/promises'
 import type { Page, Request } from '@playwright/test'
 import { describe, expect, it, vi } from 'vitest'
 
@@ -8,7 +9,7 @@ const apiBase = 'http://127.0.0.1:8101'
 const identity = { threadId: 'thread-first', runId: 'public-first', physicalRunId: 'worker-first' }
 const firstDocument = 'document-first'
 type Signal = {
-  kind: 'document' | 'closed' | 'eof' | 'invalid'
+  kind: 'document' | 'closed' | 'eof' | 'invalid' | 'cancelled-terminal' | 'cancelled-eof'
   document?: string
   secret?: string
   threadId?: string
@@ -42,6 +43,8 @@ async function setup() {
     options: {
       method?: string
       resourceType?: string
+      headers?: Record<string, string>
+      body?: string | null
       url?: string
       frame?: object
       redirected?: boolean
@@ -67,7 +70,8 @@ async function setup() {
       method: () => options.method ?? 'POST',
       resourceType: () => options.resourceType ?? 'fetch',
       url: () => options.url ?? apiBase + '/api/conversations/' + identity.threadId + '/ag-ui/runs',
-      postData: () => JSON.stringify(input),
+      headers: () => options.headers ?? {},
+      postData: () => (options.body === undefined ? JSON.stringify(input) : options.body),
     } as unknown as Request
   }
   function response(
@@ -76,6 +80,8 @@ async function setup() {
       status?: number
       headers?: Record<string, string>
       fromServiceWorker?: boolean
+      url?: string
+      json?: () => Promise<unknown>
     } = {},
   ) {
     const headers = overrides.headers ?? {
@@ -85,14 +91,61 @@ async function setup() {
     }
     page.emit('response', {
       request: () => req,
-      url: req.url,
+      url: () => overrides.url ?? req.url(),
+      json: overrides.json,
       status: () => overrides.status ?? 200,
       headers: () => headers,
       fromServiceWorker: () => overrides.fromServiceWorker ?? false,
     })
   }
+  function openCommand() {
+    const run = request()
+    page.emit('request', run)
+    response(run)
+    return run
+  }
+  function stop(options: Parameters<typeof request>[0] = {}) {
+    return request({
+      url:
+        apiBase +
+        '/api/conversations/' +
+        identity.threadId +
+        '/runs/' +
+        identity.physicalRunId +
+        '/cancel',
+      headers: { 'x-csrf-token': 'test-only-token' },
+      body: null,
+      ...options,
+    })
+  }
+  function stopResponse(req: Request, overrides: Parameters<typeof response>[1] = {}) {
+    response(req, {
+      headers: { 'content-type': 'application/json' },
+      json: async () => ({
+        id: identity.physicalRunId,
+        conversation_id: identity.threadId,
+        status: 'canceling',
+      }),
+      ...overrides,
+    })
+  }
+  function canceledStream() {
+    signal({ kind: 'cancelled-terminal', ...identity })
+    signal({ kind: 'cancelled-eof', ...identity })
+  }
   signal({ kind: 'document' })
-  return { page, frame, signal, request, response, ...observer }
+  return {
+    page,
+    frame,
+    signal,
+    request,
+    response,
+    openCommand,
+    stop,
+    stopResponse,
+    canceledStream,
+    ...observer,
+  }
 }
 
 describe('AG-UI native EOF evidence for an individual Playwright request', () => {
@@ -314,4 +367,274 @@ describe('AG-UI native EOF evidence for an individual Playwright request', () =>
       expect(h.hasCompleted(req)).toBe(false)
     },
   )
+})
+
+describe('AG-UI cancelled EOF after a scoped Stop acknowledgement', () => {
+  it.each(['canceling', 'canceled'])(
+    'joins %s JSON read after terminal and EOF to the earlier HTTP 200',
+    async (status) => {
+      const h = await setup()
+      const run = h.openCommand()
+      const stop = h.stop()
+      h.page.emit('request', stop)
+      let finishBody!: (value: unknown) => void
+      const body = new Promise<unknown>((resolve) => {
+        finishBody = resolve
+      })
+      h.stopResponse(stop, { json: () => body })
+      h.canceledStream()
+      expect(h.hasCompleted(run)).toBe(false)
+      finishBody({ id: identity.physicalRunId, conversation_id: identity.threadId, status })
+      await nextTurn()
+      expect(h.hasCompleted(run)).toBe(true)
+      expect(h.hasCompleted(stop)).toBe(false)
+    },
+  )
+
+  it('requires an earlier response and both native cancellation signals', async () => {
+    const h = await setup()
+    const run = h.openCommand()
+    const stop = h.stop()
+    h.page.emit('request', stop)
+    h.stopResponse(stop)
+    await nextTurn()
+    expect(h.hasCompleted(run)).toBe(false)
+    h.signal({ kind: 'cancelled-terminal', ...identity })
+    expect(h.hasCompleted(run)).toBe(false)
+    h.signal({ kind: 'cancelled-eof', ...identity })
+    expect(h.hasCompleted(run)).toBe(true)
+  })
+
+  it('keeps the cancelled terminal unconfirmed without any Stop request', async () => {
+    const h = await setup()
+    const run = h.openCommand()
+    h.canceledStream()
+    expect(h.hasCompleted(run)).toBe(false)
+  })
+
+  it('does not accept a cancelled EOF without its terminal marker even after a confirmed Stop', async () => {
+    const h = await setup()
+    const run = h.openCommand()
+    const stop = h.stop()
+    h.page.emit('request', stop)
+    h.stopResponse(stop)
+    await nextTurn()
+    h.signal({ kind: 'cancelled-eof', ...identity })
+    expect(h.hasCompleted(run)).toBe(false)
+  })
+
+  it('does not allow a Stop whose headers arrived after the cancellation terminal', async () => {
+    const h = await setup()
+    const run = h.openCommand()
+    const stop = h.stop()
+    h.page.emit('request', stop)
+    h.signal({ kind: 'cancelled-terminal', ...identity })
+    h.stopResponse(stop)
+    await nextTurn()
+    h.signal({ kind: 'cancelled-eof', ...identity })
+    expect(h.hasCompleted(run)).toBe(false)
+  })
+
+  it('never substitutes an earlier ordinary EOF for the cancelled EOF', async () => {
+    const h = await setup()
+    const run = h.openCommand()
+    const stop = h.stop()
+    h.page.emit('request', stop)
+    h.stopResponse(stop)
+    await nextTurn()
+    h.signal({ kind: 'eof', ...identity })
+    expect(h.hasCompleted(run)).toBe(true)
+    h.signal({ kind: 'cancelled-terminal', ...identity })
+    expect(h.hasCompleted(run)).toBe(false)
+  })
+
+  it('rejects an ordinary EOF after a verified cancellation terminal', async () => {
+    const h = await setup()
+    const run = h.openCommand()
+    const stop = h.stop()
+    h.page.emit('request', stop)
+    h.stopResponse(stop)
+    await nextTurn()
+    h.signal({ kind: 'cancelled-terminal', ...identity })
+    h.signal({ kind: 'eof', ...identity })
+    expect(h.hasCompleted(run)).toBe(false)
+  })
+
+  it('ignores a Stop body from a document closed before its confirmation arrived', async () => {
+    const h = await setup()
+    const run = h.openCommand()
+    const stop = h.stop()
+    h.page.emit('request', stop)
+    let finishBody!: (value: unknown) => void
+    const body = new Promise<unknown>((resolve) => {
+      finishBody = resolve
+    })
+    h.stopResponse(stop, { json: () => body })
+    h.canceledStream()
+    h.signal({ kind: 'closed' })
+    h.signal({ kind: 'document', document: 'document-second' })
+    finishBody({
+      id: identity.physicalRunId,
+      conversation_id: identity.threadId,
+      status: 'canceled',
+    })
+    await nextTurn()
+    expect(h.hasCompleted(run)).toBe(false)
+  })
+
+  it('requires an unambiguous open command when two public IDs share the same physical receipt', async () => {
+    const h = await setup()
+    const first = h.openCommand()
+    const secondPublicId = 'public-second'
+    const second = h.request({ runId: secondPublicId })
+    h.page.emit('request', second)
+    h.response(second, {
+      headers: {
+        'content-type': 'text/event-stream',
+        'x-run-id': secondPublicId,
+        'x-moldy-run-id': identity.physicalRunId,
+      },
+    })
+    const stop = h.stop()
+    h.page.emit('request', stop)
+    h.stopResponse(stop)
+    await nextTurn()
+    h.canceledStream()
+    h.signal({ kind: 'cancelled-terminal', ...identity, runId: secondPublicId })
+    h.signal({ kind: 'cancelled-eof', ...identity, runId: secondPublicId })
+    expect(h.hasCompleted(first)).toBe(false)
+    expect(h.hasCompleted(second)).toBe(false)
+  })
+
+  it('requires a response belonging to the same observed Stop request', async () => {
+    const h = await setup()
+    const run = h.openCommand()
+    h.page.emit('request', h.stop())
+    h.stopResponse(h.stop())
+    await nextTurn()
+    h.canceledStream()
+    expect(h.hasCompleted(run)).toBe(false)
+  })
+
+  it.each([
+    ['GET', { method: 'GET' }],
+    ['missing CSRF', { headers: {} }],
+    ['blank CSRF', { headers: { 'x-csrf-token': ' ' } }],
+    ['nonempty body', { body: '{}' }],
+    ['service worker', { serviceWorker: true }],
+    ['subframe', { frame: {} }],
+    ['redirect', { redirected: true }],
+    ['XHR', { resourceType: 'xhr' }],
+    [
+      'foreign origin',
+      { url: 'http://127.0.0.1:9101/api/conversations/thread-first/runs/worker-first/cancel' },
+    ],
+    [
+      'foreign thread',
+      { url: apiBase + '/api/conversations/thread-other/runs/worker-first/cancel' },
+    ],
+    [
+      'foreign worker',
+      { url: apiBase + '/api/conversations/thread-first/runs/worker-other/cancel' },
+    ],
+    [
+      'independent job scope',
+      {
+        url:
+          apiBase +
+          '/api/conversations/thread-first/runs/worker-first/cancel?cancel_independent_jobs=true',
+      },
+    ],
+  ] as const)('rejects a Stop request with %s', async (_label, options) => {
+    const h = await setup()
+    const run = h.openCommand()
+    const stop = h.stop(options)
+    h.page.emit('request', stop)
+    h.stopResponse(stop)
+    await nextTurn()
+    h.canceledStream()
+    expect(h.hasCompleted(run)).toBe(false)
+  })
+
+  it.each([
+    ['unauthenticated', { status: 401 }],
+    ['service worker', { fromServiceWorker: true }],
+    ['wrong MIME', { headers: { 'content-type': 'text/event-stream' } }],
+    ['wrong response URL', { url: apiBase + '/api/other' }],
+    [
+      'unfinished JSON',
+      {
+        json: async () => {
+          throw new TypeError('body failed')
+        },
+      },
+    ],
+    [
+      'unconfirmed status',
+      {
+        json: async () => ({
+          id: identity.physicalRunId,
+          conversation_id: identity.threadId,
+          status: 'completed',
+        }),
+      },
+    ],
+    [
+      'wrong worker',
+      {
+        json: async () => ({
+          id: 'worker-other',
+          conversation_id: identity.threadId,
+          status: 'canceled',
+        }),
+      },
+    ],
+    [
+      'wrong conversation',
+      {
+        json: async () => ({
+          id: identity.physicalRunId,
+          conversation_id: 'thread-other',
+          status: 'canceled',
+        }),
+      },
+    ],
+  ] as const)('rejects %s in the Stop acknowledgement', async (_label, overrides) => {
+    const h = await setup()
+    const run = h.openCommand()
+    const stop = h.stop()
+    h.page.emit('request', stop)
+    h.stopResponse(stop, overrides)
+    await nextTurn()
+    h.canceledStream()
+    expect(h.hasCompleted(run)).toBe(false)
+  })
+
+  it('never lends the first worker’s Stop acknowledgement to a second command in the same conversation', async () => {
+    const h = await setup()
+    const first = h.openCommand()
+    const secondIds = {
+      threadId: identity.threadId,
+      runId: 'public-second',
+      physicalRunId: 'worker-second',
+    }
+    const second = h.request({ runId: secondIds.runId })
+    h.page.emit('request', second)
+    h.response(second, {
+      headers: {
+        'content-type': 'text/event-stream',
+        'x-run-id': secondIds.runId,
+        'x-moldy-run-id': secondIds.physicalRunId,
+      },
+    })
+    const stop = h.stop()
+    h.page.emit('request', stop)
+    h.stopResponse(stop)
+    await nextTurn()
+    h.canceledStream()
+    h.signal({ kind: 'cancelled-terminal', ...secondIds })
+    h.signal({ kind: 'cancelled-eof', ...secondIds })
+    expect(h.hasCompleted(first)).toBe(true)
+    expect(h.hasCompleted(second)).toBe(false)
+  })
 })
