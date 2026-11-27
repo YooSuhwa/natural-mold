@@ -118,7 +118,7 @@ test('reads one delegated chat across replicas, approval, AG-UI cutover and roll
       'interrupt',
     )
     // Await both operations so a failed send can never leave an unhandled rejected promise.
-    const [interrupted] = await Promise.all([
+    const [interrupted, attached] = await Promise.all([
       delegated,
       (async () => {
         await expect
@@ -128,10 +128,29 @@ test('reads one delegated chat across replicas, approval, AG-UI cutover and roll
             polling,
           )
           .toBe(1)
-        await Promise.all([snapshotResponse(reader, conversationId, 'b'), reader.goto(standardUrl)])
+        const [attach] = await Promise.all([
+          reader.waitForResponse((response) => {
+            const path = new URL(response.url()).pathname
+            return (
+              response.request().method() === 'GET' &&
+              path.startsWith(`/api/conversations/${conversationId}/ag-ui/`) &&
+              path.endsWith('/stream')
+            )
+          }),
+          snapshotResponse(reader, conversationId, 'b'),
+          reader.goto(standardUrl),
+        ])
+        expect(attach.status()).toBe(200)
+        expect(await attach.headerValue('x-moldy-e2e-worker')).toBe('b')
+        await expect(reader.getByText(/E2E subagent visual matrix:/).first()).toBeVisible({
+          timeout: 45_000,
+        })
         await expect(approval(reader)).toBeVisible({ timeout: 75_000 })
+        return new URL(attach.url())
       })(),
     ])
+    const attachRunId = attached.searchParams.get('runId') ?? attached.pathname.split('/').at(-2)
+    expect(decodeURIComponent(attachRunId ?? '')).toBe(interrupted.body.runId)
     expect(interrupted.verified.interruptIds).toHaveLength(1)
     await expect(approval(page)).toBeVisible()
     await expect
@@ -204,6 +223,7 @@ test('reads one delegated chat across replicas, approval, AG-UI cutover and roll
       [interrupted.verified.interruptIds[0], 'resolved'],
     ])
     await expectFinalTextVisible(reader)
+    await expect(reader.getByText(setup.childRuntimeName).first()).toBeVisible()
     await Promise.all([
       waitForArtifact(request, conversationId, REPORT_FILE),
       waitForArtifact(request, conversationId, NOTES_FILE),
