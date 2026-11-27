@@ -65,16 +65,19 @@ def test_revision_chain_and_kinds_match_the_model() -> None:
     )
     # Later migrations add kinds on top of h02's list (i16: mcp_tool.review_needed,
     # i17: the approval inbox kinds,
-    # i19: the emergency stop kinds, i24: memory.consolidation_stopped, i33: workflow.notify).
+    # i19: emergency stops, i24: memory consolidation, i33: workflows, i47: chat work).
     i16, i17 = _later("i16_mcp_tool_review"), _later("i17_approval_requests")
     i19, i24 = _later("i19_emergency_stops"), _later("i24_memory_consolidation")
     i33 = _later("i33_workflow_notify_kind")
+    i47 = _later("i47_chat_notifications")
     assert i16._KINDS_BEFORE == module._KINDS
     assert (*module._KINDS, i16._NEW_KIND) == i17._KINDS_BEFORE
     assert (*i17._KINDS_BEFORE, *i17._NEW_KINDS) == i19._KINDS_BEFORE
     assert (*i19._KINDS_BEFORE, *i19._NEW_KINDS) == i24._KINDS_BEFORE
     assert (*i24._KINDS_BEFORE, *i24._NEW_KINDS) == i33._KINDS_BEFORE
-    assert (*i33._KINDS_BEFORE, *i33._NEW_KINDS) == NOTIFICATION_KINDS
+    assert (*i33._KINDS_BEFORE, *i33._NEW_KINDS) == i47._KINDS_BEFORE
+    assert i47._NEW_KINDS == ("chat_goal.completed", "chat_goal.blocked", "chat_task.completed")
+    assert (*i47._KINDS_BEFORE, *i47._NEW_KINDS) == NOTIFICATION_KINDS
 
 
 def _later(name: str) -> Any:
@@ -92,6 +95,8 @@ def test_kinds_are_checked_and_company_rows_have_no_org(lane) -> None:
     _insert(connection, "tenant.suspended", org=None)
     with pytest.raises(IntegrityError):
         _insert(connection, "unknown.kind")
+    with pytest.raises(IntegrityError):
+        _insert(connection, "chat_goal.completed")
     indexes = {ix["name"] for ix in inspect(connection).get_indexes("notifications")}
     assert "ix_notifications_user_read_created" in indexes
 

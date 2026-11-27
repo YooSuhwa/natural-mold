@@ -10,10 +10,12 @@ import logging
 import time
 import uuid
 from collections.abc import Sequence
+from contextlib import nullcontext
 from typing import Any
 
 from langchain_core.tools import BaseTool
 
+from app.agent_runtime.archive_summarization import chat_archive_build
 from app.agent_runtime.chat_steer_middleware import root_steer_middleware
 from app.agent_runtime.message_utils import RuntimeMessage
 from app.agent_runtime.offload_storage import ScopedOffloadBackend
@@ -299,35 +301,36 @@ async def _prepare_agent(
     from app.agent_runtime.recovery_checkpoint_saver import fenced_chat_checkpointer
 
     build_started = time.perf_counter()
-    agent = runtime_attr("build_agent")(
-        components.model,
-        components.tools,
-        components.system_prompt,
-        middleware=middleware or None,
-        interrupt_on=components.interrupt_on,
-        checkpointer=fenced_chat_checkpointer(get_checkpointer()),
-        backend=components.backend,
-        skills=components.skills_sources,
-        memory=components.memory_sources,
-        permissions=components.permissions,
-        name=cfg.agent_runtime_name or f"agent_{cfg.thread_id[:8]}",
-        subagents=cfg.subagents_config,
-        runtime_policy=cfg.runtime_policy,
-        guard=guard,
-        tool_risk=cfg.tool_risk,
-        unattended=components.unattended,
-        **(
-            {"archive_chat_history": settings.chat_archive_writes_enabled}
-            if isinstance(components.backend, ScopedOffloadBackend)
-            and cfg.archive_owner_user_id is not None
-            and cfg.run_path == "chat"
-            and cfg.runtime_profile == "standard"
-            and not is_trigger_mode
-            else {}
-        ),
-        **_structured_output_kwargs(cfg),
-        **_tool_approval_kwargs(cfg),
+    archive_scope = (
+        chat_archive_build(components.backend, writes_enabled=settings.chat_archive_writes_enabled)
+        if isinstance(components.backend, ScopedOffloadBackend)
+        and cfg.archive_owner_user_id is not None
+        and cfg.run_path == "chat"
+        and cfg.runtime_profile == "standard"
+        and not is_trigger_mode
+        else nullcontext()
     )
+    with archive_scope:
+        agent = runtime_attr("build_agent")(
+            components.model,
+            components.tools,
+            components.system_prompt,
+            middleware=middleware or None,
+            interrupt_on=components.interrupt_on,
+            checkpointer=fenced_chat_checkpointer(get_checkpointer()),
+            backend=components.backend,
+            skills=components.skills_sources,
+            memory=components.memory_sources,
+            permissions=components.permissions,
+            name=cfg.agent_runtime_name or f"agent_{cfg.thread_id[:8]}",
+            subagents=cfg.subagents_config,
+            runtime_policy=cfg.runtime_policy,
+            guard=guard,
+            tool_risk=cfg.tool_risk,
+            unattended=components.unattended,
+            **_structured_output_kwargs(cfg),
+            **_tool_approval_kwargs(cfg),
+        )
     timings["build_agent_ms"] = int((time.perf_counter() - build_started) * 1000)
     last_mark = time.perf_counter()
 

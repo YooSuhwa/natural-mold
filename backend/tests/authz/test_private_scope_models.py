@@ -1,5 +1,7 @@
 """Exact-20 live ORM parity against the independently executed frozen m83 DDL."""
 
+from uuid import uuid4
+
 import sqlalchemy as sa
 
 from app.database import Base
@@ -36,6 +38,7 @@ _B08_ADDED_COLUMN_NULLABILITY = {
         "registration_fingerprint": True,
     },
     "skills": {"approval_default": True},  # i39 (plan 3.8): the skill's own default
+    "message_attachments": {"content_sha256": True},  # i44: existing attachments have no digest
     "credentials": {"allowed_hosts": True},
     "agents": {"llm_credential_delegated_by": True},  # F-01 (m86)
     "agent_triggers": {"approval_policy": False},  # 순번 13 (i18, plan 17.3)
@@ -165,5 +168,41 @@ def test_exact_twenty_private_models_match_frozen_m83_columns_scope_and_foreign_
             assert _scope_checks(source) == _scope_checks(live), name
             for key in ("org_id", "tenant_id"):
                 assert live.c[key].default is None and live.c[key].server_default is None, name
+    finally:
+        engine.dispose()
+
+
+def test_i44_attachment_digest_matches_the_model_and_preserves_existing_rows() -> None:
+    tables = sa.MetaData()
+    old_id = uuid4()
+    for name in (
+        "message_attachments",
+        "conversations",
+        "conversation_runs",
+        "conversation_run_inputs",
+        "token_usages",
+    ):
+        sa.Table(name, tables, sa.Column("id", sa.Uuid(), primary_key=True))
+    engine = sa.create_engine("sqlite://")
+    try:
+        with engine.begin() as connection:
+            tables.create_all(connection)
+            connection.execute(tables.tables["message_attachments"].insert(), {"id": old_id})
+            execute(connection, "i44_chat_image_descriptions")
+            migrated = sa.Table("message_attachments", sa.MetaData(), autoload_with=connection)
+            live = Base.metadata.tables["message_attachments"]
+            for digest in (migrated.c.content_sha256, live.c.content_sha256):
+                assert digest.type.compile(dialect=connection.dialect) == "VARCHAR(64)"
+                assert digest.nullable and digest.server_default is None
+            assert connection.execute(
+                sa.select(migrated.c.id, migrated.c.content_sha256)
+            ).one() == (
+                old_id.hex,
+                None,
+            )
+            execute(connection, "i44_chat_image_descriptions", downgrade=True)
+            restored = sa.Table("message_attachments", sa.MetaData(), autoload_with=connection)
+            assert list(restored.c.keys()) == ["id"]
+            assert connection.scalar(sa.select(restored.c.id)) == old_id.hex
     finally:
         engine.dispose()

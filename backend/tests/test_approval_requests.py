@@ -12,9 +12,11 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.approvals import recording, service
+from app.authz.org_context import OrgContext
 from app.models.approval_request import ApprovalRequest
 from app.models.conversation import Conversation
 from app.models.conversation_run import ConversationRun
+from app.models.notification import Notification
 from tests.authz.g03_support import (
     approval_payload,
     commands_url,
@@ -197,6 +199,81 @@ async def test_the_chat_card_claims_the_request_it_answers(
 
 
 @pytest.mark.asyncio
+async def test_late_worker_does_not_reopen_an_approval_after_the_chat_answer(
+    client: AsyncClient, db: AsyncSession, monkeypatch: pytest.MonkeyPatch
+) -> None:
+
+    conversation = await seed_conversation(db)
+    run = await _interrupted_run(db, conversation)
+    context = OrgContext(
+        user_id=run.user_id, org_id=conversation.org_id, tenant_id=conversation.tenant_id
+    )
+    _no_worker(monkeypatch, _PROTOCOL)
+    result = await client.post(commands_url(conversation), json=respond_command(_APPROVE))
+    assert result.status_code == 200, result.text
+    [resumed] = await resume_runs(db, conversation)
+    assert resumed.parent_run_id == run.id
+
+    async def checkpoint(_id: uuid.UUID) -> list[service.PendingInterrupt]:
+        return [service.PendingInterrupt("intr-1", _payload())]
+
+    monkeypatch.setattr(recording, "checkpoint_interrupts", checkpoint)
+    assert await recording.record_interrupted_run(run.id, context) == []
+    assert await db.scalar(select(ApprovalRequest.id)) is None
+    assert (
+        await db.scalar(select(Notification.id).where(Notification.kind == "approval.requested"))
+        is None
+    )
+
+
+@pytest.mark.asyncio
+async def test_delayed_recorder_cannot_attribute_a_newer_checkpoint_to_an_older_run(
+    db: AsyncSession, monkeypatch: pytest.MonkeyPatch
+) -> None:
+
+    conversation = await seed_conversation(db)
+    earlier = await _interrupted_run(db, conversation)
+    latest = await _interrupted_run(db, conversation)
+    context = OrgContext(
+        user_id=latest.user_id, org_id=conversation.org_id, tenant_id=conversation.tenant_id
+    )
+    current = _payload(to="b@example.com")
+
+    async def checkpoint(_id: uuid.UUID) -> list[service.PendingInterrupt]:
+        return [service.PendingInterrupt("intr-1", current)]
+
+    monkeypatch.setattr(recording, "checkpoint_interrupts", checkpoint)
+    assert await recording.record_interrupted_run(earlier.id, context) == []
+    [row] = await recording.record_interrupted_run(latest.id, context)
+    assert row.run_id == latest.id and row.args_digest == service.args_digest(current)
+    assert list(await db.scalars(select(ApprovalRequest.id))) == [row.id]
+
+
+@pytest.mark.asyncio
+async def test_recorder_requires_its_checkpoint_and_keeps_parallel_approval_requests(
+    db: AsyncSession, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    conversation = await seed_conversation(db)
+    run = await _interrupted_run(db, conversation)
+    context = OrgContext(
+        user_id=run.user_id, org_id=conversation.org_id, tenant_id=conversation.tenant_id
+    )
+    pending = [service.PendingInterrupt("other", _payload(to="other@example.com"))]
+
+    async def checkpoint(_id: uuid.UUID) -> list[service.PendingInterrupt]:
+        return pending
+
+    monkeypatch.setattr(recording, "checkpoint_interrupts", checkpoint)
+    assert await recording.record_interrupted_run(run.id, context) == []
+    pending.append(service.PendingInterrupt("intr-1", _payload()))
+    rows = await recording.record_interrupted_run(run.id, context)
+    assert {(row.run_id, row.interrupt_id) for row in rows} == {
+        (run.id, "intr-1"),
+        (run.id, "other"),
+    }
+
+
+@pytest.mark.asyncio
 async def test_a_card_answer_after_the_inbox_decided_is_stale_and_starts_nothing(
     client: AsyncClient, db: AsyncSession, monkeypatch: pytest.MonkeyPatch
 ) -> None:
@@ -237,8 +314,6 @@ async def test_the_rest_resume_after_expiry_is_refused(
 async def test_the_worker_hook_records_from_the_checkpoint_and_notifies_unattended(
     db: AsyncSession, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    from app.authz.org_context import OrgContext
-    from app.models.notification import Notification
     from tests.conftest import TEST_USER_ID
 
     conversation = await seed_conversation(db)

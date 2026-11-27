@@ -14,6 +14,7 @@ from langchain_core.language_models import BaseChatModel
 from app.agent_runtime.archive_summarization import (
     ArchiveSummarizationMiddleware,
     LegacyArchiveSummarizationMiddleware,
+    chat_archive_writes_for,
 )
 from app.agent_runtime.runtime_policy import (
     ResolvedRuntimePolicy,
@@ -35,8 +36,6 @@ def create_stored_summarization_middleware(
     policy: ResolvedRuntimePolicy,
     model: BaseChatModel,
     backend: BackendProtocol,
-    *,
-    archive_chat_history: bool | None = None,
 ) -> SummarizationMiddleware:
     """Create the sole summarizer authorized by a validated stored policy."""
 
@@ -44,6 +43,7 @@ def create_stored_summarization_middleware(
         raise RuntimeSummarizationPolicyError
 
     middleware = SummarizationMiddleware
+    archive_chat_history = chat_archive_writes_for(backend)
     if archive_chat_history is not None:
         middleware = (
             ArchiveSummarizationMiddleware

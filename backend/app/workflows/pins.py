@@ -56,6 +56,8 @@ UNPINNED_TABLES: Final = frozenset(
         "agent_user_preferences",
         # Chat-only tools: a workflow step never gets them (workflow-tool-plan T4).
         "agent_workflows",
+        # Invocation history belongs to a conversation run. The configured link is pinned above.
+        "conversation_child_tasks",
         "daily_spend_agent",
         "marketplace_installations",
         "marketplace_publication_links",

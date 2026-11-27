@@ -17,6 +17,7 @@ from sqlalchemy.orm import aliased
 
 from app.agent_runtime import event_names
 from app.authz.org_context import OrgContext
+from app.authz.scoping import same_private_scope
 from app.config import settings
 from app.models.conversation import INDEPENDENT_JOB_SOURCE, Conversation
 from app.models.conversation_run import (
@@ -99,20 +100,14 @@ def _unstarted_independent_handoff() -> ColumnElement[bool]:
             job.child_run_id == run.id,
             job.child_conversation_id == run.conversation_id,
             job.child_agent_id == run.agent_id,
-            job.user_id == run.user_id,
-            job.org_id == run.org_id,
-            job.tenant_id == run.tenant_id,
+            same_private_scope(job, run),
             job.cancel_requested_at.is_(None),
             parent.conversation_id == job.parent_conversation_id,
             parent.agent_id == job.parent_agent_id,
-            parent.user_id == job.user_id,
-            parent.org_id == job.org_id,
-            parent.tenant_id == job.tenant_id,
+            same_private_scope(parent, job),
             Conversation.source == INDEPENDENT_JOB_SOURCE,
             Conversation.agent_id == job.child_agent_id,
-            Conversation.user_id == job.user_id,
-            Conversation.org_id == job.org_id,
-            Conversation.tenant_id == job.tenant_id,
+            same_private_scope(Conversation, job),
             item.conversation_id == job.child_conversation_id,
             item.agent_id == job.child_agent_id,
             item.user_id == job.user_id,
