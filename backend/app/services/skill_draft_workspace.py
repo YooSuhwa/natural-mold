@@ -11,6 +11,7 @@ ADR-018 상대경로 계약(``storage/paths``)을 따른다.
 from __future__ import annotations
 
 import logging
+import os
 import shutil
 import tempfile
 import uuid
@@ -108,9 +109,34 @@ def seed_workspace_from_skill(skill: Skill, session_id: uuid.UUID) -> str:
     return storage_path
 
 
+def _copy_stable_input(src: Path, inputs_dir: Path, attachment_id: uuid.UUID, name: str) -> Path:
+    """Publish the complete blob atomically under the same name on every retry."""
+    stem = attachment_id.hex + "-"
+    safe_name = name.encode("utf-8")[: 255 - len(stem)].decode("utf-8", "ignore")
+    destination = inputs_dir / (stem + safe_name)
+    if inputs_dir.is_symlink() or destination.is_symlink():
+        raise ValueError("Invalid draft input path")
+    if destination.is_file():
+        return destination
+    with tempfile.NamedTemporaryFile(
+        dir=inputs_dir, prefix=".input-", delete_on_close=False
+    ) as tmp:
+        with src.open("rb") as blob:
+            shutil.copyfileobj(blob, tmp)
+        tmp.close()
+        try:
+            os.link(tmp.name, destination)
+        except FileExistsError:
+            if destination.is_symlink() or not destination.is_file():
+                raise
+    return destination
+
+
 def copy_attachments_to_inputs(
     storage_path: str,
     attachments: Sequence[MessageAttachment],
+    *,
+    stable_names: bool = False,
 ) -> list[str]:
     """대화 첨부 blob을 ``<workspace>/inputs/``로 **복사**한다 (마운트 금지, §6-3).
 
@@ -133,6 +159,10 @@ def copy_attachments_to_inputs(
             continue
         # 파일명 새니타이즈: 경로 성분 제거(traversal 차단) + 빈 이름 방어.
         safe_name = Path(attachment.filename).name or f"attachment-{attachment.id}"
+        if stable_names:
+            destination = _copy_stable_input(src, inputs_dir, attachment.id, safe_name)
+            copied.append(f"{INPUTS_DIR}/{destination.name}")
+            continue
         destination = inputs_dir / safe_name
         counter = 1
         while destination.exists():
@@ -421,6 +451,7 @@ async def copy_conversation_attachments_to_inputs(
     conversation_id: uuid.UUID,
     attachment_ids: Sequence[uuid.UUID],
     context: OrgContext,
+    stable_names: bool = False,
 ) -> list[str]:
     """run 시작 시 방금 링크된 첨부를 ``inputs/``로 복사한다 (소유권 필터 포함)."""
 
@@ -435,7 +466,9 @@ async def copy_conversation_attachments_to_inputs(
             private_scope_predicate(MessageAttachment, context),
         )
     )
-    return copy_attachments_to_inputs(storage_path, list(result.scalars()))
+    return copy_attachments_to_inputs(
+        storage_path, list(result.scalars()), stable_names=stable_names
+    )
 
 
 def build_skill_draft_brief(session: SkillBuilderSession) -> dict[str, object]:

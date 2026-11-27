@@ -12,7 +12,6 @@ from typing import TYPE_CHECKING, Any
 from fastapi import HTTPException
 from fastapi.responses import JSONResponse
 
-from app.authz.conversation_scope import require_conversation_agent_id
 from app.exceptions import ConflictError
 from app.routers.conversation_agent_protocol_contracts import command_error
 from app.routers.conversation_agent_protocol_runtime import cfg_agent_uuid
@@ -21,18 +20,14 @@ from app.routers.conversation_protocol_start import (
     RunStartValidated,
     _resource_context_error,
 )
-from app.schemas.conversation_scope import ConversationAutoTitle, ConversationPromotion
-from app.services import chat_service, conversation_run_queue_service, conversation_run_service
+from app.services import conversation_run_queue_service, conversation_run_service
+from app.services.ag_ui_start_effects import apply_start_effects
 from app.services.agent_execution_owner import OwnedExecutionRequest, accept_owned_execution
-from app.services.chat.image_description_admission import capture_admission
 from app.services.chat_resource_context_integration import (
     QueuedResourceContextInput,
     freeze_queued_resource_context_payload,
 )
-from app.services.conversation_audit_service import (
-    record_conversation_audit,
-    record_conversation_run_audit,
-)
+from app.services.conversation_run_queue_promotion import interrupt_active_for_input
 
 if TYPE_CHECKING:
     from app.agent_runtime.runtime_config import AgentConfig
@@ -94,81 +89,23 @@ async def persist_queued_run_start(
         priority=100 if strategy == "interrupt" else 0,
     )
     queued = enqueue_result.input
-    if conversation.source == "draft":
-        await chat_service.promote_draft_conversation(
-            db,
-            ConversationPromotion(conversation.id, context, preview),
-        )
-    elif preview:
-        await chat_service.maybe_set_auto_title(
-            db, ConversationAutoTitle(conversation.id, context, preview)
-        )
-    await chat_service.touch_conversation(db, conversation.id, context)
-    await record_conversation_audit(
+    await apply_start_effects(
         db,
-        user=user,
-        request=request,
-        action="conversation.message_send",
-        conversation_id=conversation.id,
-        agent_id=require_conversation_agent_id(conversation),
-        metadata={
-            "content_length": len(preview or ""),
-            "attachment_count": len(attachment_ids),
-            "source": "langgraph_protocol",
-        },
-    )
-    if attachment_ids:
-        await chat_service.link_attachments_to_conversation(
-            db,
-            conversation_id=conversation.id,
-            context=context,
-            attachment_ids=attachment_ids,
-        )
-        if enqueue_result.created:
-            queued.image_description_admission = await capture_admission(
-                db,
-                context=context,
-                conversation_id=conversation.id,
-                root_model_id=cfg.model_id,
-                attachment_ids=attachment_ids,
-            )
-        if cfg.runtime_profile == "skill_builder" and cfg.draft_workspace_path:
-            from app.services import skill_draft_workspace
-
-            await skill_draft_workspace.copy_conversation_attachments_to_inputs(
-                db,
-                storage_path=cfg.draft_workspace_path,
-                conversation_id=conversation.id,
-                attachment_ids=attachment_ids,
-                context=context,
-            )
-    active = await conversation_run_service.get_active_run(
-        db,
-        conversation_id=conversation.id,
         context=context,
+        user=user,
+        conversation=conversation,
+        request=request,
+        message_preview=preview,
+        attachment_ids=attachment_ids,
+        source="langgraph_protocol",
+        cfg=cfg,
+        queued_input=queued if enqueue_result.created else None,
     )
-    if strategy == "interrupt" and enqueue_result.created and active is not None:
-        active = await conversation_run_service.get_run_for_user(
-            db,
-            conversation_id=conversation.id,
-            run_id=active.id,
-            context=context,
-            for_update=True,
+    active = None
+    if strategy == "interrupt" and enqueue_result.created:
+        active = await interrupt_active_for_input(
+            db, conversation_id=conversation.id, context=context, user=user, request=request
         )
-        if active is not None:
-            await conversation_run_service.request_cancel_run(
-                db,
-                active,
-                reason="steer",
-            )
-            await record_conversation_run_audit(
-                db,
-                action="conversation.run_steer_request",
-                run=active,
-                user=user,
-                request=request,
-                status="canceling",
-            )
     await db.commit()
     return queued, enqueue_result, active
 

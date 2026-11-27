@@ -25,6 +25,8 @@ from app.routers.conversation_agent_protocol_event_normalization import (
 from app.routers.conversation_agent_protocol_legacy import (
     protocol_events_from_legacy_sse,
 )
+from app.services.conversation_run_queue_payload import input_preview as input_preview
+from app.services.conversation_run_queue_payload import string_content as string_content
 
 SUPPORTED_MULTITASK_STRATEGIES = {"reject", "enqueue", "interrupt"}
 
@@ -51,38 +53,6 @@ def cfg_agent_uuid(conversation: Conversation) -> uuid.UUID:
 
 def command_multitask_strategy(command: AgentCommandRequest) -> str:
     return command.params.multitask_strategy or "reject"
-
-
-def string_content(value: Any) -> str | None:
-    if isinstance(value, str):
-        return value
-    if not isinstance(value, list):
-        return None
-    parts: list[str] = []
-    for item in value:
-        if isinstance(item, str):
-            parts.append(item)
-        elif isinstance(item, Mapping):
-            text = item.get("text")
-            if isinstance(text, str):
-                parts.append(text)
-    return "\n".join(parts) if parts else None
-
-
-def input_preview(input_payload: dict[str, Any] | None) -> str | None:
-    if not isinstance(input_payload, Mapping):
-        return None
-    messages = input_payload.get("messages")
-    if not isinstance(messages, list):
-        return None
-    for message in reversed(messages):
-        if not isinstance(message, Mapping):
-            continue
-        role = message.get("role") or message.get("type")
-        if role not in {"user", "human"}:
-            continue
-        return string_content(message.get("content"))
-    return None
 
 
 def checkpoint_id(command: AgentCommandRequest) -> str | None:

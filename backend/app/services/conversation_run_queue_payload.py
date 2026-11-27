@@ -2,6 +2,8 @@ from __future__ import annotations
 
 import json
 import math
+from collections.abc import Mapping
+from typing import Any
 
 from fastapi import HTTPException
 
@@ -9,6 +11,38 @@ from app.models.conversation_run_input import JsonValue
 
 MAX_QUEUE_INPUT_BYTES = 256 * 1024
 MAX_QUEUE_INPUT_DEPTH = 20
+
+
+def string_content(value: Any) -> str | None:
+    if isinstance(value, str):
+        return value
+    if not isinstance(value, list):
+        return None
+    parts: list[str] = []
+    for item in value:
+        if isinstance(item, str):
+            parts.append(item)
+        elif isinstance(item, Mapping):
+            text = item.get("text")
+            if isinstance(text, str):
+                parts.append(text)
+    return "\n".join(parts) if parts else None
+
+
+def input_preview(input_payload: dict[str, Any] | None) -> str | None:
+    if not isinstance(input_payload, Mapping):
+        return None
+    messages = input_payload.get("messages")
+    if not isinstance(messages, list):
+        return None
+    for message in reversed(messages):
+        if not isinstance(message, Mapping):
+            continue
+        role = message.get("role") or message.get("type")
+        if role not in {"user", "human"}:
+            continue
+        return string_content(message.get("content"))
+    return None
 
 
 def _validate_value(value: JsonValue, *, depth: int) -> None:
@@ -44,4 +78,6 @@ __all__ = [
     "MAX_QUEUE_INPUT_BYTES",
     "MAX_QUEUE_INPUT_DEPTH",
     "validate_queue_input_payload",
+    "input_preview",
+    "string_content",
 ]

@@ -125,6 +125,7 @@ async def prepare_executable_conversation(
     *,
     agent_checked: bool = False,
     readiness: bool = True,
+    commit_policy_snapshot: bool = True,
 ) -> uuid.UUID:
     """Initialize policy, then reacquire lifecycle authority for config hydration.
 
@@ -139,22 +140,34 @@ async def prepare_executable_conversation(
         if readiness:
             await require_agent_ready(db, context, agent_id)
     try:
-        await ensure_conversation_runtime_policy(
+        conversation, _, _ = await ensure_conversation_runtime_policy(
             db, ConversationPolicyTarget(conversation_id, context)
         )
     except RuntimePolicySnapshotError as exc:
         raise ConflictError(exc.code, exc.code) from None
+    if not commit_policy_snapshot:
+        # Config hydration refreshes this row with populate_existing and autoflush disabled.
+        # Persist the snapshot inside the admission transaction before that refresh.
+        await db.flush([conversation])
+        return agent_id
     await db.commit()
     return await require_executable_conversation(db, conversation_id, context)
 
 
 async def prepare_resumed_conversation(
-    db: AsyncSession, conversation_id: uuid.UUID, context: OrgContext, resume: object
+    db: AsyncSession,
+    conversation_id: uuid.UUID,
+    context: OrgContext,
+    resume: object,
+    *,
+    commit_policy_snapshot: bool = True,
 ) -> uuid.UUID:
     """A resume: the G-02 readiness gate is skipped when every answer ends or abandons
     the run (``abandons_run``), so a blocked agent never traps the user in an interrupt."""
     ready = not abandons_run(resume_answers(resume))
-    return await prepare_executable_conversation(db, conversation_id, context, readiness=ready)
+    return await prepare_executable_conversation(
+        db, conversation_id, context, readiness=ready, commit_policy_snapshot=commit_policy_snapshot
+    )
 
 
 async def promote_draft_conversation(
