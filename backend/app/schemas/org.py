@@ -7,6 +7,7 @@ from uuid import UUID
 from pydantic import BaseModel, ConfigDict, JsonValue, StringConstraints, field_validator
 
 from app.authz.org_control import OrgControlPermission
+from app.schemas.org_image_description import ImageDescriptionPolicy
 
 RegistrationPolicy = Literal["default_org", "invite_only", "closed"]
 DefaultMemberRole = Literal["member", "builder"]
@@ -21,6 +22,7 @@ class OrganizationSettings(BaseModel):
     allow_public_share_links: bool = True
     goal_sandbox_enabled: bool = False
     registration_policy: RegistrationPolicy | None = None
+    image_description: ImageDescriptionPolicy | None = None
 
 
 class OrganizationSettingsPatch(BaseModel):
@@ -29,6 +31,7 @@ class OrganizationSettingsPatch(BaseModel):
     allow_public_share_links: bool | None = None
     goal_sandbox_enabled: bool | None = None
     registration_policy: RegistrationPolicy | None = None
+    image_description: ImageDescriptionPolicy | None = None
 
     def update_values(self) -> dict[str, JsonValue]:
         values: dict[str, JsonValue] = {}
@@ -42,6 +45,10 @@ class OrganizationSettingsPatch(BaseModel):
             values["goal_sandbox_enabled"] = self.goal_sandbox_enabled is True
         if "registration_policy" in self.model_fields_set:
             values["registration_policy"] = self.registration_policy
+        if "image_description" in self.model_fields_set:
+            values["image_description"] = (
+                self.image_description.model_dump(mode="json") if self.image_description else None
+            )
         return values
 
 
