@@ -1,6 +1,7 @@
 import type { APIRequestContext } from '@playwright/test'
 import { z } from 'zod'
 
+import { textContentFromMessageContent } from '../src/lib/chat/langgraph-runtime/stream-message-content'
 import { API_BASE, apiDeleteOk, apiGetJson, apiPostJson, expect, loginApi, test } from './fixtures'
 import { observeMutations, observeStandardStreams, standardCommand } from './helpers/ag-ui-cutover'
 import { SCRIPTED_MODEL, SCRIPTED_PROVIDER } from './langgraph-v3-helpers'
@@ -137,11 +138,23 @@ const runHistory = z.object({
   ),
 })
 
+const textBlock = z.object({ type: z.literal('text'), text: z.string() })
 const checkpoint = z.object({
   values: z.object({
     messages: z.array(
       z.object({
-        content: z.unknown(),
+        id: z.string().min(1),
+        type: z.string(),
+        content: z.union([
+          z.string(),
+          z.array(z.unknown()).transform((parts) =>
+            parts.flatMap((part) => {
+              if (typeof part === 'string') return [{ type: 'text' as const, text: part }]
+              const block = textBlock.safeParse(part)
+              return block.success ? [block.data] : []
+            }),
+          ),
+        ]),
         tool_call_id: z.string().nullish(),
         tool_calls: z.array(z.object({ id: z.string(), name: z.string() })).optional(),
       }),
@@ -371,13 +384,18 @@ for (const profile of ['native', 'middleware-backed'] as const) {
         const { messages } = checkpoint.parse(await apiGetJson(request, stateUrl)).values
         expect(
           messages
-            .filter((message) => message.tool_call_id === savedCalls[0].id)
+            .filter(
+              (message) => message.type === 'tool' && message.tool_call_id === savedCalls[0].id,
+            )
             .map((message) => message.content),
         ).toEqual([selection])
-        observations.savedAnswers = messages.filter(
-          (message) => message.content === finalAnswer,
-        ).length
+        const answers = messages.filter(
+          (message) =>
+            message.type === 'ai' && textContentFromMessageContent(message.content) === finalAnswer,
+        )
+        observations.savedAnswers = answers.length
         expect(observations.savedAnswers).toBe(1)
+        expect(messages.filter((message) => message.id === answers[0].id)).toHaveLength(1)
         expect(observations.resumePosts).toBe(1)
         expect(writes).toEqual(['ag-ui', 'ag-ui'])
         observations.effectVerified = true
