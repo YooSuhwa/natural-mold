@@ -14,6 +14,7 @@ from app.agent_runtime.ag_ui_v1_children import (
     journal_namespace,
     public_journal_namespace,
 )
+from app.agent_runtime.ag_ui_v1_issuance import ToolContinuation
 from app.agent_runtime.ag_ui_visibility import ChildVisibility
 from app.agent_runtime.protocol_events import protocol_interrupts_from_event
 from app.authz.org_context import OrgContext
@@ -25,7 +26,7 @@ from app.services.ag_ui_journal import JournalPage, read_journal_page
 from app.services.ag_ui_read_cursor import CursorScope
 from app.services.ag_ui_read_pending import CurrentReadInterrupts, current_read_interrupts
 from app.services.ag_ui_read_projection import CommittedProjection
-from app.services.ag_ui_read_target import resolve_read_target, snapshot_required
+from app.services.ag_ui_read_target import ReadTarget, resolve_read_target, snapshot_required
 from app.services.ag_ui_snapshot_projection import AgUiRunSnapshot, Row
 
 
@@ -44,6 +45,15 @@ class SnapshotRunReplay:
     unresolved_pending_namespaces: dict[str, Namespace | None] = field(default_factory=dict)
     cursor: str | None = None
     complete: bool = False
+    tool_continuations: tuple[ToolContinuation, ...] = ()
+
+    @classmethod
+    def from_target(cls, target: ReadTarget) -> SnapshotRunReplay:
+        return cls(
+            visibility=target.visibility,
+            scope=target.scope,
+            tool_continuations=target.tool_continuations,
+        )
 
 
 @dataclass
@@ -121,7 +131,7 @@ async def replay_snapshot_run(
     projection = CommittedProjection(target, secret_values)
     fold = AgUiRunSnapshot(public_activity_types=PUBLIC_ACTIVITY_TYPES, physical_run_id=str(run.id))
     owners = _ObservedOwners()
-    result = SnapshotRunReplay(visibility=target.visibility, scope=target.scope)
+    result = SnapshotRunReplay.from_target(target)
     horizon: int | None = None
     while True:
         page = await read_journal_page(
@@ -134,7 +144,7 @@ async def replay_snapshot_run(
         if horizon is None:
             horizon = page.high_water
         if page.gap or page.high_water < horizon:
-            return SnapshotRunReplay(visibility=target.visibility, scope=target.scope)
+            return SnapshotRunReplay.from_target(target)
         if page.high_water > horizon:
             # A worker appended during this snapshot. Its terminal state must
             # stay behind those later source rows as it does on the live stream.
@@ -147,7 +157,7 @@ async def replay_snapshot_run(
         last_ordinal = page.entries[-1].ordinal if page.entries else projection.source_ordinal
         last = last_ordinal == horizon
         if (not last and not page.has_more) or (page.has_more and not page.entries):
-            return SnapshotRunReplay(visibility=target.visibility, scope=target.scope)
+            return SnapshotRunReplay.from_target(target)
         pending = (
             await current_read_interrupts(db, conversation, context, current)
             if last and not page.has_more and current.run and current.run.status == "interrupted"
@@ -159,7 +169,7 @@ async def replay_snapshot_run(
             if exc.code != "AG_UI_SNAPSHOT_REQUIRED":
                 raise
             # Missing/compacted generations recover from the selected branch checkpoint.
-            return SnapshotRunReplay(visibility=current.visibility, scope=current.scope)
+            return SnapshotRunReplay.from_target(current)
         for frame in batch.frames:
             fold.apply(frame.event, source_ordinal=frame.ordinal)
             result.cursor = frame.id
