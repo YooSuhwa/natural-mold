@@ -106,7 +106,7 @@ const conversations = [
 const draftConversation = {
   ...conversations[0],
   id: draftId,
-  title: null,
+  title: '새 대화',
   agent_name_snapshot: agents[0].name,
   last_activity_at: now,
   created_at: now,
@@ -220,8 +220,7 @@ async function mockApi(route: Route) {
   if (pathname.endsWith('/messages')) {
     await route.fulfill({
       json: {
-        conversation_source:
-          pathname === `/api/conversations/${draftId}/messages` ? 'draft' : 'chat',
+        conversation_source: pathname === `/api/conversations/${draftId}/messages` ? 'draft' : 'ui',
         messages: [],
         active_tip_message_id: null,
         active_checkpoint_id: null,
