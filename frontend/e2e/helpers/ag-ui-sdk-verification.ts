@@ -66,6 +66,7 @@ export async function verifyAgUiTranscript(expected: TranscriptExpectation) {
 
   let outcome: RunOutcome | undefined
   let interruptIds: string[] = []
+  let issuedInterrupts: readonly unknown[] | undefined
   let reads = 0
   const agent = new HttpAgent({
     url: 'https://capture.invalid/run',
@@ -82,7 +83,7 @@ export async function verifyAgUiTranscript(expected: TranscriptExpectation) {
         outcome = result.outcome
         if (result.outcome === 'interrupt') {
           interruptIds = result.interrupts.map((interrupt) => interrupt.id)
-          expected.inspectInterrupts?.(result.interrupts)
+          issuedInterrupts = result.interrupts
         }
       },
       onRunErrorEvent() {
@@ -99,6 +100,8 @@ export async function verifyAgUiTranscript(expected: TranscriptExpectation) {
   if (expected.interruptIds) {
     assert.deepEqual([...interruptIds].sort(), [...expected.interruptIds].sort())
   }
+  // The SDK logs subscriber exceptions. Run the inspection here so a failed assertion rejects.
+  if (issuedInterrupts) expected.inspectInterrupts?.(issuedInterrupts)
   if (expected.assistantText !== undefined) {
     assert.ok(
       agent.messages.some(

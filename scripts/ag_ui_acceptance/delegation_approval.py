@@ -284,6 +284,15 @@ async def check_targeted_approval(gate: Gate, model: ResearchModel, tid: str, ri
                 and [r["status"] for r in row["instructions"]] == receipts,
                 "final result/receipt belongs to the wrong child",
             )
+        final_children = {child["subagentRunId"]: child for child in final_snap["subagents"]}
+        for original, task in ((a, alpha), (b, beta)):
+            restored_child = final_children.get(original["subagentRunId"], {})
+            require(
+                restored_child.get("status") == "completed"
+                and restored_child.get("childTaskId") == task["id"]
+                and restored_child.get("parentToolCallId") == original["parentToolCallId"],
+                "completed child cannot be reopened by its authorized task and original tool call",
+            )
         final_native = await fresh.owner_b.json(
             "GET", f"{base}/langgraph/threads/{tid}/state?read_only=true"
         )
