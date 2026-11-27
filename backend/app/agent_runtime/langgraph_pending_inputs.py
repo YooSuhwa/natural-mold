@@ -232,16 +232,11 @@ async def _pinned_run_output(
     coordinates = dict(scope)
     seed = coordinates.pop("checkpoint_id")
     live = {**config, "configurable": coordinates}
-    output = await agent.aget_state(live)
-    producer = coordinates.get("moldy_run_id")
-    if producer is not None and producer != run_id:
-        raise PendingInputStateUnavailable("pending input state unavailable")
     tenant = coordinates.get(CHECKPOINT_TENANT_KEY)
-    expected = {
-        key: value
-        for key, value in (("moldy_run_id", producer), (CHECKPOINT_TENANT_KEY, tenant))
-        if value is not None
-    }
+    if coordinates.get("moldy_run_id") != run_id or not isinstance(tenant, str) or not tenant:
+        raise PendingInputStateUnavailable("pending input state unavailable")
+    expected = {"moldy_run_id": run_id, CHECKPOINT_TENANT_KEY: tenant}
+    output = await agent.aget_state(live)
 
     def owned(state: Any) -> bool:
         metadata = getattr(state, "metadata", None) or {}
@@ -257,12 +252,11 @@ async def _pinned_run_output(
         metadata = getattr(output, "metadata", None) or {}
         if metadata.get(CHECKPOINT_TENANT_KEY) in (None, tenant):
             return output, True
-    if producer is not None:
-        # Another authorized branch may have advanced this thread. Only inspect
-        # an output stamped by our physical run and company in the same namespace.
-        async for state in agent.aget_state_history(live, filter=expected, limit=1):
-            if owned(state):
-                return state, False
+    # Another authorized branch may have advanced this thread. Only inspect
+    # an output stamped by our physical run and company in the same namespace.
+    async for state in agent.aget_state_history(live, filter=expected, limit=1):
+        if owned(state):
+            return state, False
     raise PendingInputStateUnavailable("pending input state unavailable")
 
 
