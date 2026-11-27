@@ -10,6 +10,7 @@ Another user's or another organization's row answers 404.
 """
 
 from typing import Annotated
+from urllib.parse import quote
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, Query, Response
@@ -27,7 +28,16 @@ from app.authz.policies import SELF, authz_policy
 from app.authz.runtime import get_authz
 from app.authz.service import AuthzService
 from app.dependencies import get_db, get_org_context, verify_csrf
-from app.schemas.notification import NotificationPage, ReadAllResult, UnreadCount
+from app.schemas.notification import (
+    ChatNotificationDestination,
+    NotificationPage,
+    ReadAllResult,
+    UnreadCount,
+)
+from app.services.chat_notification_access import (
+    get_chat_notification_result,
+    open_chat_notification,
+)
 
 router = APIRouter(prefix="/api/notifications", tags=["notifications"])
 
@@ -90,3 +100,37 @@ async def remove_notification(
     await delete_notification(db, context, notification_id)
     await db.commit()
     return Response(status_code=204)
+
+
+@router.get("/{notification_id}/destination", response_model=ChatNotificationDestination)
+@authz_policy(SELF)
+async def get_chat_destination(
+    notification_id: UUID,
+    response: Response,
+    db: AsyncSession = Depends(get_db),
+    context: OrgContext = Depends(get_org_context),
+) -> ChatNotificationDestination:
+    response.headers["Cache-Control"] = "private, no-store"
+    return await open_chat_notification(db, context, notification_id)
+
+
+@router.get(
+    "/{notification_id}/result",
+    response_class=Response,
+    responses={200: {"content": {"application/octet-stream": {}}}},
+)
+@authz_policy(SELF)
+async def download_chat_result(
+    notification_id: UUID,
+    db: AsyncSession = Depends(get_db),
+    context: OrgContext = Depends(get_org_context),
+) -> Response:
+    content, filename = await get_chat_notification_result(db, context, notification_id)
+    return Response(
+        content=content,
+        media_type="application/octet-stream",
+        headers={
+            "Cache-Control": "private, no-store",
+            "Content-Disposition": f"attachment; filename*=UTF-8''{quote(filename, safe='')}",
+        },
+    )

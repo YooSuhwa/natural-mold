@@ -40,6 +40,7 @@ from app.schemas.notification import (
     NotificationView,
     UnreadCount,
 )
+from app.services.chat_notification_access import WORK_TARGET, accessible_work_targets
 
 
 async def _scope(db: AsyncSession, ctx: OrgContext) -> ColumnElement[bool]:
@@ -69,7 +70,8 @@ def _decode(cursor: str) -> tuple[datetime, UUID]:
 async def _accessible(
     db: AsyncSession, authz: AuthzService, ctx: OrgContext, rows: Sequence[Notification]
 ) -> set[str]:
-    kept: set[str] = set()
+    work_ids = {row.target_id for row in rows if row.target_type == WORK_TARGET and row.target_id}
+    kept = await accessible_work_targets(db, ctx, work_ids)
     principal = Principal.for_user(ctx)
     for name, kind in SHARE_TYPES.items():
         ids = {row.target_id for row in rows if row.target_type == name and row.target_id}

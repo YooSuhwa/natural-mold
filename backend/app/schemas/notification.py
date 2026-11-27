@@ -45,3 +45,14 @@ class UnreadCount(BaseModel):
 
 class ReadAllResult(BaseModel):
     updated: int
+
+
+class ChatNotificationDestination(BaseModel):
+    conversation_id: UUID
+    agent_id: UUID | None
+    run_id: UUID
+    goal_id: UUID | None
+    job_id: UUID | None
+    artifact_id: UUID | None
+    version_id: UUID | None
+    filename: str | None
