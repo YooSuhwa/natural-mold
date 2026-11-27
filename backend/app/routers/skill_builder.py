@@ -6,8 +6,10 @@ from fastapi import APIRouter, Depends, Query, Request
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.authz import registration
+from app.authz.agent_delegations import commit_and_apply
 from app.authz.org_context import OrgContext
 from app.authz.policies import PRIVATE, authz_policy
+from app.authz.resource_lifecycle import LifecycleChange, on_resource_created
 from app.authz.runtime import get_authz
 from app.authz.service import AuthzService
 from app.authz.skill_access import authorize_builder_target
@@ -113,7 +115,7 @@ async def start_skill_builder(
     except SkillBuilderSourceSkillNotFound as exc:
         raise skill_not_found() from exc
     try:
-        agent = await get_or_create_skill_builder_agent(db, context)
+        agent, created = await get_or_create_skill_builder_agent(db, context)
     except SystemModelNotConfiguredError as exc:
         # 모델 카탈로그가 비어 seed용 FK를 채울 수 없는 경우 — 게이트와 동일 계약.
         raise system_llm_not_configured() from exc
@@ -146,7 +148,8 @@ async def start_skill_builder(
         conversation_id=str(conversation.id),
         agent_id=str(agent.id),
     )
-    await db.commit()
+    change = await on_resource_created(db, agent, mode=authz.mode) if created else LifecycleChange()
+    await commit_and_apply(db, authz, change)
     await db.refresh(session)
     return _session_response(session, agent_id=agent.id)
 

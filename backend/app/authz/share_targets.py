@@ -23,7 +23,7 @@ from app.authz.org_context import OrgContext
 from app.authz.principal import Principal
 from app.authz.service import AuthzService
 from app.authz.service_types import Verdict
-from app.models.agent import Agent
+from app.models.agent import AGENT_RUNTIME_PROFILE_STANDARD, Agent
 from app.models.credential import Credential
 from app.models.mcp_server import McpServer
 from app.models.skill import Skill
@@ -73,6 +73,8 @@ async def load_target(
     if row is None or row.org_id != ctx.org_id or row.tenant_id != ctx.tenant_id:
         return None
     if getattr(row, "is_system", False) or row.user_id is None:
+        return None
+    if isinstance(row, Agent) and row.runtime_profile != AGENT_RUNTIME_PROFILE_STANDARD:
         return None
     if isinstance(row, Credential) and row.scope != "personal":
         return None
