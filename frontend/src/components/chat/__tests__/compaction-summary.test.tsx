@@ -2,6 +2,7 @@ import { act } from '@testing-library/react'
 import { QueryClientProvider } from '@tanstack/react-query'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { apiFetch } from '@/lib/api/client'
+import { dispatchMoldyBranchSwitched } from '@/lib/chat/langgraph-runtime/branch-switch-events'
 import { createTestQueryClient, render, screen, userEvent } from '../../../../tests/test-utils'
 import { CompactionSummary } from '../compaction-summary'
 
@@ -78,6 +79,72 @@ describe('CompactionSummary', () => {
     expect(fetchMock).toHaveBeenCalledTimes(2)
   })
 
+  it('실시간 요약에서 연 메시지의 체크포인트가 복원돼도 한 번의 클릭으로 원문을 보여 준다', async () => {
+    const mapping = Promise.withResolvers<unknown>()
+    fetchMock
+      .mockReturnValueOnce(mapping.promise)
+      .mockResolvedValueOnce(evidencePage('복원한 원문'))
+    const client = createTestQueryClient()
+    const summary = (checkpointId?: string) => (
+      <QueryClientProvider client={client}>
+        <CompactionSummary evidence={{ ...evidence, checkpointId }} />
+      </QueryClientProvider>
+    )
+    const user = userEvent.setup()
+    const { rerender } = render(summary())
+    await user.click(screen.getByRole('button', { name: '요약 전 대화 보기' }))
+    expect(requestAt(0).pathname).toContain('/langgraph/threads/')
+    expect(requestAt(0).searchParams.get('read_only')).toBe('true')
+
+    rerender(summary(evidence.checkpointId))
+    await act(async () => {
+      mapping.resolve({
+        metadata: { checkpoint_by_message_id: { [evidence.messageId]: evidence.checkpointId } },
+      })
+      await mapping.promise
+    })
+
+    expect(await screen.findByText('복원한 원문')).toBeVisible()
+    expect(requestAt(1).pathname).toBe(endpoint)
+    expect(fetchMock).toHaveBeenCalledTimes(2)
+  })
+
+  it.each(['lookup-mismatch', 'branch-switch'] as const)(
+    '체크포인트를 확인하는 중 분기가 달라지면 발췌문을 요청하지 않는다 (%s)',
+    async (change) => {
+      const mapping = Promise.withResolvers<unknown>()
+      fetchMock.mockReturnValueOnce(mapping.promise)
+      const user = userEvent.setup()
+      const { rerender } = render(
+        <CompactionSummary evidence={{ ...evidence, checkpointId: undefined }} />,
+      )
+      await user.click(screen.getByRole('button', { name: '요약 전 대화 보기' }))
+      const lookupSignal = fetchMock.mock.calls[0]?.[1]?.signal
+      if (change === 'branch-switch') {
+        act(() => {
+          dispatchMoldyBranchSwitched({
+            conversationId: evidence.conversationId,
+            checkpointId: 'next-checkpoint',
+          })
+        })
+        expect(lookupSignal?.aborted).toBe(true)
+      }
+      rerender(<CompactionSummary evidence={{ ...evidence, checkpointId: 'next-checkpoint' }} />)
+      await act(async () => {
+        mapping.resolve({
+          metadata: { checkpoint_by_message_id: { [evidence.messageId]: evidence.checkpointId } },
+        })
+        await mapping.promise
+      })
+
+      expect(fetchMock).toHaveBeenCalledTimes(1)
+      expect(screen.getByRole('button', { name: '요약 전 대화 보기' })).toHaveAttribute(
+        'aria-expanded',
+        'false',
+      )
+    },
+  )
+
   it('원문을 연 뒤 체크포인트가 바뀌면 다시 열기 전까지 새 원문을 요청하지 않는다', async () => {
     fetchMock.mockResolvedValueOnce(evidencePage('이전 분기의 발췌문'))
     const user = userEvent.setup()
@@ -98,9 +165,10 @@ describe('CompactionSummary', () => {
   it('이전 분기의 늦은 응답을 무시하고 다시 열면 선택한 분기의 원문만 보여 준다', async () => {
     const prior = Promise.withResolvers<ReturnType<typeof evidencePage>>()
     const nextCheckpoint = 'next-checkpoint'
-    fetchMock
-      .mockReturnValueOnce(prior.promise)
-      .mockResolvedValueOnce({ ...evidencePage('선택한 분기의 원문'), checkpoint_id: nextCheckpoint })
+    fetchMock.mockReturnValueOnce(prior.promise).mockResolvedValueOnce({
+      ...evidencePage('선택한 분기의 원문'),
+      checkpoint_id: nextCheckpoint,
+    })
     const client = createTestQueryClient()
     const summary = (checkpointId: string) => (
       <QueryClientProvider client={client}>
