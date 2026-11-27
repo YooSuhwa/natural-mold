@@ -10,8 +10,17 @@ from typing import Any
 import pytest
 from ag_ui.core import BaseEvent, EventType
 
-from app.agent_runtime.ag_ui_v1 import AgUiV1Projector, ChildVisibility, ProjectionVisibilityChanged
-from app.agent_runtime.protocol_events import StoredProtocolEvent, stored_protocol_event
+from app.agent_runtime.ag_ui_v1 import (
+    AgUiV1Projector,
+    ChildVisibility,
+    ProjectionChildStateUnknown,
+    ProjectionVisibilityChanged,
+)
+from app.agent_runtime.protocol_events import (
+    ProtocolInterrupt,
+    StoredProtocolEvent,
+    stored_protocol_event,
+)
 
 THREAD = "thread"
 PHYSICAL = "physical"
@@ -447,3 +456,86 @@ def test_only_current_mcp_binding_can_expose_raw_widget_reference() -> None:
             token not in serialized
             for token in (call, binding, "ui://", "private-description", "moldy.mcp_app")
         )
+
+
+@pytest.mark.parametrize("proof", ["returned", "managed", "native-pause", "unresolved"])
+def test_root_interrupt_keeps_sibling_outcomes_separate(proof: str) -> None:
+    a, b = ("tools:alpha",), ("tools:beta",)
+    grant = ChildVisibility(
+        False,
+        frozenset({"alpha", "beta"}),
+        frozenset({a, b}),
+        frozenset({("alpha", a, "row-a"), ("beta", b, "row-b")}),
+    )
+    stream = projector(policy=grant)
+    stream.project(
+        event(
+            "messages",
+            {
+                "type": "ai",
+                "id": "issuer",
+                "tool_calls": [
+                    {"id": call, "name": "task", "args": {"subagent_type": "writer"}}
+                    for call in ("alpha", "beta")
+                ],
+            },
+        )
+    )
+    for scope, call in ((a, "alpha"), (b, "beta")):
+        stream.project(
+            event(
+                "lifecycle",
+                {
+                    "event": "started",
+                    "namespace": list(scope),
+                    "cause": {"type": "toolCall", "tool_call_id": call},
+                },
+            )
+        )
+    slot: ProtocolInterrupt = {
+        "id": "confirm-alpha",
+        "ns": list(a),
+        "value": {"type": "ask_user", "question": "Proceed?"},
+    }
+    stream.project(event("values", {"__interrupt__": [slot]}, a))
+    if proof == "returned":
+        stream.project(
+            event(
+                "tools",
+                {
+                    "event": "tool-finished",
+                    "name": "task",
+                    "tool_call_id": "beta",
+                    "content": "Beta is done.",
+                },
+            )
+        )
+    if proof in ("returned", "native-pause"):
+        assert (
+            stream.project(event("lifecycle", {"event": "interrupted", "namespace": list(b)})) == []
+        )
+    hints = {b: "completed"} if proof == "managed" else None
+    if proof == "unresolved":
+        with pytest.raises(ProjectionChildStateUnknown):
+            stream.finish(
+                "interrupted",
+                interrupts=[slot],
+                child_terminal_statuses={("role:writer",): "completed"},
+            )
+        # Recover from the missing independent proof without losing any
+        # lifecycle headers or emitting a false child result.
+        hints = {b: "completed"}
+    frames = wire(stream.finish("interrupted", interrupts=[slot], child_terminal_statuses=hints))
+    closed = {
+        frame["subagentRunId"]: frame.get("outcome", {"type": "success"})
+        for frame in frames
+        if frame["type"] == "SUBAGENT_FINISHED"
+    }
+    assert closed[stream.owner_for(a)] == {"type": "suspended", "interruptIds": ["confirm-alpha"]}
+    if proof == "native-pause":
+        assert closed[stream.owner_for(b)] == {"type": "suspended", "interruptIds": []}
+    else:
+        assert closed[stream.owner_for(b)]["type"] == "success"
+    [interrupt] = frames[-1]["outcome"]["interrupts"]
+    assert interrupt["id"] == "confirm-alpha"
+    assert interrupt["subagentRunId"] == stream.owner_for(a)
