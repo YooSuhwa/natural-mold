@@ -2837,6 +2837,8 @@
         "recovery_checkpoint_unavailable": "이 실행의 저장 지점을 확인할 수 없어 이어서 실행할 수 없어요.",
         "recovery_policy_changed": "실행 설정이 달라져 이전 작업을 이어서 실행할 수 없어요.",
         "recovery_limit_reached": "복구 시도 횟수가 한도에 도달해 실행을 멈췄어요.",
+        "recovery_model_attempt_limit": "이 모델 호출의 전송 한도에 도달해 실행을 멈췄어요.",
+        "recovery_model_attempt_unproven": "이 모델 호출의 이전 전송 횟수를 확인할 수 없어 실행을 멈췄어요.",
         "recovery_output_started": "응답 일부를 이미 전달해 복구를 멈췄어요. 활동 보기를 열면 저장된 응답을 확인할 수 있어요.",
         "recovery_authority_revoked": "이 작업을 계속할 권한이 없어 실행을 멈췄어요.",
         "recovery_launch_failed": "저장된 작업을 다시 시작할 수 없어 실행을 멈췄어요."

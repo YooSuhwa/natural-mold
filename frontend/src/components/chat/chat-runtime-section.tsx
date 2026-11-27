@@ -21,6 +21,7 @@ import type { AnyStream } from '@langchain/react'
 import { AssistantThread, type AssistantThreadProps } from '@/components/chat/assistant-thread'
 import { FailedMessageRetryProvider } from '@/components/chat/failed-message-retry'
 import { useBrowserDictation } from '@/components/chat/use-browser-dictation'
+import { blocksInputRetry } from '@/lib/chat-runs/recovery-error'
 import { useChatRuntime } from '@/lib/chat/use-chat-runtime'
 import { RunSteerStreamSync } from '@/lib/chat/langgraph-runtime/run-steer-events'
 import { useMoldyLangGraphStream } from '@/lib/chat/langgraph-runtime/use-moldy-langgraph-stream'
@@ -378,9 +379,7 @@ function LangGraphRuntimeSection({
         retryFailedInput={retryFailedInput}
         partialOutput={threadRunNotice?.partialOutput}
         failedRunId={
-          threadRunNotice?.status === 'failed' &&
-          threadRunNotice.recoveryError !== 'recovery_effect_unconfirmed' &&
-          threadRunNotice.recoveryError !== 'recovery_steer_unconfirmed'
+          threadRunNotice?.status === 'failed' && !blocksInputRetry(threadRunNotice.recoveryError)
             ? threadRunNotice.id
             : undefined
         }
@@ -407,7 +406,7 @@ interface RuntimeFrameProps {
 function RuntimeFrame({
   activities,
   deepAgentsState,
-  failedRunId,
+  failedRunId: terminalFailedRunId,
   partialOutput,
   hitlValue,
   runtime,
@@ -416,6 +415,7 @@ function RuntimeFrame({
   subagentStream,
   threadProps,
 }: RuntimeFrameProps) {
+  const failedRunId = threadProps.readOnlyConversation ? undefined : terminalFailedRunId
   const queueSnapshot = useSyncExternalStore(
     messageQueue?.subscribe ?? EMPTY_SUBSCRIBE,
     messageQueue?.getSnapshot ?? EMPTY_QUEUE_SNAPSHOT,

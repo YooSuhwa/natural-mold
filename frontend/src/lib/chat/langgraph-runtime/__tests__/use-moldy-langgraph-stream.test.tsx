@@ -2197,7 +2197,11 @@ describe('useMoldyLangGraphStream', () => {
     })
   })
 
-  it('renders recovery guidance from the public error code and omits diagnostic details', async () => {
+  it.each([
+    'recovery_effect_unconfirmed',
+    'recovery_model_attempt_limit',
+    'recovery_model_attempt_unproven',
+  ] as const)('renders reason-specific guidance for %s and omits diagnostics', async (code) => {
     const { result } = renderHook(
       () => useMoldyLangGraphStream({ agentId: 'agent', conversationId: 'chat' }),
       { wrapper: createQueryWrapper() },
@@ -2209,7 +2213,7 @@ describe('useMoldyLangGraphStream', () => {
           latest_run: {
             id: 'run',
             status: 'failed',
-            error_code: 'recovery_effect_unconfirmed',
+            error_code: code,
             error_message: 'internal diagnostic',
           },
         },
@@ -2219,13 +2223,13 @@ describe('useMoldyLangGraphStream', () => {
       expect(result.current.threadRunNotice).toEqual({
         id: 'run',
         status: 'failed',
-        recoveryError: 'recovery_effect_unconfirmed',
+        recoveryError: code,
       })
       const converter = mocks.useExternalMessageConverter.mock.calls.at(-1)?.[0]
       expect(converter?.messages).toContainEqual(
         expect.objectContaining({
           id: 'moldy-failed-run',
-          content: 'recovery.recovery_effect_unconfirmed',
+          content: `recovery.${code}`,
         }),
       )
     })

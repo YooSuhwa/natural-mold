@@ -2837,6 +2837,8 @@
         "recovery_checkpoint_unavailable": "We could not verify the saved checkpoint for this run, so it could not resume.",
         "recovery_policy_changed": "The execution settings changed, so the previous run could not resume.",
         "recovery_limit_reached": "The run stopped after reaching its recovery attempt limit.",
+        "recovery_model_attempt_limit": "The run stopped because this model call reached its send limit.",
+        "recovery_model_attempt_unproven": "The run stopped because the previous number of sends for this model call could not be verified.",
         "recovery_output_started": "Recovery stopped because part of the response was already delivered. Open the activity details to read the saved response.",
         "recovery_authority_revoked": "The run stopped because permission to continue is no longer available.",
         "recovery_launch_failed": "The run stopped because the saved work could not restart."

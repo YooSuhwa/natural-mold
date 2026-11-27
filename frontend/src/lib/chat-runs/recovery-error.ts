@@ -4,6 +4,8 @@ const recoveryErrorCodes = [
   'recovery_checkpoint_unavailable',
   'recovery_policy_changed',
   'recovery_limit_reached',
+  'recovery_model_attempt_limit',
+  'recovery_model_attempt_unproven',
   'recovery_output_started',
   'recovery_authority_revoked',
   'recovery_launch_failed',
@@ -18,4 +20,14 @@ export type RecoveryErrorCode = (typeof recoveryErrorCodes)[number]
 
 export function recoveryErrorCode(value: unknown): RecoveryErrorCode | undefined {
   return recoveryErrorCodes.find((code) => code === value)
+}
+
+/** Replaying the previous input could repeat an external action or exceed its send budget. */
+export function blocksInputRetry(code: RecoveryErrorCode | undefined): boolean {
+  return (
+    code === 'recovery_effect_unconfirmed' ||
+    code === 'recovery_steer_unconfirmed' ||
+    code === 'recovery_model_attempt_limit' ||
+    code === 'recovery_model_attempt_unproven'
+  )
 }

@@ -156,11 +156,13 @@ function RetryProviderHarness({
   latestRun = FAILED_RUN,
   terminalNotice = null,
   isLoading = false,
+  readOnlyConversation = false,
 }: {
   readonly input?: ConversationRunInput
   readonly latestRun?: ConversationRun | null
   readonly terminalNotice?: ThreadRunNotice | null
   readonly isLoading?: boolean
+  readonly readOnlyConversation?: boolean
 }) {
   const onNew = useCallback(async () => ({ content: [] }), [])
   const runtime = useLocalRuntime({ run: onNew })
@@ -192,6 +194,7 @@ function RetryProviderHarness({
   return (
     <ChatRuntimeSection
       activeConversationId="conversation-1"
+      readOnlyConversation={readOnlyConversation}
       activeRun={null}
       agentId="agent-1"
       emptyContent={null}
@@ -252,22 +255,40 @@ describe('ChatRuntimeSection failed-message recovery provider', () => {
     expect(mocks.retryFailedInput).toHaveBeenCalledExactlyOnceWith(FAILED_INPUT)
   })
 
-  it.each(['recovery_effect_unconfirmed', 'recovery_steer_unconfirmed'] as const)(
-    'requires the user to check %s before sending another request',
-    (recoveryError) => {
-      render(
-        <RetryProviderHarness
-          terminalNotice={{
-            id: FAILED_RUN.id,
-            status: 'failed',
-            recoveryError,
-          }}
-        />,
-      )
-      expect(screen.queryByRole('button', { name: '다시 시도' })).not.toBeInTheDocument()
-      expect(mocks.retryFailedInput).not.toHaveBeenCalled()
-    },
-  )
+  it('keeps retries disabled in an independent read-only conversation', async () => {
+    render(<RetryProviderHarness terminalNotice={RUNTIME_FAILED_NOTICE} readOnlyConversation />)
+    expect(screen.queryByRole('button', { name: '다시 시도' })).not.toBeInTheDocument()
+    const actions = mocks.threadCommands.mock.lastCall?.[0]
+    if (!actions) throw new Error('Expected composer command actions')
+    const retry = createChatCommands(actions, ko.chat.commands, ko.chat.commands.unavailable).find(
+      (command) => command.id === 'retry',
+    )
+    expect(retry?.availability.kind).toBe('disabled')
+    await retry?.execute('')
+    expect(mocks.retryFailedInput).not.toHaveBeenCalled()
+  })
+
+  it.each([
+    'recovery_effect_unconfirmed',
+    'recovery_steer_unconfirmed',
+    'recovery_model_attempt_limit',
+    'recovery_model_attempt_unproven',
+  ] as const)('disables message and command retries after %s', async (recoveryError) => {
+    render(
+      <RetryProviderHarness
+        terminalNotice={{ id: FAILED_RUN.id, status: 'failed', recoveryError }}
+      />,
+    )
+    expect(screen.queryByRole('button', { name: '다시 시도' })).not.toBeInTheDocument()
+    const actions = mocks.threadCommands.mock.lastCall?.[0]
+    if (!actions) throw new Error('Expected composer command actions')
+    const retry = createChatCommands(actions, ko.chat.commands, ko.chat.commands.unavailable).find(
+      (command) => command.id === 'retry',
+    )
+    expect(retry?.availability.kind).toBe('disabled')
+    await retry?.execute('')
+    expect(mocks.retryFailedInput).not.toHaveBeenCalled()
+  })
 
   it.each([
     {
