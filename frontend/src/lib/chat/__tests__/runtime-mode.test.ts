@@ -9,8 +9,8 @@ describe('getChatRuntimeMode', () => {
     expect(getChatRuntimeMode()).toBe(mode)
   })
 
-  it.each([undefined, '', 'ag-ui', 'AG_UI'])('defaults to LangGraph v3 for %s', (mode) => {
+  it.each([undefined, '', 'ag-ui', 'AG_UI'])('defaults to AG-UI for %s', (mode) => {
     vi.stubEnv('NEXT_PUBLIC_CHAT_RUNTIME', mode)
-    expect(getChatRuntimeMode()).toBe('langgraph_v3')
+    expect(getChatRuntimeMode()).toBe('ag_ui')
   })
 })

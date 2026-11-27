@@ -497,7 +497,7 @@ services:
         # client. Override for remote deploys, e.g. https://api.example.com.
         # Changing it (or MOLDY_BACKEND_PORT) needs `up -d --build`.
         NEXT_PUBLIC_API_BASE_URL: ${NEXT_PUBLIC_API_BASE_URL:-http://localhost:${MOLDY_BACKEND_PORT:-8001}}
-        NEXT_PUBLIC_CHAT_RUNTIME: ${NEXT_PUBLIC_CHAT_RUNTIME:-langgraph_v3}
+        NEXT_PUBLIC_CHAT_RUNTIME: ${NEXT_PUBLIC_CHAT_RUNTIME:-ag_ui}
         NEXT_PUBLIC_CHAT_STEER_ENABLED: ${NEXT_PUBLIC_CHAT_STEER_ENABLED:-false}
     ports:
       - "${MOLDY_FRONTEND_PORT:-3000}:3000"
@@ -505,7 +505,7 @@ services:
       # Kept in step with the build arg. The Next server itself never calls the
       # backend; pages fetch it from the browser.
       NEXT_PUBLIC_API_BASE_URL: ${NEXT_PUBLIC_API_BASE_URL:-http://localhost:${MOLDY_BACKEND_PORT:-8001}}
-      NEXT_PUBLIC_CHAT_RUNTIME: ${NEXT_PUBLIC_CHAT_RUNTIME:-langgraph_v3}
+      NEXT_PUBLIC_CHAT_RUNTIME: ${NEXT_PUBLIC_CHAT_RUNTIME:-ag_ui}
       NEXT_PUBLIC_CHAT_STEER_ENABLED: ${NEXT_PUBLIC_CHAT_STEER_ENABLED:-false}
     healthcheck:
       test:
