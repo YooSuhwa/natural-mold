@@ -71,6 +71,7 @@ class CommittedProjection:
             child_visibility=target.visibility,
             tool_continuations=target.tool_continuations,
             readable_artifact_versions=target.artifacts,
+            readable_widget_bindings=target.widget_bindings,
             defer_terminal=True,
         )
         self.prefix_digest = hashlib.sha256()
