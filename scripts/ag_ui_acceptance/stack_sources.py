@@ -184,20 +184,24 @@ def stage(
         raise RuntimeError("Cannot stage product revision")
     python = _python_versions(repo, require_protocol)
     modules = _node_modules(repo, deps, skill_deps or deps, require_protocol)
-    probes = {}
-    if browser:
-        for rel in (
+    sdk_helper = "frontend/e2e/helpers/ag-ui-sdk-verification.ts"
+    sdk_verifier = "scripts/ag_ui_acceptance/verify_transcripts.mjs"
+    browser_files = (
+        (
             "frontend/e2e/manual/chat-ag-ui-cutover.spec.ts",
             "frontend/e2e/helpers/ag-ui-cutover.ts",
-            "frontend/e2e/helpers/ag-ui-sdk-verification.ts",
-        ):
-            probe_source = harness / rel
-            target = repo / rel
-            checksum = digest(probe_source)
-            if not target.is_file() or digest(target) != checksum:
-                target.parent.mkdir(parents=True, exist_ok=True)
-                shutil.copy2(probe_source, target)
-            probes[rel] = checksum
+            sdk_helper,
+        )
+        if browser
+        else ()
+    )
+    sdk_files = (sdk_helper, sdk_verifier) if require_protocol else ()
+    probes = {rel: digest(harness / rel) for rel in (*browser_files, *sdk_files)}
+    for rel, checksum in probes.items():
+        target = repo / rel
+        if not target.is_file() or digest(target) != checksum:
+            target.parent.mkdir(parents=True, exist_ok=True)
+            shutil.copy2(harness / rel, target)
     subprocess.run(
         [
             sys.executable,
@@ -212,10 +216,14 @@ def stage(
         (root / "node_modules").symlink_to(
             deps / "node_modules", target_is_directory=True
         )
+    if require_protocol:
+        # The standard preparation step mirrors only frontend sources.
+        (root / sdk_verifier).parent.mkdir(parents=True, exist_ok=True)
+        shutil.copy2(repo / sdk_verifier, root / sdk_verifier)
     for rel, checksum in probes.items():
         if digest(root / rel) != checksum:
             raise RuntimeError(
-                f"Staged browser probe differs from the acceptance harness: {rel}"
+                f"Staged probe differs from the acceptance harness: {rel}"
             )
     (root / "source-dependencies.json").write_text(
         json.dumps(
@@ -223,7 +231,8 @@ def stage(
                 "python": python,
                 "uv_lock_sha256": digest(repo / "backend/uv.lock"),
                 **modules,
-                "browser_probes_sha256": probes,
+                "browser_probes_sha256": {rel: probes[rel] for rel in browser_files},
+                "sdk_probes_sha256": {rel: probes[rel] for rel in sdk_files},
             },
             indent=2,
         )
