@@ -8,8 +8,8 @@ evidence and notification intent are committed by the caller in one transaction.
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import TYPE_CHECKING
-from uuid import UUID
+from typing import TYPE_CHECKING, Literal
+from uuid import UUID, uuid4
 
 from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -424,31 +424,57 @@ async def capture_goal_attempt(
     return attempt
 
 
-def _intent(
+async def _intent(
     db: AsyncSession,
     goal: ConversationGoal,
     attempt: GoalAttempt,
-    kind: str,
+    kind: Literal["completed", "blocked", "approval_requested"],
     interrupt_id: str | None = None,
 ) -> None:
-    db.add(
-        GoalTransitionIntent(
-            goal_id=goal.id,
-            goal_version=goal.version,
-            goal_revision=goal.revision,
-            run_id=attempt.run_id,
-            kind=kind,
-            payload={
-                "conversation_id": str(goal.conversation_id),
-                "goal_id": str(goal.id),
-                "goal_version": goal.version,
-                "goal_revision": goal.revision,
-                "run_id": str(attempt.run_id),
-                "blocked_reason": goal.blocked_reason,
-                "interrupt_id": interrupt_id,
-                "evidence": goal.last_evidence,
-            },
-        )
+    from app.services.chat_notification_outbox import enqueue_goal_transition
+
+    intent = GoalTransitionIntent(
+        id=uuid4(),
+        goal_id=goal.id,
+        goal_version=goal.version,
+        goal_revision=goal.revision,
+        run_id=attempt.run_id,
+        kind=kind,
+        payload={
+            "conversation_id": str(goal.conversation_id),
+            "goal_id": str(goal.id),
+            "goal_version": goal.version,
+            "goal_revision": goal.revision,
+            "run_id": str(attempt.run_id),
+            "blocked_reason": goal.blocked_reason,
+            "interrupt_id": interrupt_id,
+            "evidence": goal.last_evidence,
+        },
+    )
+    db.add(intent)
+    # The bell opens the first verified result. The goal card retains every criterion.
+    artifact_id = version_id = None
+    if kind == "completed" and goal.last_evidence:
+        from app.schemas.conversation_goal_criteria import GoalEvidence
+
+        evidence = GoalEvidence.model_validate(goal.last_evidence)
+        first = next((item for item in evidence.checks if item.passed and item.version_id), None)
+        if first:
+            artifact_id, version_id = first.artifact_id, first.version_id
+    await enqueue_goal_transition(
+        db,
+        goal_intent_id=intent.id,
+        goal_id=goal.id,
+        version=goal.version,
+        revision=goal.revision,
+        kind=kind,
+        tenant_id=goal.tenant_id,
+        org_id=goal.org_id,
+        user_id=goal.user_id,
+        conversation_id=goal.conversation_id,
+        run_id=attempt.run_id,
+        artifact_id=artifact_id,
+        version_id=version_id,
     )
 
 
@@ -467,7 +493,7 @@ async def block_goal(
     goal.revision += 1
     if attempt:
         attempt.status = "blocked"
-        _intent(
+        await _intent(
             db,
             goal,
             attempt,
@@ -576,7 +602,7 @@ async def evaluate_goal_attempt(
             goal.status = "completed"
             goal.revision += 1
             attempt.status = "completed"
-            _intent(db, goal, attempt, "completed")
+            await _intent(db, goal, attempt, "completed")
             await db.flush()
             return None
         prior_progress = (previous or {}).get("progress", 0)

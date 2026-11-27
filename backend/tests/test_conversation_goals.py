@@ -16,6 +16,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.authz.org_context import OrgContext
 from app.config import settings
 from app.dependencies import CurrentUser, get_current_user, get_org_context
+from app.models.chat_notification_outbox import ChatNotificationOutbox
 from app.models.conversation import Conversation
 from app.models.conversation_goal import GoalAttempt, GoalTransitionIntent
 from app.models.conversation_run import ConversationRun
@@ -25,6 +26,7 @@ from app.schemas.conversation_scope import ConversationBranchMutation
 from app.services import conversation_goal_service as goals
 from app.services.artifacts.recorder import ArtifactDeltaRecorder, ArtifactRuntimeContext
 from app.services.chat.conversation_mutations import set_active_branch
+from app.services.chat_notification_outbox import drain_chat_notification_outbox
 from app.services.conversation_goal_worker import capture_new_run, enqueue_reserved_followup
 from app.services.conversation_run_queue_claim import claim_next_input
 from tests.artifact_test_helpers import seed_artifact_conversation
@@ -463,6 +465,7 @@ async def test_completed_goal_pins_verified_version_after_artifact_rewrite(
 ) -> None:
     await _goal(client, conversation)
     run = await _start(db, conversation)
+    monkeypatch.setattr(settings, "chat_work_notifications_enabled", True)
     monkeypatch.setattr(settings, "artifact_storage_dir", str(tmp_path / "objects"))
     output_dir = tmp_path / "results"
     recorder = await _recorder(conversation, run, output_dir)
@@ -470,6 +473,13 @@ async def test_completed_goal_pins_verified_version_after_artifact_rewrite(
     (output_dir / "comparison.csv").write_bytes(original)
     assert await recorder.collect_after_tool_result(tool_name="write_file", tool_call_id="file1")
     await _finish(db, run)
+    await goals.evaluate_goal_attempt(db, conversation=conversation, run=run)
+    assert (await db.scalars(select(ChatNotificationOutbox))).one().status == "pending"
+    await db.rollback()
+    assert not list(await db.scalars(select(ChatNotificationOutbox)))
+    assert not await _events(db)
+    await db.refresh(conversation)
+    await db.refresh(run)
     await _settle(db, conversation, run)
     await _settle(db, conversation, run)
     goal = (await client.get(_url(conversation))).json()["goal"]
@@ -481,6 +491,12 @@ async def test_completed_goal_pins_verified_version_after_artifact_rewrite(
     assert events[0].payload["evidence"]["checks"][0]["version_id"] == evidence["version_id"]
     (output_dir / "comparison.csv").write_bytes(b"company,price\nB,3000\n")
     assert await recorder.collect_after_tool_result(tool_name="edit_file", tool_call_id="file2")
+    assert await drain_chat_notification_outbox(db, tenant_id=conversation.tenant_id) == 1
+    await db.commit()
+    assert await drain_chat_notification_outbox(db, tenant_id=conversation.tenant_id) == 0
+    notice = (await client.get("/api/notifications")).json()["items"][0]
+    assert notice["kind"] == "chat_goal.completed"
+    assert (await client.get(f"/api/notifications/{notice['id']}/result")).content == original
     artifact_url = f"{_url(conversation)}/artifacts/{evidence['artifact_id']}"
     url = f"{artifact_url}/versions/{evidence['version_id']}/download"
     downloaded = await client.get(url)

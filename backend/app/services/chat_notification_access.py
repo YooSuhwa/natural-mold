@@ -35,12 +35,12 @@ def _references_checked_version(
     if not isinstance(evidence, dict) or evidence.get("all_passed") is not True:
         return False
     checks = evidence.get("checks")
-    if not isinstance(checks, list):
+    if not isinstance(checks, list) or not all(
+        isinstance(check, dict) and check.get("passed") is True for check in checks
+    ):
         return False
     return any(
-        isinstance(check, dict)
-        and check.get("passed") is True
-        and artifact_id is not None
+        artifact_id is not None
         and check.get("artifact_id") == str(artifact_id)
         and check.get("version_id") == str(version_id)
         and check.get("sha256") == sha256
