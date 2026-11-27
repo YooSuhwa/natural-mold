@@ -527,6 +527,7 @@ async def test_retry_preflight_logs_only_the_request_actually_sent(
     with pytest.raises(expected) as result:
         await consume()
     if stop is asyncio.CancelledError:
+        assert isinstance(result.value, NodeCancelledError)
         assert isinstance(result.value.__cause__, asyncio.CancelledError)
         assert delegation_retry_stopped(result.value)
     assert checks == 2

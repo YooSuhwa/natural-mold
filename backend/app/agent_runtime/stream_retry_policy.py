@@ -91,5 +91,7 @@ def stop_delegation_retry(error: BaseException) -> None:
 def delegation_retry_stopped(error: Exception) -> bool:
     # LangGraph translates cancellation raised inside a model node and chains
     # the original CancelledError. Its parent task must still propagate the stop.
-    original = error.__cause__ if isinstance(error, NodeCancelledError) else error
-    return original is not None and original.__dict__.get("_moldy_stream_attempt_terminal") is True
+    if error.__dict__.get("_moldy_stream_attempt_terminal") is True:
+        return True
+    cause = error.__cause__ if isinstance(error, NodeCancelledError) else None
+    return cause is not None and cause.__dict__.get("_moldy_stream_attempt_terminal") is True
