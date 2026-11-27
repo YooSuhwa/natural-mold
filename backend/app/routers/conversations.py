@@ -5,6 +5,7 @@ from fastapi import APIRouter
 from app.routers import (
     conversation_ag_ui,
     conversation_ag_ui_commands,
+    conversation_ag_ui_v1_read,
     conversation_agent_protocol,
     conversation_agent_protocol_sdk,
     conversation_branches,
@@ -37,6 +38,7 @@ router.include_router(conversation_run_inputs.router)
 router.include_router(conversation_run_steers.router)
 router.include_router(conversation_ag_ui.router)
 router.include_router(conversation_ag_ui_commands.router)
+router.include_router(conversation_ag_ui_v1_read.router)
 router.include_router(conversation_agent_protocol.router)
 router.include_router(conversation_agent_protocol_sdk.router)
 router.include_router(conversation_messages.router)

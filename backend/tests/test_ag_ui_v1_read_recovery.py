@@ -15,6 +15,7 @@ from sqlalchemy import delete, event, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.agent_runtime import checkpointer
+from app.agent_runtime.langgraph_lifecycle_events import lifecycle_protocol_event
 from app.agent_runtime.protocol_events import stored_protocol_event
 from app.auth.cookies import ACTIVE_ORG_COOKIE
 from app.auth.jwt import create_access_token
@@ -70,6 +71,15 @@ async def _seed(db: AsyncSession, client: AsyncClient, *, finished: bool = True)
         )
         await db.flush()
     if finished:
+        completed = lifecycle_protocol_event(
+            run_id=str(run.id), thread_id=str(conversation.id), seq=30, event="completed"
+        )
+        await trace_storage.append_events(
+            db,
+            conversation_id=conversation.id,
+            assistant_msg_id=str(run.id),
+            events_chunk=[dict(completed)],
+        )
         await trace_storage.finalize_turn(db, assistant_msg_id=str(run.id), status="completed")
         await conversation_run_service.transition_run(db, run, "completed")
     else:
@@ -115,7 +125,7 @@ async def test_completed_chat_prefix_and_every_subframe_resume_exactly_once(
         assert resumed.status_code == 200
         assert _sse(resumed.text) == full
 
-    # The underlying source has only two rows. Splitting after *each* frame also
+    # The underlying journal has three source rows. Splitting after *each* frame also
     # reconnects between TEXT_MESSAGE_START and CONTENT from the same source.
     page_params = {**params, "limit": "1"}
     for remaining, expected in enumerate(full, start=1):
@@ -166,6 +176,36 @@ async def test_invalid_cursor_requires_snapshot_without_silently_skipping_or_ree
     assert interrupted.status_code == 409, interrupted.text
     assert "AG_UI_SNAPSHOT_REQUIRED" in interrupted.text
     assert await db.scalar(select(func.count()).select_from(ConversationRun)) == 1
+
+
+async def test_missing_final_source_after_two_committed_answers_requires_snapshot(
+    raw_client: AsyncClient, db: AsyncSession
+) -> None:
+    chat = await _seed(db, raw_client)
+    params = {"runId": str(chat.run_id)}
+    full = await raw_client.get(f"{chat.url}/events", params=params)
+    assert full.status_code == 200, full.text
+    assert full.json()["frames"][-1]["event"]["type"] == "RUN_FINISHED"
+    # Simulate truncating just the last committed journal source. Status is
+    # completed and the two remaining message sources have contiguous ordinals.
+    chunk = MessageEventChunk
+    await db.execute(
+        delete(chunk).where(chunk.assistant_msg_id == str(chat.run_id), chunk.seq_start == 3)
+    )
+    await db.commit()
+    remaining = await db.scalars(
+        select(chunk.seq_start)
+        .where(chunk.assistant_msg_id == str(chat.run_id))
+        .order_by(chunk.seq_start)
+    )
+    assert list(remaining) == [1, 2]
+    run = await db.get(ConversationRun, chat.run_id)
+    assert run is not None and run.status == "completed"
+    for path in ("events", "stream"):
+        response = await raw_client.get(f"{chat.url}/{path}", params=params)
+        assert response.status_code == 409, response.text
+        assert "AG_UI_SNAPSHOT_REQUIRED" in response.text
+        assert "RUN_FINISHED" not in response.text
 
 
 async def test_reads_of_a_silent_worker_leave_stale_decisions_to_the_worker(
