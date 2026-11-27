@@ -11,7 +11,7 @@ import { attachmentToArtifactSummary } from '@/lib/chat/attachment-to-artifact'
 import { getAttachmentTextPreview } from '@/lib/chat/attachment-preview'
 import { useChatConversationId } from '@/components/chat/conversation-context'
 import { useConversationFiles } from '@/lib/hooks/use-conversation-files'
-import type { FileItem, MessageAttachmentBrief } from '@/lib/types'
+import type { ChatImageDescription, FileItem, MessageAttachmentBrief } from '@/lib/types'
 
 /** Unified-files attachment row → the brief the preview cards consume. */
 export function fileItemToBrief(file: FileItem): MessageAttachmentBrief {
@@ -72,11 +72,11 @@ export function MessageAttachmentItem({ brief }: { brief: MessageAttachmentBrief
   const tMessageArtifacts = useTranslations('chat.message.artifacts')
   const [open, setOpen] = useState(false)
 
+  const openLabel = tMessageArtifacts('openLabel', { name: brief.filename })
   if (brief.mime_type.startsWith('image/')) {
-    return <ChatImage src={brief.url} alt={brief.filename} />
+    return <ChatImage src={brief.url} alt={brief.filename} openLabel={openLabel} />
   }
 
-  const openLabel = tMessageArtifacts('openLabel', { name: brief.filename })
   return (
     <>
       <button
@@ -94,6 +94,35 @@ export function MessageAttachmentItem({ brief }: { brief: MessageAttachmentBrief
       <AttachmentPreviewDialog brief={brief} open={open} onOpenChange={setOpen} />
     </>
   )
+}
+
+const descriptionReasons = {
+  policy_denied: 'policyDenied',
+  unavailable: 'unavailable',
+  size_limit: 'sizeLimit',
+  budget: 'budget',
+  timeout: 'timeout',
+  invalid_image: 'invalidImage',
+  provider_error: 'providerError',
+  pending: 'pending',
+  unconfirmed: 'unconfirmed',
+} as const
+
+function ImageDescription({ description }: { description: ChatImageDescription }) {
+  const t = useTranslations('chat.message.artifacts.imageDescription')
+  if (description.status === 'ready') {
+    return (
+      <div className="max-w-prose space-y-1 break-words text-left text-sm">
+        <p className="font-medium">{t('heading')}</p>
+        <p className="whitespace-pre-wrap">{description.text}</p>
+      </div>
+    )
+  }
+
+  const reason = Object.hasOwn(descriptionReasons, description.reason)
+    ? descriptionReasons[description.reason as keyof typeof descriptionReasons]
+    : 'failed'
+  return <p className="moldy-ui-caption max-w-prose text-left text-muted-foreground">{t(reason)}</p>
 }
 
 /** 실행 기록상 모델에 전달되지 않은 첨부 형식(``attachment_form``). */
@@ -144,19 +173,35 @@ export function UserMessageAttachments() {
     const publicId = s.message.metadata.custom.publicMessageId
     return typeof publicId === 'string' ? publicId : s.message.id
   })
-  const { data } = useConversationFiles(conversationId)
-  const files = useMemo<FileItem[]>(() => {
+  const { data, error } = useConversationFiles(conversationId)
+  const files = useMemo(() => {
     if (!messageId) return []
-    return (data ?? []).filter((f) => f.source === 'attached' && f.message_id === messageId)
+    return (data ?? []).flatMap((file) => {
+      if (file.source !== 'attached') return []
+      const uses = file.image_description_uses
+      const use = uses?.find(
+        (entry) => entry.message_id === messageId || entry.runtime_message_id === messageId,
+      )
+      if (!use && file.message_id !== messageId) return []
+      // An upload can be reused on a fork with a different question.
+      const description = uses === undefined ? file.image_description : use?.image_description
+      return [{ file, description }]
+    })
   }, [data, messageId])
 
-  if (files.length === 0) return null
+  const status = error && 'status' in error ? error.status : null
+  const lostAccess = typeof status === 'number' && [401, 403, 404, 410].includes(status)
+  if (lostAccess || files.length === 0) return null
   return (
     <div className="mt-1.5 flex flex-wrap justify-end gap-1.5">
-      {files.map((file) => (
-        <div key={file.id} className="inline-flex flex-col items-end gap-0.5">
+      {files.map(({ file, description }) => (
+        <div key={file.id} className="inline-flex min-w-0 max-w-full flex-col items-end gap-0.5">
           <MessageAttachmentItem brief={fileItemToBrief(file)} />
-          <AttachmentModelInputNote modelInput={file.model_input} />
+          {!error && file.mime_type.startsWith('image/') && description ? (
+            <ImageDescription description={description} />
+          ) : (
+            <AttachmentModelInputNote modelInput={file.model_input} />
+          )}
         </div>
       ))}
     </div>

@@ -19,12 +19,13 @@ import { formatDisplayNumber } from '@/lib/utils/display-format'
 import { SelectField } from './memory-form-fields'
 
 const OFF = 'off'
+const RECALL_MODES = ['off', 'shadow', 'serve'] as const
 
 type PendingChange =
   | { kind: 'choose'; model: MemoryVectorModel; count: number; recounted: boolean }
   | { kind: 'off' }
 
-/** Memories to embed again for `target`: only the current model's vectors are counted. */
+/** Company-wide candidates, before organization restrictions are applied. */
 function reembedCount(status: MemoryVectorStatus, target: MemoryVectorModel): number {
   return status.model?.id === target.id ? status.total - status.embedded : status.total
 }
@@ -35,11 +36,7 @@ function countFromMessage(message: string): number | null {
   return match ? Number(match[1]) : null
 }
 
-/**
- * Plan 15 Q14 "기억 검색 벡터 모델": off or one registered embedding model, chosen for the
- * company (a personal tenant's owner sees the same item). Changing it re-embeds the
- * memories after a confirmation that names how many; keyword recall carries on meanwhile.
- */
+/** The company chooses the embedding model. Each organization opts into recall separately. */
 export function MemoryVectorCard() {
   const t = useTranslations('appSettings.memory.vector')
   const status = useMemoryVectorStatus()
@@ -47,6 +44,23 @@ export function MemoryVectorCard() {
   const { data: user } = useSession()
   const [pending, setPending] = useState<PendingChange | null>(null)
   const data = status.data
+  const recallMode = data?.recall_mode ?? OFF
+  const editableRecallModel = data?.can_manage && data.quality_floor != null ? data.model : null
+
+  function handleRecallMode(value: string) {
+    const mode = RECALL_MODES.find((candidate) => candidate === value)
+    if (!editableRecallModel || !mode || mode === recallMode) return
+    update.mutate(
+      { model_id: editableRecallModel.id, confirm_count: 0, recall_mode: mode },
+      {
+        onSuccess: () => toast.success(t('recallSaved')),
+        onError: (error) => {
+          toast.error(error instanceof Error ? error.message : t('failed'))
+          void status.refetch()
+        },
+      },
+    )
+  }
 
   function handleSelect(value: string) {
     if (!data) return
@@ -145,6 +159,15 @@ export function MemoryVectorCard() {
             disabled={!data.can_manage || data.candidates.length === 0 || update.isPending}
             onChange={handleSelect}
           />
+          <SelectField
+            id="memory-vector-recall-mode"
+            label={t('recallLabel')}
+            description={data.quality_floor != null ? t(`recallHelp.${recallMode}`) : undefined}
+            value={recallMode}
+            options={RECALL_MODES.map((mode) => ({ value: mode, label: t(`recallModes.${mode}`) }))}
+            disabled={!editableRecallModel || update.isPending}
+            onChange={handleRecallMode}
+          />
           {data.candidates.length === 0 ? (
             <p className="text-sm text-muted-foreground" data-testid="memory-vector-no-models">
               {t('noModels')}
@@ -210,10 +233,18 @@ function VectorState({ status }: { status: MemoryVectorStatus }) {
             : t('jobQueued')}
         </p>
       ) : null}
-      {status.model && !status.floor_measured ? (
-        <p className="text-muted-foreground" data-testid="memory-vector-unmeasured">
-          {t('floorUnmeasured')}
-        </p>
+      {status.model ? (
+        status.quality_floor != null ? (
+          <p className="text-muted-foreground">
+            {t('qualityFloor', {
+              floor: formatDisplayNumber(status.quality_floor, { maximumFractionDigits: 8 }),
+            })}
+          </p>
+        ) : (
+          <p className="text-muted-foreground" data-testid="memory-vector-unmeasured">
+            {t('floorUnmeasured')}
+          </p>
+        )
       ) : null}
       {status.other_vectors > 0 ? (
         <p className="text-muted-foreground" data-testid="memory-vector-other">

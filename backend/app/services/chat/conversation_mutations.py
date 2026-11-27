@@ -63,5 +63,9 @@ async def clear_active_branch_override(
 
 async def set_active_branch(db: AsyncSession, target: ConversationBranchMutation) -> None:
     row = await lock_private_conversation(db, target.conversation_id, target.context)
+    if target.checkpoint_id is not None and row.active_branch_checkpoint_id != target.checkpoint_id:
+        from app.services.conversation_goal_service import pause_goal_for_history_change
+
+        await pause_goal_for_history_change(db, row)
     row.active_branch_checkpoint_id = target.checkpoint_id
     await db.flush()

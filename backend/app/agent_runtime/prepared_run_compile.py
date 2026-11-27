@@ -17,7 +17,7 @@ from __future__ import annotations
 
 from collections.abc import Callable, Mapping, Sequence
 from types import MappingProxyType
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from deepagents import create_deep_agent
 from deepagents.middleware.subagents import SubAgentMiddleware
@@ -39,6 +39,10 @@ from app.agent_runtime.prepared_task_middleware import (
 from app.agent_runtime.prepared_task_tool_handler import PreparedStateProjector
 from app.guardrails.middleware import Guard, guard_stack
 from app.guardrails.tool_risk import ToolRiskPolicy, apply_to_agent
+
+if TYPE_CHECKING:
+    from app.agent_runtime.delegated_child_control import ChildTaskLifecycle
+
 
 type Middleware = AgentMiddleware[Any, Any, Any]
 type AdmissionFactory = Callable[[], ChildLaunchAdmission]
@@ -100,6 +104,7 @@ def compile_children(
     parent_middleware: Sequence[Middleware],
     guard: Guard | None = None,
     tool_risk: ToolRiskPolicy | None = None,
+    child_controls: Mapping[str, ChildTaskLifecycle] | None = None,
 ) -> tuple[Mapping[RunnableKey, Any], Mapping[str, tuple[str, ...]]]:
     """Compile every ``(child_id, variant)`` bottom-up; ``None`` compiler means probe."""
 
@@ -113,6 +118,8 @@ def compile_children(
     for child in reversed(by_depth):
         head: list[Middleware] = []
         tail: list[Middleware] = []
+        if child_controls and child.child_id in child_controls:
+            head.append(child_controls[child.child_id].middleware())
         if child.children:
             head.append(
                 PreparedTaskDispatchMiddleware(
@@ -121,6 +128,7 @@ def compile_children(
                     runnables=runnables,
                     projector=projector,
                     admission_factory=admission_factory,
+                    child_controls=child_controls,
                 )
             )
             entries = compiled_subagent_entries(catalog, runnables, child.child_id)
@@ -199,6 +207,7 @@ def compile_root(
     memory: list[str] | None,
     guard: Guard | None = None,
     tool_risk: ToolRiskPolicy | None = None,
+    child_controls: Mapping[str, ChildTaskLifecycle] | None = None,
 ) -> Any:
     """Compile the root with ``[interceptor, *app_middleware]`` as the app slice."""
 
@@ -208,6 +217,7 @@ def compile_root(
         runnables=runnables,
         projector=projector,
         admission_factory=admission_factory,
+        child_controls=child_controls,
     )
     bindings = DeepAgentFactoryBindings(
         create_deep_agent=create_deep_agent,  # type: ignore[arg-type]

@@ -37,6 +37,7 @@ function createProps(
   return {
     conversationId: CONVERSATION_ID,
     activateTransportHydration: vi.fn(),
+    onBranchSelected: vi.fn(),
     streamLoading: false,
     pendingEdit: null,
     pendingReload: null,

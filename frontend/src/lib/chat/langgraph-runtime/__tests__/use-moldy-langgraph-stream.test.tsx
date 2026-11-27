@@ -2197,6 +2197,183 @@ describe('useMoldyLangGraphStream', () => {
     })
   })
 
+  it.each([
+    'recovery_effect_unconfirmed',
+    'recovery_model_attempt_limit',
+    'recovery_model_attempt_unproven',
+  ] as const)('renders reason-specific guidance for %s and omits diagnostics', async (code) => {
+    const { result } = renderHook(
+      () => useMoldyLangGraphStream({ agentId: 'agent', conversationId: 'chat' }),
+      { wrapper: createQueryWrapper() },
+    )
+    const transport = mocks.createMoldyAgentTransport.mock.results.at(-1)?.value as MockTransport
+    act(() => {
+      transport.onState?.({
+        metadata: {
+          latest_run: {
+            id: 'run',
+            status: 'failed',
+            error_code: code,
+            error_message: 'internal diagnostic',
+          },
+        },
+      })
+    })
+    await waitFor(() => {
+      expect(result.current.threadRunNotice).toEqual({
+        id: 'run',
+        status: 'failed',
+        recoveryError: code,
+      })
+      const converter = mocks.useExternalMessageConverter.mock.calls.at(-1)?.[0]
+      expect(converter?.messages).toContainEqual(
+        expect.objectContaining({
+          id: 'moldy-failed-run',
+          content: `recovery.${code}`,
+        }),
+      )
+    })
+  })
+
+  it('replaces cached partial output when the latest run reports an unconfirmed external effect', async () => {
+    const { result, rerender } = renderHook(
+      ({ latestRun }: { latestRun: ConversationRun | null }) =>
+        useMoldyLangGraphStream({
+          agentId: 'agent',
+          conversationId: 'chat',
+          serverLatestRun: latestRun,
+        }),
+      {
+        initialProps: { latestRun: null as ConversationRun | null },
+        wrapper: createQueryWrapper(),
+      },
+    )
+    const transport = mocks.createMoldyAgentTransport.mock.results.at(-1)?.value as MockTransport
+    act(() =>
+      transport.onState?.({
+        metadata: {
+          latest_run: {
+            id: 'run',
+            status: 'failed',
+            error_code: 'partial_model_stream',
+            partial_output: { text: 'draft', tools: [], truncated: false },
+          },
+        },
+      }),
+    )
+    await waitFor(() => expect(result.current.threadRunNotice?.partialOutput?.text).toBe('draft'))
+
+    rerender({
+      latestRun: {
+        id: 'run',
+        status: 'failed',
+        error_code: 'recovery_effect_unconfirmed',
+        error_message: 'internal diagnostic',
+      } as ConversationRun,
+    })
+
+    expect(result.current.threadRunNotice).toEqual({
+      id: 'run',
+      status: 'failed',
+      recoveryError: 'recovery_effect_unconfirmed',
+    })
+    expect(transport.retryFailedInput).not.toHaveBeenCalled()
+    expect(mocks.stream.submit).not.toHaveBeenCalled()
+  })
+
+  it('withholds partial output immediately on a branch switch and ignores late reads from its sibling', async () => {
+    const conversationId = 'conversation-siblings'
+    const partial = { text: 'A only', tools: [], truncated: false }
+    const snapshot = (checkpointId: string) => ({
+      checkpoint: { thread_id: conversationId, checkpoint_id: checkpointId, checkpoint_ns: '' },
+      metadata: {
+        latest_run: {
+          id: 'same-failed-run',
+          status: 'failed',
+          error_code: 'partial_model_stream',
+          ...(checkpointId === 'ck-a' ? { partial_output: partial } : {}),
+        },
+      },
+      values: { messages: [] },
+    })
+    const lookups: ((state: unknown) => void)[] = []
+    mocks.apiFetch.mockImplementation((path: string) =>
+      path.endsWith('/state')
+        ? new Promise((resolve) => lookups.push(resolve))
+        : Promise.resolve({ queue_paused: false, items: [] }),
+    )
+    const { result } = renderHook(
+      () => useMoldyLangGraphStream({ agentId: 'agent-1', conversationId }),
+      { wrapper: createQueryWrapper() },
+    )
+    const transport = mocks.createMoldyAgentTransport.mock.results.at(-1)?.value as MockTransport
+    act(() => transport.onState?.(snapshot('ck-a')))
+    expect(result.current.threadRunNotice?.partialOutput).toEqual(partial)
+
+    act(() => dispatchMoldyBranchSwitched({ conversationId, checkpointId: 'ck-b' }))
+    expect(result.current.threadRunNotice?.partialOutput).toBeNull()
+    act(() => transport.onState?.(snapshot('ck-a')))
+    expect(result.current.threadRunNotice?.partialOutput).toBeNull()
+
+    act(() => dispatchMoldyBranchSwitched({ conversationId, checkpointId: 'ck-a' }))
+    expect(lookups).toHaveLength(2)
+    await act(async () => lookups[1]?.(snapshot('ck-a')))
+    expect(result.current.threadRunNotice?.partialOutput).toEqual(partial)
+    await act(async () => lookups[0]?.(snapshot('ck-b')))
+    expect(result.current.threadRunNotice?.partialOutput).toEqual(partial)
+    expect(mocks.stream.submit).not.toHaveBeenCalled()
+  })
+
+  it('reopens a failed partial turn from the selected checkpoint without issuing a new run', async () => {
+    const conversationId = 'fee5eb94-0861-4d82-b498-ff23cb540c76'
+    const partialOutput = {
+      text: '비교표 첫 행',
+      tools: [{ name: 'send_email', state: 'unknown' }],
+      truncated: false,
+    }
+    const metadata = {
+      latest_run: {
+        id: 'failed-1',
+        status: 'failed',
+        error_code: 'partial_model_stream',
+        partial_output: partialOutput,
+      },
+    }
+    mocks.apiFetch.mockImplementation(async (path: string) =>
+      path.endsWith('/state')
+        ? { metadata, values: { messages: [] } }
+        : { queue_paused: false, items: [] },
+    )
+    const options = { agentId: 'agent-1', conversationId }
+    const first = renderHook(() => useMoldyLangGraphStream(options), {
+      wrapper: createQueryWrapper(),
+    })
+    await waitFor(() =>
+      expect(first.result.current.threadRunNotice?.partialOutput).toEqual(partialOutput),
+    )
+    first.unmount()
+    const reopened = renderHook(() => useMoldyLangGraphStream(options), {
+      wrapper: createQueryWrapper(),
+    })
+    await waitFor(() =>
+      expect(reopened.result.current.threadRunNotice?.partialOutput).toEqual(partialOutput),
+    )
+
+    const transport = mocks.createMoldyAgentTransport.mock.results.at(-1)?.value as MockTransport
+    act(() =>
+      transport.onState?.({
+        metadata: {
+          latest_run: { id: 'failed-1', status: 'failed', error_code: 'partial_model_stream' },
+        },
+        values: { messages: [] },
+      }),
+    )
+    expect(reopened.result.current.threadRunNotice?.partialOutput).toBeNull()
+    expect(mocks.stream.submit).not.toHaveBeenCalled()
+    expect(transport.retryFailedInput).not.toHaveBeenCalled()
+    expect(transport.submitQueuedInput).not.toHaveBeenCalled()
+  })
+
   it('실패한 v3 런을 error_message가 담긴 어시스턴트 에러 알림으로 표시한다 (G2)', async () => {
     // isLoading=true인 채로 failed notice가 도착해도 isRunning이 false여야 한다
     // (threadRunNotice.status !== 'failed' 가드 회귀 방어). 가드가 없으면 isLoading이

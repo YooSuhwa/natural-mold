@@ -4,11 +4,16 @@ import asyncio
 import os
 import re
 import time
+from collections.abc import Awaitable, Callable
+from dataclasses import replace
+from functools import partial
 from pathlib import Path
 
 from langchain_core.tools import BaseTool, StructuredTool
+from pydantic import PrivateAttr
 
 from app.agent_runtime import skill_sandbox
+from app.agent_runtime.goal_sandbox_scope import goal_sandbox_runner_for
 from app.agent_runtime.skill_execution_policy import (
     _expand_shell_vars,
     _prepare_skill_subprocess_args,
@@ -99,14 +104,26 @@ async def _run_sandboxed(
 
     with skill_sandbox.trace_span(ctx.run_id, {"skill_slug": descriptor.slug, **details}) as span:
         try:
-            run = await skill_sandbox.run_in_sandbox(
-                args,
-                skill_dir=skill_dir,
-                output_dir=ctx.output_dir,
-                env=env,
-                timeout_seconds=timeout_seconds,
-                domains=domains,
-            )
+            run = None
+            goal_runner = goal_sandbox_runner_for(ctx.goal_sandbox_run_id)
+            if settings.goal_sandbox_enabled and goal_runner is not None and not domains:
+                run = await goal_runner(
+                    ctx,
+                    descriptor,
+                    args,
+                    skill_dir=skill_dir,
+                    env=env,
+                    timeout_seconds=timeout_seconds,
+                )
+            if run is None:
+                run = await skill_sandbox.run_in_sandbox(
+                    args,
+                    skill_dir=skill_dir,
+                    output_dir=ctx.output_dir,
+                    env=env,
+                    timeout_seconds=timeout_seconds,
+                    domains=domains,
+                )
         except SkillSandboxError as exc:
             await audit("failure", "sandbox_unavailable", error=str(exc))
             raise
@@ -125,6 +142,16 @@ async def _run_sandboxed(
     return run
 
 
+class RootGoalSkillTool(StructuredTool):
+    """The ordinary skill tool with a root-only authorization for retained workspaces."""
+
+    _child_coroutine: Callable[[str, str], Awaitable[str]] = PrivateAttr()
+
+    def for_subagent(self) -> StructuredTool:
+        # Preserve the tool's schema, approvals, risk and any existing descriptions.
+        return self.model_copy(update={"coroutine": self._child_coroutine})
+
+
 def _create_skill_execute_tool(ctx: SkillToolContext) -> BaseTool:
     """스킬 디렉토리에서 Python 스크립트를 실행하는 도구를 생성.
 
@@ -141,7 +168,7 @@ def _create_skill_execute_tool(ctx: SkillToolContext) -> BaseTool:
     api_file_prefix = f"/api/conversations/{ctx.thread_id}/files/" if ctx.thread_id else ""
     _path_re = re.compile(re.escape(str(output_dir)) + r"/([^\s\n]+)") if api_file_prefix else None
 
-    async def execute_in_skill(skill_directory: str, command: str) -> str:
+    async def dispatch(ctx: SkillToolContext, skill_directory: str, command: str) -> str:
         """스킬 디렉토리에서 Python 스크립트를 실행합니다.
 
         Args:
@@ -324,7 +351,11 @@ def _create_skill_execute_tool(ctx: SkillToolContext) -> BaseTool:
 
         return result
 
-    tool = StructuredTool.from_function(
+    async def execute_in_skill(skill_directory: str, command: str) -> str:
+        return await dispatch(ctx, skill_directory, command)
+
+    tool_type = RootGoalSkillTool if ctx.goal_sandbox_run_id else StructuredTool
+    tool = tool_type.from_function(
         coroutine=execute_in_skill,
         name="execute_in_skill",
         description=(
@@ -333,6 +364,8 @@ def _create_skill_execute_tool(ctx: SkillToolContext) -> BaseTool:
             "Output files (images etc.) will be in OUTPUT_FILES."
         ),
     )
+    if isinstance(tool, RootGoalSkillTool):
+        tool._child_coroutine = partial(dispatch, replace(ctx, goal_sandbox_run_id=None))  # noqa: SLF001
     # Which skill a call means decides whether it asks (``app.approvals.tool_modes``).
     attach_parts(
         tool,

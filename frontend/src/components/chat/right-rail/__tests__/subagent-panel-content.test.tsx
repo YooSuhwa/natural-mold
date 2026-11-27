@@ -20,6 +20,10 @@ vi.mock('@/lib/chat/langgraph-runtime/subagent-runtime', () => ({
   useSharedSubagentRuntime: mocks.useSharedSubagentRuntime,
 }))
 
+vi.mock('@/lib/hooks/use-child-tasks', () => ({
+  useChildTasks: () => ({ allowLegacyDetails: true }),
+}))
+
 const streamToken = { stream: 'shared' }
 
 const subagentSnapshot = {

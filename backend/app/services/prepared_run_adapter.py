@@ -51,6 +51,8 @@ from app.authz.agent_execution_scope import AgentExecutionTarget, load_agent_tre
 from app.authz.execution_lock_cursor import LockClass
 from app.authz.org_context import OrgContext
 from app.authz.organization_execution_proof import live_proof
+from app.child_tasks.persistence import has_open_child_tasks
+from app.config import settings
 from app.dependencies import CurrentUser
 from app.error_codes import agent_not_found
 from app.guardrails.approval import has_approval_rules
@@ -79,6 +81,9 @@ def chat_config_resolver(
             checkpoint_id=checkpoint_id,
             include_subagents=False,
         )
+        from app.services.conversation_goal_worker import configure_goal_runtime
+
+        await configure_goal_runtime(db, run, cfg)
         cfg.run_path = await origin_run_path(db, run)  # plan 15 (5.2): a resume keeps its origin
         return cfg
 
@@ -212,6 +217,15 @@ class PreparedRunResolver:
         names = {child.runtime_name: child.display_name for child in resolved.children}
         self.execution_cfg = _execution_metadata(cfg, names)
         refs = [f"llm_credential:{cfg.llm_credential_id}"] if cfg.llm_credential_id else []
+        track_child_tasks = False
+        if resolved.children and cfg.run_path == "chat" and not trigger:
+            track_child_tasks = settings.child_tasks_enabled or (
+                run.source == "resume"
+                and run.parent_run_id is not None
+                and await has_open_child_tasks(
+                    db, context=request.context, conversation_id=run.conversation_id
+                )
+            )
         return build_preparation_inputs(
             PreparedRunSources(
                 cfg=cfg,
@@ -222,6 +236,7 @@ class PreparedRunResolver:
                 children=tuple(resolved.children),
                 memory_prompt=memory_prompt,
                 is_trigger_mode=trigger,
+                track_child_tasks=track_child_tasks,
                 secret_reference_ids=(*refs, *resolved.reference_ids),
                 versions={
                     "agent_updated_at": agent.updated_at.isoformat() if agent.updated_at else "",

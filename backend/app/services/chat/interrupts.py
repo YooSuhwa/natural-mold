@@ -14,6 +14,7 @@ from typing import Any
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.authz.org_context import OrgContext
 from app.models.message_event import MessageEvent
 from app.schemas.conversation import MessageResponse
 from app.services import trace_storage
@@ -377,6 +378,7 @@ async def _hydrate_pending_interrupt_tool_calls(
     *,
     conversation_id: uuid.UUID,
     responses: list[MessageResponse],
+    independent_context: OrgContext | None = None,
 ) -> None:
     """Restore persisted HITL approval cards from append-only trace chunks."""
 
@@ -402,6 +404,14 @@ async def _hydrate_pending_interrupt_tool_calls(
         for record in result.scalars().all()
         if any(mid in response_by_id for mid in (record.linked_message_ids or []))
     ]
+    if independent_context is not None and records:
+        visible = await trace_storage.independent_trace_ids(
+            db,
+            conversation_id,
+            [record.assistant_msg_id for record in records],
+            independent_context,
+        )
+        records = [record for record in records if record.assistant_msg_id in visible]
     if not records:
         return
     events_by_record = await trace_storage.load_events_many(db, records)

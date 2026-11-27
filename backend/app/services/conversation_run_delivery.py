@@ -21,6 +21,7 @@ from app.models.conversation_run import ConversationRun
 from app.services import conversation_run_service, thread_branch_service
 from app.services import conversation_stream_service as stream_service
 from app.services.conversation_audit_service import record_conversation_run_audit
+from app.services.conversation_run_fence import current_run_fence, lock_current_output
 from app.services.conversation_run_task_registry import (
     _tenant_session,
     worker_attr,
@@ -93,19 +94,31 @@ def _redact_run_error_message(text: str, secret_values: set[str]) -> str | None:
     return masked or None
 
 
+async def _publish_owner_events(ctx: StreamCtx, events: list[BrokeredEvent]) -> None:
+    stored = [dict(event) for event in events]
+    fenced = current_run_fence() is not None
+    if fenced:
+        await ctx.persist_cb(stored)
+    for event in events:
+        ctx.broker.publish_nowait(event)
+    if not fenced:
+        await ctx.persist_cb(stored)
+    ctx.trace_sink.extend(stored)
+
+
 async def _publish_error(ctx: StreamCtx, message: str) -> None:
-    compat_seq = 0
-    parsed_events: list[dict[str, Any]] = []
+    events: list[BrokeredEvent] = []
     for chunk in stream_service.error_sse_pair(message):
-        compat_seq = _publish_yielded_chunk_if_needed(
-            ctx,
-            chunk,
-            compat_seq,
-            parsed_events,
-        )
-    if parsed_events:
-        await ctx.persist_cb(parsed_events)
-        ctx.trace_sink.extend(parsed_events)
+        for event_name, event_id, data in _parse_sse_chunk(chunk):
+            events.append(
+                {
+                    "id": event_id or f"{ctx.run_id}-compat-{len(events) + 1}",
+                    "event": event_name,
+                    "data": data,
+                }
+            )
+    if events:
+        await _publish_owner_events(ctx, events)
 
 
 async def _publish_message_end(ctx: StreamCtx, *, status: str) -> None:
@@ -119,10 +132,7 @@ async def _publish_message_end(ctx: StreamCtx, *, status: str) -> None:
         "event": event_names.MESSAGE_END,
         "data": {"usage": {}, "content": "", "status": status},
     }
-    ctx.broker.publish_nowait(event)
-    persisted_event: dict[str, Any] = dict(event)
-    await ctx.persist_cb([persisted_event])
-    ctx.trace_sink.append(persisted_event)
+    await _publish_owner_events(ctx, [event])
 
 
 async def _publish_stale(ctx: StreamCtx, *, reason: str) -> None:
@@ -136,10 +146,7 @@ async def _publish_stale(ctx: StreamCtx, *, reason: str) -> None:
             "last_event_id": ctx.broker.last_event_id,
         },
     }
-    ctx.broker.publish_nowait(event)
-    persisted_event: dict[str, Any] = dict(event)
-    await ctx.persist_cb([persisted_event])
-    ctx.trace_sink.append(persisted_event)
+    await _publish_owner_events(ctx, [event])
 
 
 def _audit_action_for_terminal_status(status: conversation_run_service.RunStatus) -> str | None:
@@ -165,6 +172,13 @@ async def _record_run_audit(
     tenant: TenantScoped,
 ) -> None:
     async with _tenant_session(tenant) as session:
+        await lock_current_output(
+            session,
+            conversation_id=run.conversation_id,
+            run_id=run.id,
+            allow_canceling=True,
+            allow_terminal=status != "running",
+        )
         await record_conversation_run_audit(
             session,
             action=action,
@@ -260,6 +274,14 @@ async def _backfill_turn_attachments(
     from app.services import chat_service
 
     async with _tenant_session(target.context) as session:
+        fence = current_run_fence()
+        if fence is not None:
+            await lock_current_output(
+                session,
+                conversation_id=target.conversation_id,
+                run_id=fence.run_id,
+                allow_terminal=True,
+            )
         conversation = await load_worker_conversation(session, target)
         if conversation is None:
             return

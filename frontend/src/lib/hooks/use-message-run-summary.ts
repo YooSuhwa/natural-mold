@@ -135,7 +135,7 @@ export function useMessageRunSummary(
   const query = useConversationRun(conversationId ?? '', runId, Boolean(conversationId && runId))
   const run = query.data
   return {
-    summary: run ? buildPersistedRunSummary(run.id, run.status, run.metrics) : null,
+    summary: run ? buildPersistedRunSummary(run.id, run.status, run.metrics, run.error_code) : null,
     isLoading: linksQuery.isLoading || query.isLoading,
   }
 }

@@ -29,9 +29,11 @@ from app.exceptions import ValidationError
 from app.models.tool import Tool
 from app.outbound.client import outbound_http_client
 from app.outbound.destination import CredentialDestination, bind_destination
+from app.tenancy.limit_usage import Subject
 from app.tools.domain import ToolDefinition, ToolRunContext
 from app.tools.execution_scope import ToolRunOptions, ToolRunTarget, load_execution_tool
 from app.tools.parameters import FieldDef
+from app.tools.research_errors import RESEARCH_SEARCH_KEYS, public_search_failure
 
 
 class ToolRunError(RuntimeError):
@@ -136,6 +138,12 @@ async def run_tool(
             parameters=validated,
             credentials=credentials,
             http_client=client,
+            search_actor=Subject(
+                tenant_id=target.context.tenant_id,
+                org_id=target.context.org_id,
+                user_id=target.context.user_id,
+                agent_id=None,
+            ),
         )
         with bind_destination(destination):
             result = await definition.runner(ctx)
@@ -149,23 +157,21 @@ async def run_tool(
             http_status=http_status,
             duration_ms=int((time.monotonic() - started) * 1000),
         )
-    except httpx.HTTPStatusError as exc:
-        return ToolRunResult(
-            success=False,
-            error=f"HTTP {exc.response.status_code}: {exc.response.text[:200]}",
-            http_status=exc.response.status_code,
-            duration_ms=int((time.monotonic() - started) * 1000),
-        )
-    except httpx.HTTPError as exc:
-        return ToolRunResult(
-            success=False,
-            error=f"network error: {exc}",
-            duration_ms=int((time.monotonic() - started) * 1000),
-        )
     except Exception as exc:  # noqa: BLE001 — runner errors are user-visible
+        if definition.key in RESEARCH_SEARCH_KEYS:
+            failure = public_search_failure(exc)
+            error, http_status = str(failure), failure.http_status
+        elif isinstance(exc, httpx.HTTPStatusError):
+            http_status = exc.response.status_code
+            error = f"HTTP {http_status}: {exc.response.text[:200]}"
+        elif isinstance(exc, httpx.HTTPError):
+            error = f"network error: {exc}"
+        else:
+            error = f"{type(exc).__name__}: {exc}"
         return ToolRunResult(
             success=False,
-            error=f"{type(exc).__name__}: {exc}",
+            error=error,
+            http_status=http_status,
             duration_ms=int((time.monotonic() - started) * 1000),
         )
     finally:

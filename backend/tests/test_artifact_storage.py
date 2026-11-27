@@ -57,3 +57,28 @@ async def test_local_path_requires_existing_file(tmp_path: Path) -> None:
 
     with pytest.raises(FileNotFoundError):
         await storage.local_path(object_key="conversations/missing/artifact.md")
+
+
+@pytest.mark.asyncio
+async def test_disconnected_writer_cannot_overwrite_a_committed_version(tmp_path: Path) -> None:
+    storage = LocalArtifactStorageBackend(tmp_path / "artifacts")
+    conversation_id, artifact_id = uuid.uuid4(), uuid.uuid4()
+    source = tmp_path / "notes.md"
+
+    async def put(contents: str) -> Path:
+        source.write_text(contents, encoding="utf-8")
+        stored = await storage.put_file(
+            conversation_id=conversation_id,
+            artifact_id=artifact_id,
+            version_number=2,
+            display_name="notes.md",
+            source_path=source,
+            object_version_id=uuid.uuid4(),
+        )
+        return await storage.local_path(object_key=stored.object_key)
+
+    # The old worker's transaction rolled back and both owners allocated v2.
+    committed = await put("current worker")
+    discarded = await put("disconnected worker")
+    assert discarded != committed
+    assert committed.read_text(encoding="utf-8") == "current worker"

@@ -4,8 +4,9 @@ import { useCallback, useEffect, useRef } from 'react'
 import { useQueryClient } from '@tanstack/react-query'
 import type { UseStreamReturn } from '@langchain/react'
 import { useSetAtom } from 'jotai'
-import type { ThreadRunNotice } from './stream-thread-state-projection'
+import { terminalRunNotice, type ThreadRunNotice } from './stream-thread-state-projection'
 import { conversationRunsApi } from '@/lib/api/conversation-runs'
+import { useIndependentJobCancelChoice } from '@/components/chat/independent-job-cancel-provider'
 import { conversationRunKeys } from '@/lib/hooks/use-conversation-runs'
 import { conversationKeys, invalidateConversationNavigators } from '@/lib/hooks/use-conversations'
 import { conversationRuntimeStatusAtom } from '@/lib/stores/chat-navigator-store'
@@ -40,18 +41,20 @@ export function useStreamCancelController<StateType extends object>({
   acceptPendingSubmit,
   setChatCancelInFlight,
 }: UseStreamCancelControllerOptions<StateType>) {
-  const nextCancelAttemptRef = useRef(1)
-  const activeCancelRef = useRef<{ conversationId: string; attemptId: number } | null>(null)
+  const pendingScopeRef = useRef<symbol | null>(null)
+  const activeCancelRef = useRef<symbol | null>(null)
   const cancelFollowRef = useRef<{
     readonly conversationId: string
     readonly runId: string
     readonly abort: AbortController
   } | null>(null)
   const queryClient = useQueryClient()
+  const chooseCancelScope = useIndependentJobCancelChoice(conversationId)
   const setConversationRuntimeStatus = useSetAtom(conversationRuntimeStatusAtom)
 
   useEffect(() => {
     return () => {
+      pendingScopeRef.current = null
       activeCancelRef.current = null
       cancelFollowRef.current?.abort.abort()
       cancelFollowRef.current = null
@@ -62,16 +65,8 @@ export function useStreamCancelController<StateType extends object>({
   const settleRun = useCallback(
     (run: ConversationRun, expectedRunId: string, lifetime: object): void => {
       if (run.id !== expectedRunId || reconciliation.lifetimeRef.current !== lifetime) return
-      if (run.status === 'canceled') {
-        reconciliation.setThreadRunNotice({ id: run.id, status: 'canceled' })
-      } else if (run.status === 'failed') {
-        reconciliation.setThreadRunNotice({
-          id: run.id,
-          status: 'failed',
-          ...(run.error_message ? { errorMessage: run.error_message } : {}),
-        })
-      } else if (run.status === 'stale') {
-        reconciliation.setThreadRunNotice({ id: run.id, status: 'stale' })
+      if (run.status === 'canceled' || run.status === 'failed' || run.status === 'stale') {
+        reconciliation.setThreadRunNotice(terminalRunNotice(run))
       } else if (run.status === 'completed' || run.status === 'interrupted') {
         reconciliation.setThreadRunNotice(null)
       } else {
@@ -101,7 +96,35 @@ export function useStreamCancelController<StateType extends object>({
 
   return useCallback(async (): Promise<void> => {
     const lifetime = reconciliation.lifetime
-    const owner = { conversationId, attemptId: nextCancelAttemptRef.current++ }
+    const owner = Symbol()
+    pendingScopeRef.current = owner
+    const ownsChoice = (): boolean =>
+      pendingScopeRef.current === owner && reconciliation.lifetimeRef.current === lifetime
+    let checkedRun: ConversationRun | null | undefined
+    let includeIndependentJobs = false
+    if (chooseCancelScope) {
+      const candidate = await conversationRunsApi.active(conversationId)
+      if (!ownsChoice()) return
+      checkedRun = candidate
+      if (candidate?.status === 'queued' || candidate?.status === 'running') {
+        const confirmation = chooseCancelScope(candidate.id)
+        if (confirmation) {
+          const scope = await confirmation
+          if (scope === 'dismiss' || !ownsChoice()) return
+          // Keep the stream attached while the dialog is open. A later turn must
+          // never receive a stop intended for the run shown in that dialog.
+          const current = await conversationRunsApi.active(conversationId)
+          if (
+            !ownsChoice() ||
+            current?.id !== candidate.id ||
+            (current.status !== 'queued' && current.status !== 'running')
+          )
+            return
+          checkedRun = current
+          includeIndependentJobs = scope === 'cascade'
+        }
+      }
+    }
     const editAttemptId = reconciliation.getPendingEditAttemptId()
     const reloadAttemptId = reconciliation.getPendingReloadAttemptId()
     let activeRun: Awaited<ReturnType<typeof conversationRunsApi.active>> | null = null
@@ -122,7 +145,8 @@ export function useStreamCancelController<StateType extends object>({
         reportRuntimeFailure(caught, 'cancel_stream_stop_failed')
       }
       try {
-        activeRun = await conversationRunsApi.active(conversationId)
+        activeRun =
+          checkedRun === undefined ? await conversationRunsApi.active(conversationId) : checkedRun
       } catch (caught) {
         reportRuntimeFailure(caught, 'cancel_active_lookup_failed')
         throw caught
@@ -130,7 +154,9 @@ export function useStreamCancelController<StateType extends object>({
       if (!isCurrentAttempt()) return
       if (activeRun) acceptPendingSubmit?.(activeRun.id)
       if (activeRun?.status === 'queued' || activeRun?.status === 'running') {
-        cancelResponse = await conversationRunsApi.cancel(conversationId, activeRun.id)
+        cancelResponse = includeIndependentJobs
+          ? await conversationRunsApi.cancel(conversationId, activeRun.id, true)
+          : await conversationRunsApi.cancel(conversationId, activeRun.id)
       }
       if (!isCurrentAttempt()) return
       if (!activeRun) {
@@ -183,6 +209,7 @@ export function useStreamCancelController<StateType extends object>({
     }
   }, [
     conversationId,
+    chooseCancelScope,
     acceptPendingSubmit,
     queryClient,
     reconciliation,

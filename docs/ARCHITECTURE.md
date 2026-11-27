@@ -1,6 +1,6 @@
 # Moldy Architecture Map
 
-<!-- project-current-source: migration=i39_skill_approval_default; deepagents=0.7.42; ruff=0.16.5; refreshed=2026-11-27 -->
+<!-- project-current-source: migration=i50_chat_model_attempts; deepagents=0.7.42; ruff=0.16.5; refreshed=2026-11-27 -->
 
 > Last updated: 2026-09-10
 > Source basis: current tracked repository source, recent runtime commits, and
@@ -20,7 +20,7 @@ schedule productization.
 | Backend | FastAPI app factory in `backend/app/main.py` and async SQLAlchemy services |
 | Frontend | Next.js 16.2.2 + React 19.2.4 App Router, `next-intl`, TanStack Query, Jotai |
 | Runtime | LangChain 1.x + LangGraph 1.2.24 + `deepagents==0.7.42` (lock: 0.7.42) |
-| Database | PostgreSQL 16, Alembic head `i39_skill_approval_default` |
+| Database | PostgreSQL 16, Alembic head `i50_chat_model_attempts` |
 | Auth | ADR-016 JWT HS256, HttpOnly cookies, CSRF double-submit, refresh rotation, `super_user` |
 | Credentials | Cipher V2 and system/user credential separation |
 | Marketplace | Catalog, install, update, uninstall, publish, ACL, moderation/listing, k-skill importer |
@@ -194,7 +194,7 @@ The current skill runtime is selected-skill based, not a broad `/skills/` mount:
 
 ## Data Model Groups
 
-Alembic head is `i39_skill_approval_default`. The ORM groups tables as follows:
+Alembic head is `i50_chat_model_attempts`. The ORM groups tables as follows:
 
 | Group | Tables / models |
 |-------|-----------------|

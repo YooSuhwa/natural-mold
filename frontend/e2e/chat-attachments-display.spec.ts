@@ -171,6 +171,13 @@ test.describe('Chat attachments display', () => {
     })
     // ...and the stored content is still clean after reload.
     await expect(reloadedUserMsg).not.toContainText('[attachment:')
+    await expect(reloadedUserMsg.getByText('첨부 이미지 설명', { exact: true })).toHaveCount(0)
+    await reloadedUserMsg.getByRole('button', { name: `${imageName} 파일 열기` }).click()
+    const original = page.getByRole('dialog').getByRole('img', { name: imageName })
+    await expect(original).toBeVisible()
+    await expect.poll(() => original.evaluate((img: HTMLImageElement) => img.naturalWidth)).toBe(1)
+    await page.keyboard.press('Escape')
+    await expect(page.getByRole('dialog')).toHaveCount(0)
 
     // 4. Unified /files lists it as a read-only attachment linked to a message (M3).
     const files = (await (

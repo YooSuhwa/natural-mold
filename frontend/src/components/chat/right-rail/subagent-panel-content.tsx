@@ -13,11 +13,33 @@ import { useSharedSubagentRuntime } from '@/lib/chat/langgraph-runtime/subagent-
 import type { SubagentPayload } from '@/lib/stores/chat-right-rail'
 import { chatSubagentNamesAtom, resolveSubagentDisplayName } from '@/lib/stores/chat-subagent-names'
 
+import { useChildTasks } from '@/lib/hooks/use-child-tasks'
+import { ManagedChildTask } from './managed-child-task'
+
 interface Props {
   payload: SubagentPayload
 }
 
 export function SubagentPanelContent({ payload }: Props) {
+  if (payload.conversationId && payload.childTaskId) {
+    return <ManagedChildTask conversationId={payload.conversationId} taskId={payload.childTaskId} />
+  }
+  return payload.conversationId ? (
+    <LegacyChildPanel conversationId={payload.conversationId} payload={payload} />
+  ) : (
+    <StreamSubagentPanel payload={payload} />
+  )
+}
+
+function LegacyChildPanel({ conversationId, payload }: Props & { conversationId: string }) {
+  const t = useTranslations('chat.childTasks')
+  const list = useChildTasks(conversationId)
+  if (list.isPending) return <p role="status">{t('loading')}</p>
+  if (!list.allowLegacyDetails) return <p role="status">{t('unavailable')}</p>
+  return <StreamSubagentPanel payload={payload} />
+}
+
+function StreamSubagentPanel({ payload }: Props) {
   const t = useTranslations('chat.rightRail')
   const runtime = useSharedSubagentRuntime(payload.conversationId)
   const subagent = runtime?.subagentsByToolCallId.get(payload.toolCallId) ?? null

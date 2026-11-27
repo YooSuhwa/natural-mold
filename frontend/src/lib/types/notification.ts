@@ -23,6 +23,24 @@ export type NotificationKind =
   | 'emergency_stop.released'
   | 'memory.consolidation_stopped'
   | 'workflow.notify'
+  | WorkNotificationKind
+
+export type WorkNotificationKind =
+  | 'chat_goal.completed'
+  | 'chat_goal.blocked'
+  | 'chat_task.completed'
+
+/** Resolved on click against the recipient's current organization and file permissions. */
+export interface WorkNotificationDestination {
+  conversation_id: string
+  agent_id: string | null
+  run_id: string
+  goal_id: string | null
+  job_id: string | null
+  artifact_id: string | null
+  version_id: string | null
+  filename: string | null
+}
 
 /** `accessible: false` — the recipient lost access; the server withholds id and name. */
 export interface NotificationTarget {

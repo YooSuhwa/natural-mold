@@ -59,6 +59,12 @@ CHILDREN: Final = MappingProxyType(
         "agent_api_threads": _rule(_CONVERSATION, Parent("agent_deployments", "deployment_id")),
         "agent_purge_cleanup_items": _rule(Parent("agent_purge_receipts", "receipt_id")),
         "artifact_versions": _rule(Parent("conversation_artifacts", "artifact_id")),
+        "image_description_charges": _rule(Parent("conversation_runs", "run_id")),
+        "chat_image_descriptions": _rule(
+            _CONVERSATION,
+            Parent("message_attachments", "attachment_id"),
+            Parent("conversation_runs", "run_id"),
+        ),
         "conversation_history_manifests": _rule(_CONVERSATION),
         "conversation_history_checkpoints": _rule(_MANIFEST, _CONVERSATION),
         "conversation_history_events": _rule(_MANIFEST, _CONVERSATION),
@@ -71,9 +77,24 @@ CHILDREN: Final = MappingProxyType(
             Parent("agents", "agent_id"),
             Parent("conversation_runs", "run_id", optional=True),
         ),
+        "conversation_child_tasks": _rule(
+            Parent("conversation_runs", "run_id"),
+            Parent("conversation_runs", "current_run_id"),
+            Parent("agents", "child_agent_id"),
+        ),
+        "conversation_child_instructions": _rule(Parent("conversation_child_tasks", "child_id")),
         "conversation_run_metrics": _rule(Parent("conversation_runs", "run_id")),
+        "goal_sandbox_reads": _rule(Parent("goal_sandboxes", "workspace_id")),
         "credential_audit_logs": _rule(Parent("credentials", "credential_id")),
         "credential_oauth_states": _rule(Parent("credentials", "credential_id")),
+        "goal_attempts": _rule(
+            Parent("conversation_goals", "goal_id"),
+            Parent("conversation_runs", "run_id"),
+            Parent("conversation_run_inputs", "followup_input_id", optional=True),
+        ),
+        "goal_transition_intents": _rule(
+            Parent("conversation_goals", "goal_id"), Parent("conversation_runs", "run_id")
+        ),
         "marketplace_item_acl": _rule(Parent("marketplace_items", "item_id")),
         "marketplace_versions": _rule(Parent("marketplace_items", "item_id"), catalog_read=True),
         "marketplace_publication_links": _rule(

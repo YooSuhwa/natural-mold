@@ -10,17 +10,23 @@ export interface ServerCheckpointContext {
 }
 
 export interface ThreadStateResponse {
+  readonly checkpoint?: unknown
   readonly metadata?: unknown
   readonly values?: unknown
   readonly tasks?: unknown
   readonly interrupts?: unknown
 }
 
-export async function loadServerThreadState(conversationId: string): Promise<ThreadStateResponse> {
+export async function loadServerThreadState(
+  conversationId: string,
+  options?: { readonly signal?: AbortSignal; readonly readOnly?: boolean },
+): Promise<ThreadStateResponse> {
   const encodedConversationId = encodeURIComponent(conversationId)
-  return await apiFetch<ThreadStateResponse>(
-    `/api/conversations/${encodedConversationId}/langgraph/threads/${encodedConversationId}/state`,
-  )
+  const path = `/api/conversations/${encodedConversationId}/langgraph/threads/${encodedConversationId}/state`
+  if (!options) return apiFetch<ThreadStateResponse>(path)
+  return apiFetch<ThreadStateResponse>(options.readOnly ? `${path}?read_only=true` : path, {
+    signal: options.signal,
+  })
 }
 
 export async function loadServerCheckpointContext(

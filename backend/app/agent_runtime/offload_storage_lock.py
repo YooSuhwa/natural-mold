@@ -97,6 +97,16 @@ def _reject_deleted_conversation(lock_root: int, scope: OffloadMutationScope) ->
     raise OffloadSecurityError(reason="conversation offload storage was deleted")
 
 
+def check_conversation_offloads_active(scope: OffloadMutationScope) -> None:
+    """Check a read-only history fallback without creating control directories or files."""
+    lock_root = open_directory_components(scope.internal_root.parent, ("gc-lock",), create=False)
+    if lock_root is not None:
+        try:
+            _reject_deleted_conversation(lock_root, scope)
+        finally:
+            os.close(lock_root)
+
+
 def _mark_conversation_deleted(lock_root: int, scope: OffloadMutationScope) -> None:
     name = f"{_scope_digest(scope)}.deleted"
     flags = nofollow_flags(os.O_WRONLY | os.O_CREAT | os.O_EXCL)

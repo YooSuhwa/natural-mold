@@ -5,6 +5,7 @@ from dataclasses import dataclass
 
 from pydantic import TypeAdapter
 
+from app.agent_runtime.chat_steer_protocol import uses_steer_channel, valid_stored_steer
 from app.agent_runtime.protocol_egress import project_and_redact_protocol_data
 from app.agent_runtime.protocol_events import (
     StoredProtocolEvent,
@@ -81,6 +82,19 @@ def stored_compatible_protocol_event(
 def stored_events_from_raw(
     request: RawEventProjectionRequest,
 ) -> list[StoredProtocolEvent]:
+    return [
+        event
+        for event in _project_stored_events(request)
+        if not uses_steer_channel(event)
+        or valid_stored_steer(
+            event,
+            conversation_id=request.record.conversation_id,
+            run_id=request.record.assistant_msg_id,
+        )
+    ]
+
+
+def _project_stored_events(request: RawEventProjectionRequest) -> list[StoredProtocolEvent]:
     projected = _JSON.validate_python(
         project_and_redact_protocol_data(
             "protocol_replay",

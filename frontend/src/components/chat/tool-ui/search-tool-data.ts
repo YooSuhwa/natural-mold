@@ -5,6 +5,7 @@ export {
   sanitizeExternalUrl,
   sanitizeThumbnailUrl,
   searchAnswerFromResult,
+  searchProviderFromResult,
   searchItemSnippet,
   searchItemUrl,
   sourceSummariesFromResults,

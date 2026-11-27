@@ -9,7 +9,7 @@ from typing import Any, Protocol, cast
 from deepagents.backends import BackendProtocol, StateBackend
 from deepagents.middleware.async_subagents import AsyncSubAgent
 from deepagents.middleware.filesystem import FilesystemMiddleware, FilesystemPermission
-from deepagents.middleware.subagents import CompiledSubAgent, SubAgent
+from deepagents.middleware.subagents import GENERAL_PURPOSE_SUBAGENT, CompiledSubAgent, SubAgent
 from deepagents.middleware.summarization import create_summarization_middleware
 from langchain.agents.middleware import AgentMiddleware
 from langchain.agents.middleware.human_in_the_loop import InterruptOnConfig
@@ -32,6 +32,8 @@ from app.agent_runtime.deep_agent_middleware_factory import (
 )
 from app.agent_runtime.offload_storage import ScopedOffloadBackend
 from app.agent_runtime.runtime.connection_guard_order import order_connection_guard
+from app.agent_runtime.runtime.goal_run import GoalRunMiddleware
+from app.agent_runtime.skill_executor import RootGoalSkillTool
 from app.approvals.unattended import UnattendedMode, apply_unattended
 from app.guardrails.approval import has_approval_rules, with_approvals
 from app.guardrails.middleware import Guard, guard_stack
@@ -139,6 +141,14 @@ def normalize_declarative_subagents_impl(
 
         child_permissions = spec.get("permissions", permissions)
         child = dict(spec)
+        # The SDK also inherits the parent tool list when a child omits "tools".
+        # Preserve that default except when a root-only workspace must be unbound.
+        child_tools = child.get("tools", tools)
+        if child_tools and any(isinstance(tool, RootGoalSkillTool) for tool in child_tools):
+            child["tools"] = [
+                tool.for_subagent() if isinstance(tool, RootGoalSkillTool) else tool
+                for tool in child_tools
+            ]
         default_actor = (
             general_purpose_actor if spec.get("name") == general_purpose_subagent_name else None
         )
@@ -171,7 +181,10 @@ def normalize_declarative_subagents_impl(
         general_purpose = dict(
             general_purpose_subagent,
             model=model,
-            tools=list(tools),
+            tools=[
+                tool.for_subagent() if isinstance(tool, RootGoalSkillTool) else tool
+                for tool in tools
+            ],
             middleware=general_purpose_middleware,
             permissions=_agent_permissions(general_purpose_middleware, permissions),
             interrupt_on=interrupt_on,
@@ -186,6 +199,42 @@ def normalize_declarative_subagents_impl(
         normalized.insert(0, general_purpose)
 
     return normalized
+
+
+def _guard_implicit_child_retries(
+    normalized: list[dict[str, Any]],
+    supplied: list[dict[str, Any]] | None,
+    root_middleware: Sequence[AgentMiddleware],
+) -> list[dict[str, Any]]:
+    from app.agent_runtime.runtime.direct_stream_retry import DirectStreamRetryMiddleware
+
+    name = GENERAL_PURPOSE_SUBAGENT["name"]
+    if any(child.get("name") == name for child in supplied or ()):
+        return normalized
+    retry = next(
+        (mw for mw in root_middleware if isinstance(mw, DirectStreamRetryMiddleware)), None
+    )
+    if retry is None:
+        return normalized
+    # The synthesized child runs the root's primary model. Linked children
+    # have their own model grants; parent fallback credentials never follow a delegation.
+    return [
+        {
+            **child,
+            "middleware": [
+                *(child.get("middleware") or []),
+                DirectStreamRetryMiddleware(
+                    fallbacks=[],
+                    max_attempts=retry.max_attempts,
+                    check_authority=retry.check_authority,
+                    initial_delay=retry.initial_delay,
+                ),
+            ],
+        }
+        if child.get("name") == name
+        else child
+        for child in normalized
+    ]
 
 
 def _guarded(
@@ -345,6 +394,9 @@ def build_agent_impl(
             interrupt_on=interrupt_on,
             skills=skills,
         )
+        compatible_subagents = _guard_implicit_child_retries(
+            compatible_subagents, subagents, middleware or ()
+        )
         if tool_risk is not None:
             # Company actions per tool risk level, for the root and each child (C5).
             applied = apply_to_agent(
@@ -406,6 +458,22 @@ def build_agent_impl(
                 middleware=list(compatible_middleware),
                 subagents=compatible_subagents,
             )
+    # A prepared task interceptor may execute a child without calling the next wrapper.
+    # Put the goal restriction ahead of it and of application tool emulators in both graphs.
+    goal_checks = [item for item in compatible_middleware if isinstance(item, GoalRunMiddleware)]
+    if goal_checks:
+        compatible_middleware = [
+            *goal_checks,
+            *(item for item in compatible_middleware if not isinstance(item, GoalRunMiddleware)),
+        ]
+    # Recovery-aware graphs are built inside the worker's fenced scope. Keeping this
+    # last puts tool receipts inside the existing guardrail and connection checks.
+    if prepared_task_middleware is None:
+        from app.agent_runtime.recovery_tool_middleware import with_recovery_fence
+
+        compatible_middleware, compatible_subagents = with_recovery_fence(
+            compatible_middleware, compatible_subagents
+        )
     # Structured output (workflow W0) is passed only when asked for, so factories and
     # test doubles that predate it keep their signature.
     extra: dict[str, Any] = {} if response_format is None else {"response_format": response_format}

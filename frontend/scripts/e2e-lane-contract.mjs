@@ -74,6 +74,18 @@ export function buildLaneEnvironment(lane, inheritedEnvironment, project) {
   validateCaptureTour(lane, e2eProject, inheritedEnvironment)
   validateOrgAuthzOptIn(lane, e2eProject, inheritedEnvironment)
   const environment = copySafeEnvironment(inheritedEnvironment, lane)
+  if (environment.E2E_CHAT_GOAL_NOTIFICATIONS !== undefined) {
+    if (
+      environment.E2E_CHAT_GOAL_NOTIFICATIONS !== '1' ||
+      lane !== 'scripted' ||
+      e2eProject !== 'scripted-full'
+    ) {
+      throw new Error('Chat goal notification E2E requires the scripted-full project.')
+    }
+    // backend/app/seed/e2e_scope.py derives this ID from "moldy/e2e-organization".
+    environment.CONVERSATION_GOAL_ORG_IDS = '["a79a6b5b-9a26-5e0a-8d6c-c9977f83f592"]'
+    environment.CHAT_WORK_NOTIFICATIONS_ENABLED = 'true'
+  }
   environment.E2E_LANE = lane
   environment.E2E_PROJECT = e2eProject
   const defaultPorts = getLaneDefaultPorts(lane)
@@ -90,6 +102,10 @@ export function buildLaneEnvironment(lane, inheritedEnvironment, project) {
 
   if (lane === 'scripted') {
     environment.E2E_SCRIPTED_MODEL_ENABLED = 'true'
+    if (e2eProject === 'scripted-full') {
+      environment.CHAT_STEER_ENABLED = 'true'
+      environment.NEXT_PUBLIC_CHAT_STEER_ENABLED = 'true'
+    }
     delete environment.E2E_LLM_BASE_URL
     delete environment.E2E_LLM_API_KEY
     delete environment.E2E_LLM_MODEL

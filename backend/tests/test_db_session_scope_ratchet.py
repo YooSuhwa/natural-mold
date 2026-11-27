@@ -42,6 +42,8 @@ PLATFORM_REASONS: dict[str, str] = {
     "scheduler.run_sweep": "8.9 scheduler: stale-run sweep is platform",
     "scheduler.credential_rotation": "8.9 encryption keys: instance key rotation",
     "scheduler.health_check": "8.9 health checks: health_check_history is platform-write (I-06)",
+    "scheduler.independent_job_approvals": "F05: list pending job routing IDs across companies; "
+    "checkpoints and inbox items are processed in each owner’s tenant session",
     "scheduler.approval_expiry": "순번 13 approvals: lists due requests of every company; "
     "each is handled in its own company session",
     "scheduler.mcp_health": "8.9 MCP poll: lists companies, polls catalog rows (I-06)",
@@ -53,6 +55,8 @@ PLATFORM_REASONS: dict[str, str] = {
     "platform model with a platform credential",
     "guardrail.model_settings": "8.9 instance-wide guardrail model service setting",
     "jobs.worker": "순번 5 job worker: claims due jobs of every company; runs each in its own",
+    "scheduler.chat_notifications": "F03: discover only companies with due inbox notices; "
+    "deliver inside each company session",
     "workflow.chat_resume": "workflow tools: leader lists ended runs a chat waits for, of every "
     "company; each is resumed in its own company session",
     "workflow.schedule_sweep": "workflow schedules: leader lists due schedules of every company; "

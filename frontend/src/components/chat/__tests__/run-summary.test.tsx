@@ -1,8 +1,9 @@
-import { describe, expect, it } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 import userEvent from '@testing-library/user-event'
 import { render as renderWithoutProviders } from '@testing-library/react'
 import { NextIntlClientProvider } from 'next-intl'
 import { render, screen } from '../../../../tests/test-utils'
+import { ChatConversationContext } from '../conversation-context'
 import { RunSummaryPanel } from '../run-summary'
 import type { RunSummary } from '@/lib/chat/run-summary-model'
 import englishMessages from '../../../../messages/en.json'
@@ -62,6 +63,46 @@ describe('RunSummaryPanel', () => {
     expect(rows).toHaveLength(2)
     expect(rows[0]).toHaveTextContent('search')
     expect(rows[1]).toHaveTextContent('researcher')
+  })
+
+  afterEach(() => vi.unstubAllGlobals())
+
+  it('reads only the root response of the selected failed run when opening its history', async () => {
+    const events = [
+      { type: 'TEXT_MESSAGE_CONTENT', delta: '안녕', rawEvent: { namespace: [] } },
+      { type: 'CUSTOM', value: { text: 'private reasoning' } },
+      { type: 'TEXT_MESSAGE_CONTENT', delta: 'child', rawEvent: { namespace: ['child'] } },
+      { type: 'TOOL_CALL_RESULT', content: 'tool payload' },
+      { type: 'TEXT_MESSAGE_CONTENT', delta: '하세요' },
+    ]
+    const body = events
+      .map((event) => `event: ${event.type}\ndata: ${JSON.stringify(event)}\n\n`)
+      .join('')
+    const fetch = vi.fn().mockResolvedValue(
+      new Response(body, {
+        headers: {
+          'X-Run-Id': 'run-1',
+          'X-Resume-Mode': 'replay',
+          'Content-Type': 'text/event-stream',
+        },
+      }),
+    )
+    vi.stubGlobal('fetch', fetch)
+    render(
+      <ChatConversationContext.Provider value="conversation-1">
+        <RunSummaryPanel
+          summary={summary({ status: 'failed', recoveryError: 'recovery_output_started' })}
+        />
+      </ChatConversationContext.Provider>,
+    )
+    expect(fetch).not.toHaveBeenCalled()
+    await userEvent.click(screen.getByRole('button', { name: '활동 보기' }))
+    expect(await screen.findByText('안녕하세요')).toBeInTheDocument()
+    expect(screen.queryByText(/private reasoning|child|tool payload/)).not.toBeInTheDocument()
+    expect(fetch).toHaveBeenCalledExactlyOnceWith(
+      expect.stringContaining('/conversations/conversation-1/runs/run-1/ag-ui-stream'),
+      expect.objectContaining({ method: 'GET', credentials: 'include' }),
+    )
   })
 
   it('formats elapsed time with the active English locale', () => {

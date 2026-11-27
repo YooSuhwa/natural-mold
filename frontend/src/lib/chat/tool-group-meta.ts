@@ -12,6 +12,7 @@
  * 나머지는 그룹 빈도가 낮아 toolName fallback으로 충분.)
  */
 const TOOL_LABEL_KEYS: Readonly<Record<string, string>> = {
+  research_search: 'webSearch',
   tavily_search: 'webSearch',
   web_search: 'webSearch',
   // registry definition_key — 런타임 도구 이름의 실제 폴백값 (tool_factory).
@@ -44,6 +45,7 @@ export function toolGroupLabelKey(toolName: string): string | null {
  * 출처 개념이 없으므로 집계 행을 붙이지 않는다.
  */
 const SEARCH_TOOLS: ReadonlySet<string> = new Set([
+  'research_search',
   'tavily_search',
   'web_search',
   'naver_search_blog',

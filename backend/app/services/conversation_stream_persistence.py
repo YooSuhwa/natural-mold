@@ -7,6 +7,7 @@ from collections.abc import Awaitable, Callable
 from pathlib import Path
 from typing import Any
 
+from app.agent_runtime import event_names
 from app.agent_runtime.event_broker import registry as broker_registry
 from app.agent_runtime.runtime_config import AgentConfig
 from app.authz.org_context import OrgContext
@@ -22,6 +23,11 @@ from app.services.artifact_service import (
     ArtifactRuntimeContext,
     finalize_artifacts_for_run,
     link_artifacts_to_messages,
+)
+from app.services.conversation_run_fence import (
+    RunOwnershipLost,
+    current_run_fence,
+    lock_current_output,
 )
 from app.services.conversation_stream_protocol import StreamCtx, stream_attr
 
@@ -91,6 +97,24 @@ def build_persist_callback(
             return
         try:
             async with tenant_session(tenant, maker=stream_attr("async_session")) as session:
+                run = None
+                if current_run_fence() is not None:
+                    # Cancellation and shutdown each have a final, owner-only marker.
+                    allow_canceling = all(
+                        event.get("event") == event_names.STALE
+                        or (
+                            event.get("event") == event_names.MESSAGE_END
+                            and isinstance(event.get("data"), dict)
+                            and event["data"].get("status") == "canceled"
+                        )
+                        for event in events_chunk
+                    )
+                    run = await lock_current_output(
+                        session,
+                        conversation_id=conversation_id,
+                        run_id=run_id,
+                        allow_canceling=allow_canceling,
+                    )
                 if seen_event_ids is None:
                     seen_event_ids = await trace_storage.load_persisted_event_ids(
                         session, assistant_msg_id=run_id
@@ -111,7 +135,8 @@ def build_persist_callback(
                     except ValueError:
                         run_uuid = None
                     if run_uuid is not None:
-                        run = await session.get(ConversationRun, run_uuid)
+                        if run is None:
+                            run = await session.get(ConversationRun, run_uuid)
                         if run is not None:
                             run.last_event_id = last_id
                             if run.is_active:
@@ -146,6 +171,11 @@ async def finalize_trace(
     final_status: trace_storage.TraceStatus = status or ("completed" if success else "failed")
     trace_record = langfuse_sink[0] if langfuse_sink else None
     async with tenant_session(tenant, maker=stream_attr("async_session")) as session:
+        owned = await lock_current_output(
+            session, conversation_id=conversation_id, run_id=run_id, allow_terminal=True
+        )
+        if owned is not None and (owned.is_active or owned.status != run_status):
+            raise RunOwnershipLost("A committed terminal decision is required to finalize output")
         conversation = await session.get(Conversation, conversation_id)
         if conversation is None:
             return

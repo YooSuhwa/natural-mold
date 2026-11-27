@@ -64,10 +64,14 @@ async def load_pending_interrupt_tasks(
     user_id: uuid.UUID,
     context: OrgContext,
 ) -> list[ThreadTask]:
+    readable_run_ids = await conversation_run_service.readable_conversation_run_ids(
+        db, conversation, context
+    )
     run = await conversation_run_service.get_latest_interrupted_run(
         db,
         conversation_id=conversation.id,
         context=context,
+        readable_run_ids=readable_run_ids,
     )
     if run is None:
         return []

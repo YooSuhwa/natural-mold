@@ -12,6 +12,7 @@ export interface AssistantThreadDynamicContextValue {
   readonly agentName?: string
   readonly builderAgentSubtitle?: string
   readonly deepAgentsState?: DeepAgentsStateSnapshot
+  readonly readOnlyConversation?: boolean
   readonly isBuilder: boolean
   readonly showMessageTimestamp: boolean
   readonly user?: User | null

@@ -29,7 +29,14 @@ STORAGE = frozenset(
     }
 )
 PURPOSES: dict[str, frozenset[str]] = {
-    "run": frozenset({"credentials/run_resolution.py", "agent_runtime/credential_resolution.py"}),
+    "run": frozenset(
+        {
+            "credentials/run_resolution.py",
+            "agent_runtime/credential_resolution.py",
+            # Scoped auxiliary vision call after fresh model, credential and attachment decisions.
+            "services/chat/image_description_provider.py",
+        }
+    ),
     "redaction": frozenset(
         {"credentials/run_resolution.py", "services/conversation_history_secrets.py"}
     ),

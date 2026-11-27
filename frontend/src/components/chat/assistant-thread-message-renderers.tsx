@@ -40,7 +40,8 @@ import { quotedResourcesFromText } from '@/lib/chat/context/quoted-resource-mess
 import { QuotedResourceMessage } from '@/components/chat/side-chat/quoted-resource-message'
 
 function UserMessage() {
-  const { isBuilder, showMessageTimestamp, user } = useAssistantThreadDynamicContext()
+  const { isBuilder, readOnlyConversation, showMessageTimestamp, user } =
+    useAssistantThreadDynamicContext()
   const messageId = useAuiState((s) => s.message?.id)
   const text = useAuiState((s) =>
     s.message.content
@@ -51,8 +52,8 @@ function UserMessage() {
   const quotedResources = quotedResourcesFromText(text)
   const metaRow = (
     <MessageMetaRow>
-      <BranchPicker />
-      <EditButton />
+      {!readOnlyConversation && <BranchPicker />}
+      {!readOnlyConversation && <EditButton />}
       <CopyButton />
       {showMessageTimestamp && <MessageTimestamp />}
     </MessageMetaRow>
@@ -115,6 +116,7 @@ function AssistantMessage() {
     builderAgentSubtitle,
     deepAgentsState,
     isBuilder,
+    readOnlyConversation,
     showMessageTimestamp,
   } = useAssistantThreadDynamicContext()
   const messageId = useAuiState((s) => s.message?.id)
@@ -127,10 +129,10 @@ function AssistantMessage() {
   const isFailedNotice = terminalNotice === 'failed'
   const metaRow = isFailedNotice ? null : (
     <MessageMetaRow>
-      <BranchPicker />
+      {!readOnlyConversation && <BranchPicker />}
       <CopyButton />
       <PinSummaryButton />
-      <RegenerateButton />
+      {!readOnlyConversation && <RegenerateButton />}
       <FeedbackButtons />
       <TokenUsagePopover />
       {showMessageTimestamp && <MessageTimestamp />}
@@ -173,7 +175,7 @@ function AssistantMessage() {
             <div className="moldy-chat-failed-notice-content min-w-0 flex-1 space-y-2">
               <AssistantMessageParts />
               <MessageRunSummary />
-              <RetryButton />
+              {!readOnlyConversation && <RetryButton />}
             </div>
           </div>
         ) : (

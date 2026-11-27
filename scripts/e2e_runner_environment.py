@@ -56,6 +56,11 @@ def _optional_frontend_controls(project: Project) -> dict[str, str]:
         if project != "scripted-full" or org_authz != "1":
             raise E2eContractError("invalid_org_authz")
         controls["E2E_ORG_AUTHZ"] = org_authz
+    goal_notifications = os.environ.get("E2E_CHAT_GOAL_NOTIFICATIONS")
+    if goal_notifications is not None:
+        if project != "scripted-full" or goal_notifications != "1":
+            raise E2eContractError("invalid_chat_goal_notifications")
+        controls["E2E_CHAT_GOAL_NOTIFICATIONS"] = goal_notifications
     return controls
 
 

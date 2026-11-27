@@ -10,9 +10,14 @@ from functools import partial
 from typing import Any, assert_never
 
 from deepagents.middleware.filesystem import FilesystemMiddleware, FilesystemPermission
+from deepagents.middleware.summarization import compute_summarization_defaults
 from langchain_core.language_models import BaseChatModel
 from langchain_core.tools import BaseTool
 
+from app.agent_runtime.archive_summarization import (
+    ArchiveSummarizationMiddleware,
+    LegacyArchiveSummarizationMiddleware,
+)
 from app.agent_runtime.deep_agent_factory import (
     DeepAgentFactoryBindings as _DeepAgentFactoryBindings,
 )
@@ -29,6 +34,7 @@ from app.agent_runtime.deep_agent_factory import (
     with_moldy_deepagents_compatibility_impl as _with_moldy_deepagents_compatibility_impl,
 )
 from app.agent_runtime.filesystem_permissions import add_scoped_offload_permissions
+from app.agent_runtime.offload_storage import ScopedOffloadBackend
 from app.agent_runtime.runtime_facade_bindings import runtime_attr
 from app.agent_runtime.runtime_policy import ResolvedRuntimePolicy
 from app.agent_runtime.runtime_policy_capabilities import STORED_RESERVED_TOOL_NAMES
@@ -166,6 +172,7 @@ def _with_stored_policy_summarization(
     model: BaseChatModel,
     backend: Any,
     runtime_policy: ResolvedRuntimePolicy,
+    archive_chat_history: bool | None = None,
 ) -> list[Any]:
     """Replace any caller summarizer with the snapshotted stored policy."""
 
@@ -175,7 +182,9 @@ def _with_stored_policy_summarization(
     ]
     return [
         *retained,
-        create_stored_summarization_middleware(runtime_policy, model, backend),
+        create_stored_summarization_middleware(
+            runtime_policy, model, backend, archive_chat_history=archive_chat_history
+        ),
     ]
 
 
@@ -188,6 +197,7 @@ def _with_stored_parent_policy(
     todo_enabled: bool,
     model: BaseChatModel,
     runtime_policy: ResolvedRuntimePolicy,
+    archive_chat_history: bool | None = None,
 ) -> list[Any]:
     """Build the top-level stored-policy compatibility stack."""
 
@@ -203,6 +213,7 @@ def _with_stored_parent_policy(
         model=model,
         backend=backend,
         runtime_policy=runtime_policy,
+        archive_chat_history=archive_chat_history,
     )
 
 
@@ -227,6 +238,7 @@ def build_agent(
     unattended: UnattendedMode | None = None,
     response_format: Any | None = None,
     tool_approval: Any | None = None,
+    archive_chat_history: bool | None = None,
 ) -> Any:
     """Build a moldy agent. Returns CompiledStateGraph."""
     effective_permissions = permissions
@@ -252,6 +264,7 @@ def build_agent(
                 todo_enabled=todo_enabled,
                 model=model,
                 runtime_policy=runtime_policy,
+                archive_chat_history=archive_chat_history,
             ),
             normalize_subagents=partial(
                 runtime_attr("_normalize_stored_policy_subagents"),
@@ -259,6 +272,27 @@ def build_agent(
                 todo_enabled=todo_enabled,
             ),
         )
+    elif archive_chat_history is not None:
+        if not isinstance(backend, ScopedOffloadBackend):
+            raise ValueError("chat_archive_owner_required")
+        summarizer = (
+            ArchiveSummarizationMiddleware
+            if archive_chat_history
+            else LegacyArchiveSummarizationMiddleware
+        )
+        middleware = [
+            *(
+                item
+                for item in middleware or ()
+                if _middleware_name_impl(item) != _SUMMARIZATION_MIDDLEWARE_NAME
+            ),
+            summarizer(
+                model=model,
+                backend=backend,
+                trim_tokens_to_summarize=None,
+                **compute_summarization_defaults(model),
+            ),
+        ]
     return _build_agent_impl(
         model=model,
         tools=effective_tools,

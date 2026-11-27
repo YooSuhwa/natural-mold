@@ -19,6 +19,8 @@ from __future__ import annotations
 import re
 from collections.abc import Mapping
 
+from app.agent_runtime.stream_retry_policy import PartialModelStreamError
+
 PREPARED_START_FAILED = "prepared_run_start_failed"
 DENIAL_RUN_ERROR_CODES: Mapping[str, str] = {
     "tenant_suspended": "tenant_suspended",
@@ -68,7 +70,31 @@ def prestart_error_code(error: BaseException | None) -> str | None:
 def run_error_code(error: BaseException | None, default: str) -> str:
     """Durable ``ConversationRun.error_code`` for a failed run."""
 
-    return denial_error_code(error) or prestart_error_code(error) or default
+    from app.agent_runtime.recovery_stream import RecoveryOutputStarted
+    from app.agent_runtime.run_recovery_checkpoint import RecoveryCheckpointBlocked
+    from app.chat_recovery.identity import RecoveryPolicyChanged
+    from app.chat_recovery.model_attempts import RecoveryModelAttemptBlocked
+    from app.chat_recovery.receipts import ToolRecoveryBlocked
+
+    for item in _chain(error):
+        if isinstance(item, RecoveryOutputStarted):
+            return "recovery_output_started"
+        if isinstance(
+            item,
+            (
+                RecoveryPolicyChanged,
+                RecoveryCheckpointBlocked,
+                ToolRecoveryBlocked,
+                RecoveryModelAttemptBlocked,
+            ),
+        ):
+            return item.code
+    denial = denial_error_code(error)
+    if denial is not None:
+        return denial
+    if any(isinstance(item, PartialModelStreamError) for item in _chain(error)):
+        return PartialModelStreamError.code
+    return prestart_error_code(error) or default
 
 
 def inherited_envelope_code(run_error: str | None) -> str | None:

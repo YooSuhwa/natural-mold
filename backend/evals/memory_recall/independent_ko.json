@@ -1,0 +1,3215 @@
+{
+ "seed": 15,
+ "today": "2026-11-07",
+ "annotation": {
+  "purpose": "보고 전용 독립 한국어 장기 기억 검색 평가",
+  "provenance": "가상의 다섯 업무 현장을 위해 직접 작성한 합성 기록과 질문이다. 실사용 대화를 포함하지 않는다.",
+  "gold": "각 화자의 기록에서 질문에 답하는 데 필요한 기록 ID 전체를 표시했다. 같은 말을 쓰더라도 물은 정보를 제공하지 않는 기록은 정답에서 제외했다.",
+  "time": "모든 상대 날짜는 2026년 11월 7일 토요일을 기준으로 하며, 지난주는 월요일부터 일요일까지의 직전 달력 주를 뜻한다.",
+  "multi_turn": "previous는 직전 사용자 발화다. 두 사용자 발화를 합쳐 대상과 질문을 해석한다.",
+  "sampling": "여섯 범주마다 화자 한 명당 다섯 질문을 배정했다. 각 질문에 고유한 정답 그룹을 부여했고 검색 결과를 보기 전에 정답을 정했다. 중요도는 모든 기록에서 2로 고정했다."
+ },
+ "people": [
+  {
+   "id": "hk-exhibits",
+   "who": "시립 자연사박물관의 전시 준비 담당자",
+   "agent": "표본과 관람 프로그램 운영을 기록하는 비서"
+  },
+  {
+   "id": "hk-radio",
+   "who": "마을 라디오의 편성 담당자",
+   "agent": "스튜디오 작업과 현장 방송을 돕는 비서"
+  },
+  {
+   "id": "hk-theater",
+   "who": "순회 인형극단의 무대 담당자",
+   "agent": "소품과 공연 리허설 기록을 맡은 비서"
+  },
+  {
+   "id": "hk-weaving",
+   "who": "공동 직조 공방의 자료실 운영자",
+   "agent": "직물 대여와 수업 준비를 돕는 비서"
+  },
+  {
+   "id": "hk-bikes",
+   "who": "마을 자전거 대여소 운영자",
+   "agent": "자전거 정비와 대여소 운영을 기록하는 비서"
+  }
+ ],
+ "memories": [
+  {
+   "id": "hk-exhibits-m01",
+   "person": "hk-exhibits",
+   "content": "운석 상자 안쪽에 적힌 대여처 반환 코드는 별솔-17이다.",
+   "kind": "fact",
+   "scope": "user",
+   "importance": 2,
+   "occurred_start": null,
+   "occurred_end": null
+  },
+  {
+   "id": "hk-exhibits-m02",
+   "person": "hk-exhibits",
+   "content": "발자국 탁본 예약 명단은 회차마다 여덟 명에서 마감한다.",
+   "kind": "procedure",
+   "scope": "agent",
+   "importance": 2,
+   "occurred_start": null,
+   "occurred_end": null
+  },
+  {
+   "id": "hk-exhibits-m03",
+   "person": "hk-exhibits",
+   "content": "매머드 복원도 원화는 수장고의 평면 서랍 둘째 칸에 눕혀 두었다.",
+   "kind": "fact",
+   "scope": "user",
+   "importance": 2,
+   "occurred_start": null,
+   "occurred_end": null
+  },
+  {
+   "id": "hk-exhibits-m04",
+   "person": "hk-exhibits",
+   "content": "심해 소리 지도 녹음본은 학예실에서 먼저 듣고 나서 음향팀으로 넘기기로 했다.",
+   "kind": "commitment",
+   "scope": "user",
+   "importance": 2,
+   "occurred_start": null,
+   "occurred_end": null
+  },
+  {
+   "id": "hk-exhibits-m05",
+   "person": "hk-exhibits",
+   "content": "곤충 날개 관찰석 의자는 등받이가 낮은 나무 의자로 맞추고 싶다.",
+   "kind": "preference",
+   "scope": "user",
+   "importance": 2,
+   "occurred_start": null,
+   "occurred_end": null
+  },
+  {
+   "id": "hk-exhibits-m06",
+   "person": "hk-exhibits",
+   "content": "호박석은 뚜껑을 닫은 차광함에 넣어 둔다.",
+   "kind": "procedure",
+   "scope": "agent",
+   "importance": 2,
+   "occurred_start": null,
+   "occurred_end": null
+  },
+  {
+   "id": "hk-exhibits-m07",
+   "person": "hk-exhibits",
+   "content": "관람권에는 삼엽충 무늬의 보라색 도장을 찍는다.",
+   "kind": "fact",
+   "scope": "user",
+   "importance": 2,
+   "occurred_start": null,
+   "occurred_end": null
+  },
+  {
+   "id": "hk-exhibits-m08",
+   "person": "hk-exhibits",
+   "content": "교구함으로 반납된 모형은 닦은 뒤 파란 천 위에서 말린다.",
+   "kind": "procedure",
+   "scope": "agent",
+   "importance": 2,
+   "occurred_start": null,
+   "occurred_end": null
+  },
+  {
+   "id": "hk-exhibits-m09",
+   "person": "hk-exhibits",
+   "content": "촉지도는 손끝에 걸리는 금속 테두리가 없는 제품이 좋다.",
+   "kind": "preference",
+   "scope": "user",
+   "importance": 2,
+   "occurred_start": null,
+   "occurred_end": null
+  },
+  {
+   "id": "hk-exhibits-m10",
+   "person": "hk-exhibits",
+   "content": "박편함에는 칸막이가 열두 개 들어간다.",
+   "kind": "fact",
+   "scope": "user",
+   "importance": 2,
+   "occurred_start": null,
+   "occurred_end": null
+  },
+  {
+   "id": "hk-exhibits-m11",
+   "person": "hk-exhibits",
+   "content": "어린 손님이 보호자를 놓치면 안내 직원은 고래뼈 아래 벤치로 함께 가서 보호자를 기다린다.",
+   "kind": "procedure",
+   "scope": "agent",
+   "importance": 2,
+   "occurred_start": null,
+   "occurred_end": null
+  },
+  {
+   "id": "hk-exhibits-m12",
+   "person": "hk-exhibits",
+   "content": "점자 설명은 만져 볼 전시품보다 왼쪽에 놓아 손의 이동 방향을 일정하게 하고 싶다.",
+   "kind": "preference",
+   "scope": "user",
+   "importance": 2,
+   "occurred_start": null,
+   "occurred_end": null
+  },
+  {
+   "id": "hk-exhibits-m13",
+   "person": "hk-exhibits",
+   "content": "제습기 통을 비우는 열쇠는 야간 당직자가 보관한다.",
+   "kind": "fact",
+   "scope": "user",
+   "importance": 2,
+   "occurred_start": null,
+   "occurred_end": null
+  },
+  {
+   "id": "hk-exhibits-m14",
+   "person": "hk-exhibits",
+   "content": "실물 뼈 대신 본을 떠 만든 물건의 이름표에는 속이 빈 마름모를 붙인다.",
+   "kind": "procedure",
+   "scope": "agent",
+   "importance": 2,
+   "occurred_start": null,
+   "occurred_end": null
+  },
+  {
+   "id": "hk-exhibits-m15",
+   "person": "hk-exhibits",
+   "content": "천장에 매단 익룡의 그림자는 입구에서 세 걸음 들어온 바닥의 흰 동그라미에서 가장 선명하다.",
+   "kind": "fact",
+   "scope": "user",
+   "importance": 2,
+   "occurred_start": null,
+   "occurred_end": null
+  },
+  {
+   "id": "hk-exhibits-m16",
+   "person": "hk-exhibits",
+   "content": "광물 야광 전시를 옮기면서 은색 커튼 두 폭을 입구에 겹쳐 달았다.",
+   "kind": "experience",
+   "scope": "user",
+   "importance": 2,
+   "occurred_start": "2026-09-09",
+   "occurred_end": null
+  },
+  {
+   "id": "hk-exhibits-m17",
+   "person": "hk-exhibits",
+   "content": "광물 야광 전시 입구에서 커튼 자락이 들뜨는 바람에 아래쪽에 납작한 추를 달았다.",
+   "kind": "experience",
+   "scope": "user",
+   "importance": 2,
+   "occurred_start": "2026-10-14",
+   "occurred_end": null
+  },
+  {
+   "id": "hk-exhibits-m18",
+   "person": "hk-exhibits",
+   "content": "광물 야광 전시 입구의 빛샘을 살피다가 커튼 위쪽 틈을 검은 펠트로 막았다.",
+   "kind": "experience",
+   "scope": "user",
+   "importance": 2,
+   "occurred_start": "2026-11-06",
+   "occurred_end": null
+  },
+  {
+   "id": "hk-exhibits-m19",
+   "person": "hk-exhibits",
+   "content": "여름 순회전에서 소라 화석 한 쌍의 받침이 흔들려 바닥에 코르크 조각을 끼웠다.",
+   "kind": "experience",
+   "scope": "user",
+   "importance": 2,
+   "occurred_start": "2026-07-18",
+   "occurred_end": "2026-07-19"
+  },
+  {
+   "id": "hk-exhibits-m20",
+   "person": "hk-exhibits",
+   "content": "소라 화석을 다시 꺼내면서 코르크 대신 회색 실리콘 받침을 깔았다.",
+   "kind": "experience",
+   "scope": "user",
+   "importance": 2,
+   "occurred_start": "2026-10-30",
+   "occurred_end": null
+  },
+  {
+   "id": "hk-exhibits-m21",
+   "person": "hk-exhibits",
+   "content": "야외 광물 씻기 체험은 비가 오면 별관 처마 밑으로 옮긴다.",
+   "kind": "procedure",
+   "scope": "agent",
+   "importance": 2,
+   "occurred_start": null,
+   "occurred_end": null
+  },
+  {
+   "id": "hk-exhibits-m22",
+   "person": "hk-exhibits",
+   "content": "조류 깃털 비교판은 솔부엉이 깃과 까치 깃을 나란히 꽂아 둔 판이다.",
+   "kind": "fact",
+   "scope": "user",
+   "importance": 2,
+   "occurred_start": null,
+   "occurred_end": null
+  },
+  {
+   "id": "hk-exhibits-m23",
+   "person": "hk-exhibits",
+   "content": "화석 발굴 놀이 상자의 덮개는 도색이 끝나면 목공실로 직접 가져가기로 했다.",
+   "kind": "commitment",
+   "scope": "user",
+   "importance": 2,
+   "occurred_start": null,
+   "occurred_end": null
+  },
+  {
+   "id": "hk-exhibits-m24",
+   "person": "hk-exhibits",
+   "content": "빙하 모형 유리판의 줄무늬는 얼음이 흐른 방향을 나타낸다.",
+   "kind": "fact",
+   "scope": "user",
+   "importance": 2,
+   "occurred_start": null,
+   "occurred_end": null
+  },
+  {
+   "id": "hk-exhibits-m25",
+   "person": "hk-exhibits",
+   "content": "전시 해설사에게 빌려준 손전등은 퇴근 전 방재실 충전대에 꽂아 둔다.",
+   "kind": "procedure",
+   "scope": "agent",
+   "importance": 2,
+   "occurred_start": null,
+   "occurred_end": null
+  },
+  {
+   "id": "hk-exhibits-m26",
+   "person": "hk-exhibits",
+   "content": "야외 지질 탐방에는 광물 봉투 여섯 장을 담은 회색 주머니를 한 팀에 하나씩 건넨다.",
+   "kind": "fact",
+   "scope": "user",
+   "importance": 2,
+   "occurred_start": null,
+   "occurred_end": null
+  },
+  {
+   "id": "hk-exhibits-m27",
+   "person": "hk-exhibits",
+   "content": "탁본 체험에 쓰는 먹지는 풀이 마를 때까지 선풍기 앞의 집게줄에 널어 둔다.",
+   "kind": "fact",
+   "scope": "user",
+   "importance": 2,
+   "occurred_start": null,
+   "occurred_end": null
+  },
+  {
+   "id": "hk-exhibits-m28",
+   "person": "hk-exhibits",
+   "content": "전시실 청소가 끝나면 모형 유리판에 찍힌 손자국 수를 일지에 적는다.",
+   "kind": "fact",
+   "scope": "user",
+   "importance": 2,
+   "occurred_start": null,
+   "occurred_end": null
+  },
+  {
+   "id": "hk-radio-m01",
+   "person": "hk-radio",
+   "content": "달그림자 재방송은 목요일 밤 열한 시에 나간다.",
+   "kind": "fact",
+   "scope": "agent",
+   "importance": 2,
+   "occurred_start": null,
+   "occurred_end": null
+  },
+  {
+   "id": "hk-radio-m02",
+   "person": "hk-radio",
+   "content": "빗소리 엽서 코너에서 첫 사연을 읽기 직전에 처마에 빗방울 떨어지는 효과음을 튼다.",
+   "kind": "procedure",
+   "scope": "agent",
+   "importance": 2,
+   "occurred_start": null,
+   "occurred_end": null
+  },
+  {
+   "id": "hk-radio-m03",
+   "person": "hk-radio",
+   "content": "스튜디오 녹음본의 파일명은 프로그램명보다 회차 번호를 앞에 두는 편이 찾기 쉽다.",
+   "kind": "preference",
+   "scope": "user",
+   "importance": 2,
+   "occurred_start": null,
+   "occurred_end": null
+  },
+  {
+   "id": "hk-radio-m04",
+   "person": "hk-radio",
+   "content": "파도상자 공용 헤드폰은 검은 파우치에 두고, 진행자 개인 헤드폰은 걸이에 둔다.",
+   "kind": "fact",
+   "scope": "agent",
+   "importance": 2,
+   "occurred_start": null,
+   "occurred_end": null
+  },
+  {
+   "id": "hk-radio-m05",
+   "person": "hk-radio",
+   "content": "동네지도 특집에 쓸 낭독 원고는 금요일 점심 전에 내가 직접 인쇄해 두기로 했다.",
+   "kind": "commitment",
+   "scope": "user",
+   "importance": 2,
+   "occurred_start": null,
+   "occurred_end": null
+  },
+  {
+   "id": "hk-radio-m06",
+   "person": "hk-radio",
+   "content": "대본집에는 현장 수정분만 빨간 연필로 표시한다.",
+   "kind": "procedure",
+   "scope": "agent",
+   "importance": 2,
+   "occurred_start": null,
+   "occurred_end": null
+  },
+  {
+   "id": "hk-radio-m07",
+   "person": "hk-radio",
+   "content": "배터리는 충전이 끝났으면 파란 바구니에, 다 썼으면 회색 바구니에 둔다.",
+   "kind": "fact",
+   "scope": "agent",
+   "importance": 2,
+   "occurred_start": null,
+   "occurred_end": null
+  },
+  {
+   "id": "hk-radio-m08",
+   "person": "hk-radio",
+   "content": "게스트에게는 출연 전 준비 사항을 음성 메시지 한 통으로 안내하는 편이 좋다.",
+   "kind": "preference",
+   "scope": "user",
+   "importance": 2,
+   "occurred_start": null,
+   "occurred_end": null
+  },
+  {
+   "id": "hk-radio-m09",
+   "person": "hk-radio",
+   "content": "신청곡은 한 방송에서 같은 가수 노래를 두 번 고르지 않도록 명단을 확인한다.",
+   "kind": "procedure",
+   "scope": "agent",
+   "importance": 2,
+   "occurred_start": null,
+   "occurred_end": null
+  },
+  {
+   "id": "hk-radio-m10",
+   "person": "hk-radio",
+   "content": "수신함에서 아직 읽지 않은 편지는 다음 편성 회의 전에 내가 따로 모아 놓기로 했다.",
+   "kind": "commitment",
+   "scope": "user",
+   "importance": 2,
+   "occurred_start": null,
+   "occurred_end": null
+  },
+  {
+   "id": "hk-radio-m11",
+   "person": "hk-radio",
+   "content": "외국어 인터뷰는 통역한 한국어 음성보다 원어를 먼저 내보낸다.",
+   "kind": "fact",
+   "scope": "agent",
+   "importance": 2,
+   "occurred_start": null,
+   "occurred_end": null
+  },
+  {
+   "id": "hk-radio-m12",
+   "person": "hk-radio",
+   "content": "협찬 고지는 광고주 상호를 한 번 읽은 다음 한 박자 쉬고 마친다.",
+   "kind": "procedure",
+   "scope": "agent",
+   "importance": 2,
+   "occurred_start": null,
+   "occurred_end": null
+  },
+  {
+   "id": "hk-radio-m13",
+   "person": "hk-radio",
+   "content": "저녁 진행 중 시각을 알릴 때에는 24시간제 대신 ‘밤 아홉 시’처럼 말하고 싶다.",
+   "kind": "preference",
+   "scope": "user",
+   "importance": 2,
+   "occurred_start": null,
+   "occurred_end": null
+  },
+  {
+   "id": "hk-radio-m14",
+   "person": "hk-radio",
+   "content": "무음 사고가 나면 예비 재생기의 연주곡을 먼저 올리고 원인을 살핀다.",
+   "kind": "procedure",
+   "scope": "agent",
+   "importance": 2,
+   "occurred_start": null,
+   "occurred_end": null
+  },
+  {
+   "id": "hk-radio-m15",
+   "person": "hk-radio",
+   "content": "사연을 익명으로 소개할 때는 필명도 지우고 도착한 계절만 덧붙인다.",
+   "kind": "fact",
+   "scope": "agent",
+   "importance": 2,
+   "occurred_start": null,
+   "occurred_end": null
+  },
+  {
+   "id": "hk-radio-m16",
+   "person": "hk-radio",
+   "content": "장날 중계 시험에서는 확성기 소리가 너무 커서 접이식 탁자를 분수대 옆으로 옮겼다.",
+   "kind": "experience",
+   "scope": "user",
+   "importance": 2,
+   "occurred_start": "2026-10-24",
+   "occurred_end": null
+  },
+  {
+   "id": "hk-radio-m17",
+   "person": "hk-radio",
+   "content": "장날 중계 시험을 하다가 빗방울이 떨어져 접이식 탁자를 우체통 옆 차양 아래로 옮겼다.",
+   "kind": "experience",
+   "scope": "user",
+   "importance": 2,
+   "occurred_start": "2026-10-31",
+   "occurred_end": null
+  },
+  {
+   "id": "hk-radio-m18",
+   "person": "hk-radio",
+   "content": "장날 중계 시험은 상인들 짐이 지나는 길을 비워 주려고 꽃집 맞은편 벤치에서 진행했다.",
+   "kind": "experience",
+   "scope": "user",
+   "importance": 2,
+   "occurred_start": "2026-10-03",
+   "occurred_end": null
+  },
+  {
+   "id": "hk-radio-m19",
+   "person": "hk-radio",
+   "content": "청취 모임 전시를 준비하면서 이틀 동안 오래된 선곡표에 찍힌 날짜 도장을 촬영했다.",
+   "kind": "experience",
+   "scope": "user",
+   "importance": 2,
+   "occurred_start": "2026-08-21",
+   "occurred_end": "2026-08-22"
+  },
+  {
+   "id": "hk-radio-m20",
+   "person": "hk-radio",
+   "content": "마감 직전 테이프가 엉켜 구술 녹취 공개를 한 주 늦췄다.",
+   "kind": "experience",
+   "scope": "user",
+   "importance": 2,
+   "occurred_start": "2026-11-06",
+   "occurred_end": null
+  },
+  {
+   "id": "hk-radio-m21",
+   "person": "hk-radio",
+   "content": "바람우체국 첫 회에 들어간 손종 소리는 마을 우편배달부가 녹음해 준 것이다.",
+   "kind": "fact",
+   "scope": "agent",
+   "importance": 2,
+   "occurred_start": null,
+   "occurred_end": null
+  },
+  {
+   "id": "hk-radio-m22",
+   "person": "hk-radio",
+   "content": "견학 학생들이 스튜디오 유리창으로 진행자를 볼 때는 손 팻말로만 인사한다.",
+   "kind": "procedure",
+   "scope": "agent",
+   "importance": 2,
+   "occurred_start": null,
+   "occurred_end": null
+  },
+  {
+   "id": "hk-radio-m23",
+   "person": "hk-radio",
+   "content": "폐기할 턴테이블의 바늘은 음향 동아리에 보내기로 했다.",
+   "kind": "commitment",
+   "scope": "user",
+   "importance": 2,
+   "occurred_start": null,
+   "occurred_end": null
+  },
+  {
+   "id": "hk-radio-m24",
+   "person": "hk-radio",
+   "content": "음향 동아리에 줄 턴테이블 바늘은 흔들리지 않게 작은 코르크 조각에 꽂아서 포장한다.",
+   "kind": "commitment",
+   "scope": "user",
+   "importance": 2,
+   "occurred_start": null,
+   "occurred_end": null
+  },
+  {
+   "id": "hk-radio-m25",
+   "person": "hk-radio",
+   "content": "마을 산책 녹음에서 아이들 발소리가 들리는 마지막 열 초는 자르지 않고 두고 싶다.",
+   "kind": "preference",
+   "scope": "user",
+   "importance": 2,
+   "occurred_start": null,
+   "occurred_end": null
+  },
+  {
+   "id": "hk-radio-m26",
+   "person": "hk-radio",
+   "content": "잔향이 긴 방에서 녹음한 동화는 원본과 보정본을 별도 트랙에 함께 보관한다.",
+   "kind": "fact",
+   "scope": "agent",
+   "importance": 2,
+   "occurred_start": null,
+   "occurred_end": null
+  },
+  {
+   "id": "hk-radio-m27",
+   "person": "hk-radio",
+   "content": "재방송을 줄이는 주에는 화요일 낮 빈 시간을 마을 낱말 퀴즈로 채운다.",
+   "kind": "fact",
+   "scope": "user",
+   "importance": 2,
+   "occurred_start": null,
+   "occurred_end": null
+  },
+  {
+   "id": "hk-radio-m28",
+   "person": "hk-radio",
+   "content": "회차 번호가 겹치는 특집은 달력에 녹음 장소의 색연필 표시로 구분해 놓았다.",
+   "kind": "fact",
+   "scope": "user",
+   "importance": 2,
+   "occurred_start": null,
+   "occurred_end": null
+  },
+  {
+   "id": "hk-radio-m29",
+   "person": "hk-radio",
+   "content": "장날에 빌려 가는 접이식 의자는 스튜디오에서 세 개까지만 내준다.",
+   "kind": "fact",
+   "scope": "user",
+   "importance": 2,
+   "occurred_start": null,
+   "occurred_end": null
+  },
+  {
+   "id": "hk-theater-m01",
+   "person": "hk-theater",
+   "content": "달그림자 투사판 뒷면에 붙은 초록 스티커는 배우가 서는 쪽을 가리킨다.",
+   "kind": "fact",
+   "scope": "user",
+   "importance": 2,
+   "occurred_start": null,
+   "occurred_end": null
+  },
+  {
+   "id": "hk-theater-m02",
+   "person": "hk-theater",
+   "content": "회전무대 원점 표시는 바닥의 두 흰 선이 겹칠 때 확인한다고 큐시트에 적어 둔다.",
+   "kind": "procedure",
+   "scope": "agent",
+   "importance": 2,
+   "occurred_start": null,
+   "occurred_end": null
+  },
+  {
+   "id": "hk-theater-m03",
+   "person": "hk-theater",
+   "content": "물결천 운반 상자는 접힌 천이 구겨지지 않게 세워서 옮긴다.",
+   "kind": "fact",
+   "scope": "user",
+   "importance": 2,
+   "occurred_start": null,
+   "occurred_end": null
+  },
+  {
+   "id": "hk-theater-m04",
+   "person": "hk-theater",
+   "content": "나는 여우 인형 목소리를 맞춰 볼 때 반주 없이 첫 대사만 들어 보는 편이다.",
+   "kind": "preference",
+   "scope": "user",
+   "importance": 2,
+   "occurred_start": null,
+   "occurred_end": null
+  },
+  {
+   "id": "hk-theater-m05",
+   "person": "hk-theater",
+   "content": "첫눈 장면 예비 눈송이는 공연 전에 내가 광목 주머니 두 개에 나눠 담기로 했다.",
+   "kind": "commitment",
+   "scope": "user",
+   "importance": 2,
+   "occurred_start": null,
+   "occurred_end": null
+  },
+  {
+   "id": "hk-theater-m06",
+   "person": "hk-theater",
+   "content": "조종대에는 걸쇠가 두 개 달려 있다. 긴 인형 줄은 오른쪽 걸쇠에 건다.",
+   "kind": "fact",
+   "scope": "user",
+   "importance": 2,
+   "occurred_start": null,
+   "occurred_end": null
+  },
+  {
+   "id": "hk-theater-m07",
+   "person": "hk-theater",
+   "content": "검은막은 밑단이 객석에 보이면 안 되니, 설치 메모에 바닥과 손가락 하나 간격을 남기라고 쓴다.",
+   "kind": "procedure",
+   "scope": "agent",
+   "importance": 2,
+   "occurred_start": null,
+   "occurred_end": null
+  },
+  {
+   "id": "hk-theater-m08",
+   "person": "hk-theater",
+   "content": "손전등극의 집 모형은 뒤쪽 창만 열 수 있게 만들어 뒀다.",
+   "kind": "fact",
+   "scope": "user",
+   "importance": 2,
+   "occurred_start": null,
+   "occurred_end": null
+  },
+  {
+   "id": "hk-theater-m09",
+   "person": "hk-theater",
+   "content": "종이배에는 빛이 비쳐도 번들거리지 않는 무광 물감을 쓰고 싶다.",
+   "kind": "preference",
+   "scope": "user",
+   "importance": 2,
+   "occurred_start": null,
+   "occurred_end": null
+  },
+  {
+   "id": "hk-theater-m10",
+   "person": "hk-theater",
+   "content": "동작보에는 쉬는 박자를 빈칸으로 남기지 않고 작은 동그라미로 표시해 준다.",
+   "kind": "procedure",
+   "scope": "agent",
+   "importance": 2,
+   "occurred_start": null,
+   "occurred_end": null
+  },
+  {
+   "id": "hk-theater-m11",
+   "person": "hk-theater",
+   "content": "장수풍뎅이 소품의 껍질 안에는 쌀알 대신 나무 구슬 세 알이 들어 있다.",
+   "kind": "fact",
+   "scope": "user",
+   "importance": 2,
+   "occurred_start": null,
+   "occurred_end": null
+  },
+  {
+   "id": "hk-theater-m12",
+   "person": "hk-theater",
+   "content": "자막 송출이 멎으면 무대감독이 객석 맨 앞에 큰글씨 대본을 가져다주기로 했다.",
+   "kind": "procedure",
+   "scope": "agent",
+   "importance": 2,
+   "occurred_start": null,
+   "occurred_end": null
+  },
+  {
+   "id": "hk-theater-m13",
+   "person": "hk-theater",
+   "content": "나는 막간에 암전을 길게 두기보다 천장에 별빛을 띄워 두는 연출을 좋아한다.",
+   "kind": "preference",
+   "scope": "user",
+   "importance": 2,
+   "occurred_start": null,
+   "occurred_end": null
+  },
+  {
+   "id": "hk-theater-m14",
+   "person": "hk-theater",
+   "content": "할머니 역 손인형은 등을 굽히면 안경이 흘러내려서 귀 뒤에 고무 고리를 달아 뒀다.",
+   "kind": "fact",
+   "scope": "user",
+   "importance": 2,
+   "occurred_start": null,
+   "occurred_end": null
+  },
+  {
+   "id": "hk-theater-m15",
+   "person": "hk-theater",
+   "content": "나는 박수 소리에 가려지는 마지막 고별사를 관객 퇴장길 벽에도 써 붙이기로 했다.",
+   "kind": "commitment",
+   "scope": "user",
+   "importance": 2,
+   "occurred_start": null,
+   "occurred_end": null
+  },
+  {
+   "id": "hk-theater-m16",
+   "person": "hk-theater",
+   "content": "10월 21일 종이숲 공연의 새 떼 장면에서는 무대 뒤에서 씨앗통을 흔들어 날갯짓 소리를 냈다.",
+   "kind": "experience",
+   "scope": "user",
+   "importance": 2,
+   "occurred_start": "2026-10-21",
+   "occurred_end": null
+  },
+  {
+   "id": "hk-theater-m17",
+   "person": "hk-theater",
+   "content": "9월 12일 종이숲 공연에서 새 떼의 날갯짓은 부채 두 개를 번갈아 펼쳐 표현했다.",
+   "kind": "experience",
+   "scope": "user",
+   "importance": 2,
+   "occurred_start": "2026-09-12",
+   "occurred_end": null
+  },
+  {
+   "id": "hk-theater-m18",
+   "person": "hk-theater",
+   "content": "11월 6일 종이숲 공연 때는 새 떼가 날아가는 소리를 얇은 종이를 펄럭여 냈다.",
+   "kind": "experience",
+   "scope": "user",
+   "importance": 2,
+   "occurred_start": "2026-11-06",
+   "occurred_end": null
+  },
+  {
+   "id": "hk-theater-m19",
+   "person": "hk-theater",
+   "content": "11월 2일부터 3일까지 이틀간 작은 북의 울림을 비교해 보고 북통 아래 펠트 한 장을 깔았다.",
+   "kind": "experience",
+   "scope": "user",
+   "importance": 2,
+   "occurred_start": "2026-11-02",
+   "occurred_end": "2026-11-03"
+  },
+  {
+   "id": "hk-theater-m20",
+   "person": "hk-theater",
+   "content": "10월 31일 작은 북을 연습할 때는 여운이 너무 짧아 채 끝에 감은 천을 한 겹 풀었다.",
+   "kind": "experience",
+   "scope": "user",
+   "importance": 2,
+   "occurred_start": "2026-10-31",
+   "occurred_end": null
+  },
+  {
+   "id": "hk-theater-m21",
+   "person": "hk-theater",
+   "content": "빈 객석에서 아이 눈높이를 확인할 때는 셋째 줄 통로 좌석에 붉은 리본을 묶어 기준점으로 삼는다.",
+   "kind": "procedure",
+   "scope": "agent",
+   "importance": 2,
+   "occurred_start": null,
+   "occurred_end": null
+  },
+  {
+   "id": "hk-theater-m22",
+   "person": "hk-theater",
+   "content": "반딧불이 소품의 배터리 덮개는 손톱으로 밀지 않고 얇은 동전 모서리로 돌려 연다.",
+   "kind": "fact",
+   "scope": "user",
+   "importance": 2,
+   "occurred_start": null,
+   "occurred_end": null
+  },
+  {
+   "id": "hk-theater-m23",
+   "person": "hk-theater",
+   "content": "내가 빗방울 장면의 효과음 세 가지를 이어 붙인 녹음본을 음향석 흰 봉투에 넣어 두기로 했다.",
+   "kind": "commitment",
+   "scope": "user",
+   "importance": 2,
+   "occurred_start": null,
+   "occurred_end": null
+  },
+  {
+   "id": "hk-theater-m24",
+   "person": "hk-theater",
+   "content": "악어 턱을 움직이는 줄은 평소엔 팽팽하게 두지 않고 검지 한 마디만큼 여유를 남긴다.",
+   "kind": "fact",
+   "scope": "user",
+   "importance": 2,
+   "occurred_start": null,
+   "occurred_end": null
+  },
+  {
+   "id": "hk-theater-m25",
+   "person": "hk-theater",
+   "content": "나는 낯선 공연장에서 첫 리허설을 시작하면 조명을 켜기 전에 등장 동선을 한 차례 걸어 보는 게 편하다.",
+   "kind": "preference",
+   "scope": "user",
+   "importance": 2,
+   "occurred_start": null,
+   "occurred_end": null
+  },
+  {
+   "id": "hk-theater-m26",
+   "person": "hk-theater",
+   "content": "객석 안내용 손전등을 가져갈 때에는 조명 가방의 작은 지퍼 칸에 여분 건전지를 넣어 둔다.",
+   "kind": "fact",
+   "scope": "user",
+   "importance": 2,
+   "occurred_start": null,
+   "occurred_end": null
+  },
+  {
+   "id": "hk-theater-m27",
+   "person": "hk-theater",
+   "content": "인형 옷자락이 무대 바닥에 쓸리면 등장 동선을 바꾸기 전에 단을 한 번 접어 본다.",
+   "kind": "fact",
+   "scope": "user",
+   "importance": 2,
+   "occurred_start": null,
+   "occurred_end": null
+  },
+  {
+   "id": "hk-theater-m28",
+   "person": "hk-theater",
+   "content": "종이숲 장면의 나무 기둥 세 개는 가장 굵은 것부터 뒤편 수레에 눕힌다.",
+   "kind": "fact",
+   "scope": "user",
+   "importance": 2,
+   "occurred_start": null,
+   "occurred_end": null
+  },
+  {
+   "id": "hk-weaving-m01",
+   "person": "hk-weaving",
+   "content": "자투리함 정리를 맡으면 손바닥보다 작은 천은 단추 싸개 바구니로 옮긴다.",
+   "kind": "procedure",
+   "scope": "agent",
+   "importance": 2,
+   "occurred_start": null,
+   "occurred_end": null
+  },
+  {
+   "id": "hk-weaving-m02",
+   "person": "hk-weaving",
+   "content": "매듭 사전 원본은 열람대 맨 아래 서랍의 남색 덮개 안에 있다.",
+   "kind": "fact",
+   "scope": "user",
+   "importance": 2,
+   "occurred_start": null,
+   "occurred_end": null
+  },
+  {
+   "id": "hk-weaving-m03",
+   "person": "hk-weaving",
+   "content": "직조일지 첫 장에는 완성 사진보다 실을 걸기 전 빈 베틀 사진을 붙이는 편이다.",
+   "kind": "preference",
+   "scope": "user",
+   "importance": 2,
+   "occurred_start": null,
+   "occurred_end": null
+  },
+  {
+   "id": "hk-weaving-m04",
+   "person": "hk-weaving",
+   "content": "별고리 무늬 도안에서 빈 네모는 북을 쉬고 발판만 바꾸라는 표시다.",
+   "kind": "fact",
+   "scope": "user",
+   "importance": 2,
+   "occurred_start": null,
+   "occurred_end": null
+  },
+  {
+   "id": "hk-weaving-m05",
+   "person": "hk-weaving",
+   "content": "마루장터 시연용으로는 완성된 돗자리와 절반만 엮은 돗자리를 한 장씩 가져가기로 했다.",
+   "kind": "commitment",
+   "scope": "user",
+   "importance": 2,
+   "occurred_start": null,
+   "occurred_end": null
+  },
+  {
+   "id": "hk-weaving-m06",
+   "person": "hk-weaving",
+   "content": "정경틀에는 여섯 바퀴를 돌 때마다 흰 종이집게를 하나씩 꽂아 둔다.",
+   "kind": "fact",
+   "scope": "user",
+   "importance": 2,
+   "occurred_start": null,
+   "occurred_end": null
+  },
+  {
+   "id": "hk-weaving-m07",
+   "person": "hk-weaving",
+   "content": "북집에서 빈 북을 빼면 모서리가 닳은 쪽에 노란 점을 찍어 수선 대기로 돌린다.",
+   "kind": "procedure",
+   "scope": "agent",
+   "importance": 2,
+   "occurred_start": null,
+   "occurred_end": null
+  },
+  {
+   "id": "hk-weaving-m08",
+   "person": "hk-weaving",
+   "content": "씨실에는 매끈한 면사보다 오돌토돌한 삼베실을 섞어 손끝에 결이 남게 하는 편이 좋다.",
+   "kind": "preference",
+   "scope": "user",
+   "importance": 2,
+   "occurred_start": null,
+   "occurred_end": null
+  },
+  {
+   "id": "hk-weaving-m09",
+   "person": "hk-weaving",
+   "content": "눈금끈은 쓸 때마다 다리미판 옆 놋쇠 고리에 걸어 말린다.",
+   "kind": "fact",
+   "scope": "user",
+   "importance": 2,
+   "occurred_start": null,
+   "occurred_end": null
+  },
+  {
+   "id": "hk-weaving-m10",
+   "person": "hk-weaving",
+   "content": "조각보와 함께 들어온 설명 쪽지는 천에 핀으로 꽂지 말고 같은 번호의 투명 주머니에 넣는다.",
+   "kind": "procedure",
+   "scope": "agent",
+   "importance": 2,
+   "occurred_start": null,
+   "occurred_end": null
+  },
+  {
+   "id": "hk-weaving-m11",
+   "person": "hk-weaving",
+   "content": "회원이 남은 원단을 기증할 때는 종이띠로 감싼 뒤 만든 사람의 별칭을 적어야 접수한다.",
+   "kind": "procedure",
+   "scope": "agent",
+   "importance": 2,
+   "occurred_start": null,
+   "occurred_end": null
+  },
+  {
+   "id": "hk-weaving-m12",
+   "person": "hk-weaving",
+   "content": "외부 체험 부스에는 전기가 들지 않고 걸상 위에 올려 쓸 수 있는 손베틀을 가져간다.",
+   "kind": "preference",
+   "scope": "user",
+   "importance": 2,
+   "occurred_start": null,
+   "occurred_end": null
+  },
+  {
+   "id": "hk-weaving-m13",
+   "person": "hk-weaving",
+   "content": "겉과 속의 무늬가 다른 천은 견본 카드 두 장을 한 쌍으로 만들어 각각 반대 면이 드러나게 붙인다.",
+   "kind": "procedure",
+   "scope": "agent",
+   "importance": 2,
+   "occurred_start": null,
+   "occurred_end": null
+  },
+  {
+   "id": "hk-weaving-m14",
+   "person": "hk-weaving",
+   "content": "어린이 수강생이 씨실을 세게 당기면 양 끝에 연필 한 자루씩을 대어 폭을 유지한다.",
+   "kind": "procedure",
+   "scope": "agent",
+   "importance": 2,
+   "occurred_start": null,
+   "occurred_end": null
+  },
+  {
+   "id": "hk-weaving-m15",
+   "person": "hk-weaving",
+   "content": "자료실 유리창 아래 선반에는 색이 바랠 염려가 없는 무염색 연습포만 놓는다.",
+   "kind": "fact",
+   "scope": "user",
+   "importance": 2,
+   "occurred_start": null,
+   "occurred_end": null
+  },
+  {
+   "id": "hk-weaving-m16",
+   "person": "hk-weaving",
+   "content": "줄무늬 견본 교환회에서 포장 안에 색상 이름만 적혀 있어 참가자들과 실 굵기를 연필로 덧썼다.",
+   "kind": "experience",
+   "scope": "user",
+   "importance": 2,
+   "occurred_start": "2026-10-15",
+   "occurred_end": null
+  },
+  {
+   "id": "hk-weaving-m17",
+   "person": "hk-weaving",
+   "content": "줄무늬 견본 교환회에서 얇은 카드 모서리가 접혀 반출할 때 뒷면에 두꺼운 판지를 한 장씩 댔다.",
+   "kind": "experience",
+   "scope": "user",
+   "importance": 2,
+   "occurred_start": "2026-09-12",
+   "occurred_end": null
+  },
+  {
+   "id": "hk-weaving-m18",
+   "person": "hk-weaving",
+   "content": "큰 베틀 발판에서 삐걱거리는 소리가 나서 느슨한 가죽 연결끈 하나를 짧게 매어 보았다.",
+   "kind": "experience",
+   "scope": "user",
+   "importance": 2,
+   "occurred_start": "2026-11-06",
+   "occurred_end": null
+  },
+  {
+   "id": "hk-weaving-m19",
+   "person": "hk-weaving",
+   "content": "큰 베틀 발판이 제자리로 올라오지 않아 밑에 끼어 있던 나무 실패를 꺼냈다.",
+   "kind": "experience",
+   "scope": "user",
+   "importance": 2,
+   "occurred_start": "2026-10-29",
+   "occurred_end": null
+  },
+  {
+   "id": "hk-weaving-m20",
+   "person": "hk-weaving",
+   "content": "여름 방학 동안 사흘간 헌 셔츠를 찢어 방석을 엮는 수업을 했다. 첫날에는 단추부터 모두 떼어 모았다.",
+   "kind": "experience",
+   "scope": "user",
+   "importance": 2,
+   "occurred_start": "2026-08-20",
+   "occurred_end": "2026-08-22"
+  },
+  {
+   "id": "hk-weaving-m21",
+   "person": "hk-weaving",
+   "content": "반납받는 띠베틀은 세로실을 풀지 않은 상태로 사진을 남긴 뒤 공동 선반 위쪽에 놓는다.",
+   "kind": "procedure",
+   "scope": "agent",
+   "importance": 2,
+   "occurred_start": null,
+   "occurred_end": null
+  },
+  {
+   "id": "hk-weaving-m22",
+   "person": "hk-weaving",
+   "content": "상설 촉감 표본 네 장은 거친 순서대로 줄에 꿰고 맨 오른쪽 끝에 매듭 두 개를 지어 방향을 표시했다.",
+   "kind": "fact",
+   "scope": "user",
+   "importance": 2,
+   "occurred_start": null,
+   "occurred_end": null
+  },
+  {
+   "id": "hk-weaving-m23",
+   "person": "hk-weaving",
+   "content": "탈색한 커튼 천으로 만든 가림막은 개막 전날 창틀이 긁히지 않도록 안쪽 고리에 펠트를 감아 두기로 했다.",
+   "kind": "commitment",
+   "scope": "user",
+   "importance": 2,
+   "occurred_start": null,
+   "occurred_end": null
+  },
+  {
+   "id": "hk-weaving-m24",
+   "person": "hk-weaving",
+   "content": "직물 낭독회에서는 작품 제목을 먼저 밝히지 않고 듣는 이가 천을 한 번 만져 본 다음에 소개하는 방식을 좋아한다.",
+   "kind": "preference",
+   "scope": "user",
+   "importance": 2,
+   "occurred_start": null,
+   "occurred_end": null
+  },
+  {
+   "id": "hk-weaving-m25",
+   "person": "hk-weaving",
+   "content": "실 타래를 풀다가 중간에 멈추면 남은 고리를 종이 심에 통째로 끼운 뒤 양 끝을 한쪽 홈에 함께 넣는다.",
+   "kind": "procedure",
+   "scope": "agent",
+   "importance": 2,
+   "occurred_start": null,
+   "occurred_end": null
+  },
+  {
+   "id": "hk-weaving-m26",
+   "person": "hk-weaving",
+   "content": "마루장터에서 돌아온 베틀 발판은 바닥의 푸른 자리에 한 줄로 세워 둔다.",
+   "kind": "fact",
+   "scope": "user",
+   "importance": 2,
+   "occurred_start": null,
+   "occurred_end": null
+  },
+  {
+   "id": "hk-weaving-m27",
+   "person": "hk-weaving",
+   "content": "회원들이 맡긴 수선용 실패는 기증받은 실과 섞이지 않게 문가 나무 궤짝에 담는다.",
+   "kind": "fact",
+   "scope": "user",
+   "importance": 2,
+   "occurred_start": null,
+   "occurred_end": null
+  },
+  {
+   "id": "hk-weaving-m28",
+   "person": "hk-weaving",
+   "content": "견본 교환회에 빈 봉투를 가져온 사람에게는 공방 이름을 찍은 종이띠를 나눠 준다.",
+   "kind": "fact",
+   "scope": "user",
+   "importance": 2,
+   "occurred_start": null,
+   "occurred_end": null
+  },
+  {
+   "id": "hk-bikes-m01",
+   "person": "hk-bikes",
+   "content": "대여소에서 '바람개비 점검표' 원본은 정비대 오른쪽에 달린 회색 집게판에 둔다.",
+   "kind": "fact",
+   "scope": "user",
+   "importance": 2,
+   "occurred_start": null,
+   "occurred_end": null
+  },
+  {
+   "id": "hk-bikes-m02",
+   "person": "hk-bikes",
+   "content": "순환 대여권 잔여 횟수는 종이 카드 뒷면을 보고 확인한다.",
+   "kind": "procedure",
+   "scope": "agent",
+   "importance": 2,
+   "occurred_start": null,
+   "occurred_end": null
+  },
+  {
+   "id": "hk-bikes-m03",
+   "person": "hk-bikes",
+   "content": "나는 길 안내에 '모래내 우회로' 대신 큰 물레방아 그림을 넣어 달라고 했다.",
+   "kind": "preference",
+   "scope": "user",
+   "importance": 2,
+   "occurred_start": null,
+   "occurred_end": null
+  },
+  {
+   "id": "hk-bikes-m04",
+   "person": "hk-bikes",
+   "content": "분실물 장부 첫 칸에는 물건을 주운 자전거의 별칭을 적는다.",
+   "kind": "fact",
+   "scope": "user",
+   "importance": 2,
+   "occurred_start": null,
+   "occurred_end": null
+  },
+  {
+   "id": "hk-bikes-m05",
+   "person": "hk-bikes",
+   "content": "초보 교실 신청자가 여덟 명을 넘으면 나는 강사 한 명을 더 부르기로 했다.",
+   "kind": "commitment",
+   "scope": "user",
+   "importance": 2,
+   "occurred_start": null,
+   "occurred_end": null
+  },
+  {
+   "id": "hk-bikes-m06",
+   "person": "hk-bikes",
+   "content": "공기주입기는 대여소 마당 느티나무 옆에 묶어 뒀다.",
+   "kind": "fact",
+   "scope": "user",
+   "importance": 2,
+   "occurred_start": null,
+   "occurred_end": null
+  },
+  {
+   "id": "hk-bikes-m07",
+   "person": "hk-bikes",
+   "content": "수신호부터 익힌 사람에게는 연습 마당을 혼자 돌 수 있게 해 준다.",
+   "kind": "procedure",
+   "scope": "agent",
+   "importance": 2,
+   "occurred_start": null,
+   "occurred_end": null
+  },
+  {
+   "id": "hk-bikes-m08",
+   "person": "hk-bikes",
+   "content": "안장에는 높이를 구별할 수 있게 숫자 대신 동물 모양 스티커를 붙이는 편이 좋다.",
+   "kind": "preference",
+   "scope": "user",
+   "importance": 2,
+   "occurred_start": null,
+   "occurred_end": null
+  },
+  {
+   "id": "hk-bikes-m09",
+   "person": "hk-bikes",
+   "content": "화물칸으로 쓰는 검정 상자 안에는 미끄럼 방지 매트가 깔려 있다.",
+   "kind": "fact",
+   "scope": "user",
+   "importance": 2,
+   "occurred_start": null,
+   "occurred_end": null
+  },
+  {
+   "id": "hk-bikes-m10",
+   "person": "hk-bikes",
+   "content": "보조바퀴와 함께 나가는 공구는 반납할 때 노란 주머니에 모은다.",
+   "kind": "procedure",
+   "scope": "agent",
+   "importance": 2,
+   "occurred_start": null,
+   "occurred_end": null
+  },
+  {
+   "id": "hk-bikes-m11",
+   "person": "hk-bikes",
+   "content": "나는 해 질 무렵에는 전조등을 켠 모습을 사진으로 남기길 원한다.",
+   "kind": "preference",
+   "scope": "user",
+   "importance": 2,
+   "occurred_start": null,
+   "occurred_end": null
+  },
+  {
+   "id": "hk-bikes-m12",
+   "person": "hk-bikes",
+   "content": "외발 받침대가 뻑뻑하면 자전거를 내보내기 전에 빨간 고리를 손잡이에 건다.",
+   "kind": "procedure",
+   "scope": "agent",
+   "importance": 2,
+   "occurred_start": null,
+   "occurred_end": null
+  },
+  {
+   "id": "hk-bikes-m13",
+   "person": "hk-bikes",
+   "content": "긴 치마를 입은 이용자를 위해 뒤쪽 바퀴에 옷자락 가리개를 단 모델을 따로 뒀다.",
+   "kind": "fact",
+   "scope": "user",
+   "importance": 2,
+   "occurred_start": null,
+   "occurred_end": null
+  },
+  {
+   "id": "hk-bikes-m14",
+   "person": "hk-bikes",
+   "content": "반납 기한은 자물쇠 열쇠에 매단 연두색 꼬리표에 찍혀 있다.",
+   "kind": "fact",
+   "scope": "user",
+   "importance": 2,
+   "occurred_start": null,
+   "occurred_end": null
+  },
+  {
+   "id": "hk-bikes-m15",
+   "person": "hk-bikes",
+   "content": "비를 맞은 헬멧은 수건으로 닦은 뒤 선반의 맨 아래 칸에서 말린다.",
+   "kind": "procedure",
+   "scope": "agent",
+   "importance": 2,
+   "occurred_start": null,
+   "occurred_end": null
+  },
+  {
+   "id": "hk-bikes-m16",
+   "person": "hk-bikes",
+   "content": "강변 순회 정비 때는 헐거워진 짐받침 나사를 다시 조였다.",
+   "kind": "experience",
+   "scope": "user",
+   "importance": 2,
+   "occurred_start": "2026-09-12",
+   "occurred_end": null
+  },
+  {
+   "id": "hk-bikes-m17",
+   "person": "hk-bikes",
+   "content": "강변 순회 정비에선 뒷바퀴 흙받이가 떨려 고정 고무를 끼웠다.",
+   "kind": "experience",
+   "scope": "user",
+   "importance": 2,
+   "occurred_start": "2026-10-17",
+   "occurred_end": null
+  },
+  {
+   "id": "hk-bikes-m18",
+   "person": "hk-bikes",
+   "content": "강변 순회 정비에서는 닳은 왼쪽 페달을 새것으로 바꿨다.",
+   "kind": "experience",
+   "scope": "user",
+   "importance": 2,
+   "occurred_start": "2026-11-06",
+   "occurred_end": null
+  },
+  {
+   "id": "hk-bikes-m19",
+   "person": "hk-bikes",
+   "content": "주말 길잡이 모임은 자갈이 쏟아진 둑길을 피해 수차 광장에서 출발했다.",
+   "kind": "experience",
+   "scope": "user",
+   "importance": 2,
+   "occurred_start": "2026-10-31",
+   "occurred_end": null
+  },
+  {
+   "id": "hk-bikes-m20",
+   "person": "hk-bikes",
+   "content": "이틀 동안 벌인 대여함 표지 시험에서 흰 바탕에 남색 글씨가 가장 멀리서 보였다.",
+   "kind": "experience",
+   "scope": "user",
+   "importance": 2,
+   "occurred_start": "2026-11-02",
+   "occurred_end": "2026-11-03"
+  },
+  {
+   "id": "hk-bikes-m21",
+   "person": "hk-bikes",
+   "content": "아동용 대여 자전거에서 쓰는 깃대는 조립한 상태로 창고 천장 걸이에 건다.",
+   "kind": "fact",
+   "scope": "user",
+   "importance": 2,
+   "occurred_start": null,
+   "occurred_end": null
+  },
+  {
+   "id": "hk-bikes-m22",
+   "person": "hk-bikes",
+   "content": "종주 증서에는 출발 장소의 도장과 도착 장소의 도장이 모두 있어야 한다.",
+   "kind": "procedure",
+   "scope": "agent",
+   "importance": 2,
+   "occurred_start": null,
+   "occurred_end": null
+  },
+  {
+   "id": "hk-bikes-m23",
+   "person": "hk-bikes",
+   "content": "완주자의 종주 증서는 먹이 번지지 않게 입구 건조대에서 말린다.",
+   "kind": "procedure",
+   "scope": "agent",
+   "importance": 2,
+   "occurred_start": null,
+   "occurred_end": null
+  },
+  {
+   "id": "hk-bikes-m24",
+   "person": "hk-bikes",
+   "content": "나는 양손으로 방향을 잡는 법을 보여 줄 때 앞모습보다 타는 사람 뒤에서 찍은 영상을 선호한다.",
+   "kind": "preference",
+   "scope": "user",
+   "importance": 2,
+   "occurred_start": null,
+   "occurred_end": null
+  },
+  {
+   "id": "hk-bikes-m25",
+   "person": "hk-bikes",
+   "content": "우리 모임의 긴 거리 지도는 휴대용 가방에 넣을 수 있도록 여덟 면으로 접혀 있다.",
+   "kind": "fact",
+   "scope": "user",
+   "importance": 2,
+   "occurred_start": null,
+   "occurred_end": null
+  },
+  {
+   "id": "hk-bikes-m26",
+   "person": "hk-bikes",
+   "content": "대여 종료 안내 방송은 마감 십오 분 전에 한 번, 오 분 전에 한 번 하기로 했다.",
+   "kind": "commitment",
+   "scope": "user",
+   "importance": 2,
+   "occurred_start": null,
+   "occurred_end": null
+  },
+  {
+   "id": "hk-bikes-m27",
+   "person": "hk-bikes",
+   "content": "반납함에 남은 장갑은 분실물 장부의 뒷장에 크기와 무늬를 그려 둔다.",
+   "kind": "fact",
+   "scope": "user",
+   "importance": 2,
+   "occurred_start": null,
+   "occurred_end": null
+  },
+  {
+   "id": "hk-bikes-m28",
+   "person": "hk-bikes",
+   "content": "연습용 지도에서 강변 길이 갈라지는 곳은 세모 대신 겹화살표로 표시했다.",
+   "kind": "fact",
+   "scope": "user",
+   "importance": 2,
+   "occurred_start": null,
+   "occurred_end": null
+  },
+  {
+   "id": "hk-bikes-m29",
+   "person": "hk-bikes",
+   "content": "짐받침에 유아용 발판을 붙인 기종은 연습 마당 바깥에서만 빌려 준다.",
+   "kind": "fact",
+   "scope": "user",
+   "importance": 2,
+   "occurred_start": null,
+   "occurred_end": null
+  }
+ ],
+ "questions": [
+  {
+   "id": "hk-exhibits-q01",
+   "person": "hk-exhibits",
+   "category": "same_word",
+   "question": "운석 상자 안쪽에 적힌 반환 코드 좀 불러줘.",
+   "previous": null,
+   "gold": [
+    "hk-exhibits-m01"
+   ],
+   "group": "g-hk-exhibits-q01",
+   "split": "report"
+  },
+  {
+   "id": "hk-exhibits-q02",
+   "person": "hk-exhibits",
+   "category": "same_word",
+   "question": "발자국 탁본 예약 명단에 한 회차당 몇 명까지 받아?",
+   "previous": null,
+   "gold": [
+    "hk-exhibits-m02"
+   ],
+   "group": "g-hk-exhibits-q02",
+   "split": "report"
+  },
+  {
+   "id": "hk-exhibits-q03",
+   "person": "hk-exhibits",
+   "category": "same_word",
+   "question": "매머드 복원도 원화를 어느 서랍에 넣었더라?",
+   "previous": null,
+   "gold": [
+    "hk-exhibits-m03"
+   ],
+   "group": "g-hk-exhibits-q03",
+   "split": "report"
+  },
+  {
+   "id": "hk-exhibits-q04",
+   "person": "hk-exhibits",
+   "category": "same_word",
+   "question": "심해 소리 지도 녹음본을 음향팀에 넘기기 전에 어디서 들어 보기로 했지?",
+   "previous": null,
+   "gold": [
+    "hk-exhibits-m04"
+   ],
+   "group": "g-hk-exhibits-q04",
+   "split": "report"
+  },
+  {
+   "id": "hk-exhibits-q05",
+   "person": "hk-exhibits",
+   "category": "same_word",
+   "question": "곤충 날개 관찰석 의자를 주문하려는데, 내가 골라 둔 건 어떤 거야?",
+   "previous": null,
+   "gold": [
+    "hk-exhibits-m05"
+   ],
+   "group": "g-hk-exhibits-q05",
+   "split": "report"
+  },
+  {
+   "id": "hk-exhibits-q06",
+   "person": "hk-exhibits",
+   "category": "particle",
+   "question": "호박석을 어디에 보관하지?",
+   "previous": null,
+   "gold": [
+    "hk-exhibits-m06"
+   ],
+   "group": "g-hk-exhibits-q06",
+   "split": "report"
+  },
+  {
+   "id": "hk-exhibits-q07",
+   "person": "hk-exhibits",
+   "category": "particle",
+   "question": "관람권에 찍는 도장은 무슨 색이었지?",
+   "previous": null,
+   "gold": [
+    "hk-exhibits-m07"
+   ],
+   "group": "g-hk-exhibits-q07",
+   "split": "report"
+  },
+  {
+   "id": "hk-exhibits-q08",
+   "person": "hk-exhibits",
+   "category": "particle",
+   "question": "교구함에서 꺼낸 반납품은 씻고 어디에 널지?",
+   "previous": null,
+   "gold": [
+    "hk-exhibits-m08"
+   ],
+   "group": "g-hk-exhibits-q08",
+   "split": "report"
+  },
+  {
+   "id": "hk-exhibits-q09",
+   "person": "hk-exhibits",
+   "category": "particle",
+   "question": "촉지도를 고를 때 내가 피하고 싶다고 한 마감이 뭐야?",
+   "previous": null,
+   "gold": [
+    "hk-exhibits-m09"
+   ],
+   "group": "g-hk-exhibits-q09",
+   "split": "report"
+  },
+  {
+   "id": "hk-exhibits-q10",
+   "person": "hk-exhibits",
+   "category": "particle",
+   "question": "박편함마다 칸막이를 몇 개씩 주문할까?",
+   "previous": null,
+   "gold": [
+    "hk-exhibits-m10"
+   ],
+   "group": "g-hk-exhibits-q10",
+   "split": "report"
+  },
+  {
+   "id": "hk-exhibits-q11",
+   "person": "hk-exhibits",
+   "category": "paraphrase",
+   "question": "길 잃은 아이를 만났을 때 데려다줄 약속 장소가 어디였더라?",
+   "previous": null,
+   "gold": [
+    "hk-exhibits-m11"
+   ],
+   "group": "g-hk-exhibits-q11",
+   "split": "report"
+  },
+  {
+   "id": "hk-exhibits-q12",
+   "person": "hk-exhibits",
+   "category": "paraphrase",
+   "question": "앞을 보기 어려운 분이 손끝으로 읽는 글은 대상의 어느 편에 둘까?",
+   "previous": null,
+   "gold": [
+    "hk-exhibits-m12"
+   ],
+   "group": "g-hk-exhibits-q12",
+   "split": "report"
+  },
+  {
+   "id": "hk-exhibits-q13",
+   "person": "hk-exhibits",
+   "category": "paraphrase",
+   "question": "공기 중 습기를 모으는 장비에서 물을 빼려면 누구한테 가서 잠금을 풀어 달라고 해야 해?",
+   "previous": null,
+   "gold": [
+    "hk-exhibits-m13"
+   ],
+   "group": "g-hk-exhibits-q13",
+   "split": "report"
+  },
+  {
+   "id": "hk-exhibits-q14",
+   "person": "hk-exhibits",
+   "category": "paraphrase",
+   "question": "진품과 복제품을 구별하는 기호 중 후자를 나타내는 건 어떤 모양이야?",
+   "previous": null,
+   "gold": [
+    "hk-exhibits-m14"
+   ],
+   "group": "g-hk-exhibits-q14",
+   "split": "report"
+  },
+  {
+   "id": "hk-exhibits-q15",
+   "person": "hk-exhibits",
+   "category": "paraphrase",
+   "question": "공중을 나는 옛 파충류의 실루엣을 또렷하게 보려면 관람객이 어느 지점에 서야 해?",
+   "previous": null,
+   "gold": [
+    "hk-exhibits-m15"
+   ],
+   "group": "g-hk-exhibits-q15",
+   "split": "report"
+  },
+  {
+   "id": "hk-exhibits-q16",
+   "person": "hk-exhibits",
+   "category": "time",
+   "question": "두 달 전 광물 야광 전시를 옮길 때 입구에 뭐 달았지?",
+   "previous": null,
+   "gold": [
+    "hk-exhibits-m16"
+   ],
+   "group": "g-hk-exhibits-q16",
+   "split": "report"
+  },
+  {
+   "id": "hk-exhibits-q17",
+   "person": "hk-exhibits",
+   "category": "time",
+   "question": "지난달 광물 야광 전시 입구를 어떻게 손봤더라?",
+   "previous": null,
+   "gold": [
+    "hk-exhibits-m17"
+   ],
+   "group": "g-hk-exhibits-q17",
+   "split": "report"
+  },
+  {
+   "id": "hk-exhibits-q18",
+   "person": "hk-exhibits",
+   "category": "time",
+   "question": "어제 광물 야광 전시 입구에서 틈 막을 때 썼던 재료가 뭐야?",
+   "previous": null,
+   "gold": [
+    "hk-exhibits-m18"
+   ],
+   "group": "g-hk-exhibits-q18",
+   "split": "report"
+  },
+  {
+   "id": "hk-exhibits-q19",
+   "person": "hk-exhibits",
+   "category": "time",
+   "question": "지난여름 소라 화석 받침이 덜컹거릴 때 뭘로 고쳤지?",
+   "previous": null,
+   "gold": [
+    "hk-exhibits-m19"
+   ],
+   "group": "g-hk-exhibits-q19",
+   "split": "report"
+  },
+  {
+   "id": "hk-exhibits-q20",
+   "person": "hk-exhibits",
+   "category": "time",
+   "question": "지난주에 다시 전시한 소라 화석에는 어떤 받침을 썼어?",
+   "previous": null,
+   "gold": [
+    "hk-exhibits-m20"
+   ],
+   "group": "g-hk-exhibits-q20",
+   "split": "report"
+  },
+  {
+   "id": "hk-exhibits-q21",
+   "person": "hk-exhibits",
+   "category": "multi_turn",
+   "question": "비가 오면 어디로 옮겨?",
+   "previous": "야외에서 아이들이 광물을 씻어 보는 체험 말이야.",
+   "gold": [
+    "hk-exhibits-m21"
+   ],
+   "group": "g-hk-exhibits-q21",
+   "split": "report"
+  },
+  {
+   "id": "hk-exhibits-q22",
+   "person": "hk-exhibits",
+   "category": "multi_turn",
+   "question": "거기엔 어떤 두 종류를 나란히 놓았지?",
+   "previous": "새 깃털 비교판 앞에서 들려줄 해설을 다듬고 있어.",
+   "gold": [
+    "hk-exhibits-m22"
+   ],
+   "group": "g-hk-exhibits-q22",
+   "split": "report"
+  },
+  {
+   "id": "hk-exhibits-q23",
+   "person": "hk-exhibits",
+   "category": "multi_turn",
+   "question": "다 끝나면 내가 어디로 가져가기로 했지?",
+   "previous": "화석 발굴 놀이 상자 덮개에 칠하던 페인트 얘기인데.",
+   "gold": [
+    "hk-exhibits-m23"
+   ],
+   "group": "g-hk-exhibits-q23",
+   "split": "report"
+  },
+  {
+   "id": "hk-exhibits-q24",
+   "person": "hk-exhibits",
+   "category": "multi_turn",
+   "question": "거기 그어진 선은 뭘 뜻했지?",
+   "previous": "빙하 모형 위에 덮은 유리판을 닦았어.",
+   "gold": [
+    "hk-exhibits-m24"
+   ],
+   "group": "g-hk-exhibits-q24",
+   "split": "report"
+  },
+  {
+   "id": "hk-exhibits-q25",
+   "person": "hk-exhibits",
+   "category": "multi_turn",
+   "question": "다 쓴 뒤 어디다 두면 돼?",
+   "previous": "해설사분들이 빌려 쓴 손전등이 한데 모였네.",
+   "gold": [
+    "hk-exhibits-m25"
+   ],
+   "group": "g-hk-exhibits-q25",
+   "split": "report"
+  },
+  {
+   "id": "hk-exhibits-q26",
+   "person": "hk-exhibits",
+   "category": "unrelated",
+   "question": "운석 상자를 돌려줄 때 붙일 택배 보험의 보상 한도를 정한 적 있어?",
+   "previous": null,
+   "gold": [],
+   "group": "g-hk-exhibits-q26",
+   "split": "report"
+  },
+  {
+   "id": "hk-exhibits-q27",
+   "person": "hk-exhibits",
+   "category": "unrelated",
+   "question": "곤충 날개를 비스듬히 비추는 조명 전구의 규격도 기록해 뒀나?",
+   "previous": null,
+   "gold": [],
+   "group": "g-hk-exhibits-q27",
+   "split": "report"
+  },
+  {
+   "id": "hk-exhibits-q28",
+   "person": "hk-exhibits",
+   "category": "unrelated",
+   "question": "우리 시가 이번 겨울에 운행할 야간버스의 첫 운행일이 언제야?",
+   "previous": null,
+   "gold": [],
+   "group": "g-hk-exhibits-q28",
+   "split": "report"
+  },
+  {
+   "id": "hk-exhibits-q29",
+   "person": "hk-exhibits",
+   "category": "unrelated",
+   "question": "표본 운반 수레 바퀴를 교체한 업체 이름 기억해?",
+   "previous": null,
+   "gold": [],
+   "group": "g-hk-exhibits-q29",
+   "split": "report"
+  },
+  {
+   "id": "hk-exhibits-q30",
+   "person": "hk-exhibits",
+   "category": "unrelated",
+   "question": "다음 공룡 강연 수어 통역 신청은 며칠까지 받는지 알아?",
+   "previous": null,
+   "gold": [],
+   "group": "g-hk-exhibits-q30",
+   "split": "report"
+  },
+  {
+   "id": "hk-radio-q01",
+   "person": "hk-radio",
+   "category": "same_word",
+   "question": "달그림자 재방송은 목요일 몇 시였죠?",
+   "previous": null,
+   "gold": [
+    "hk-radio-m01"
+   ],
+   "group": "g-hk-radio-q01",
+   "split": "report"
+  },
+  {
+   "id": "hk-radio-q02",
+   "person": "hk-radio",
+   "category": "same_word",
+   "question": "빗소리 엽서 코너 첫 사연 앞에 어떤 소리를 넣었지?",
+   "previous": null,
+   "gold": [
+    "hk-radio-m02"
+   ],
+   "group": "g-hk-radio-q02",
+   "split": "report"
+  },
+  {
+   "id": "hk-radio-q03",
+   "person": "hk-radio",
+   "category": "same_word",
+   "question": "스튜디오 녹음본의 파일명 첫머리에 뭘 쓰면 내가 찾기 편하다고 했지?",
+   "previous": null,
+   "gold": [
+    "hk-radio-m03"
+   ],
+   "group": "g-hk-radio-q03",
+   "split": "report"
+  },
+  {
+   "id": "hk-radio-q04",
+   "person": "hk-radio",
+   "category": "same_word",
+   "question": "파도상자 공용 헤드폰은 어디에 보관하면 돼?",
+   "previous": null,
+   "gold": [
+    "hk-radio-m04"
+   ],
+   "group": "g-hk-radio-q04",
+   "split": "report"
+  },
+  {
+   "id": "hk-radio-q05",
+   "person": "hk-radio",
+   "category": "same_word",
+   "question": "동네지도 특집 낭독 원고 인쇄는 내가 언제까지 하기로 했어?",
+   "previous": null,
+   "gold": [
+    "hk-radio-m05"
+   ],
+   "group": "g-hk-radio-q05",
+   "split": "report"
+  },
+  {
+   "id": "hk-radio-q06",
+   "person": "hk-radio",
+   "category": "particle",
+   "question": "대본집을 고칠 때 표시 색깔은 뭐였더라?",
+   "previous": null,
+   "gold": [
+    "hk-radio-m06"
+   ],
+   "group": "g-hk-radio-q06",
+   "split": "report"
+  },
+  {
+   "id": "hk-radio-q07",
+   "person": "hk-radio",
+   "category": "particle",
+   "question": "배터리가 하나 필요한데, 어느 색 바구니에서 꺼내야 바로 쓸 수 있지?",
+   "previous": null,
+   "gold": [
+    "hk-radio-m07"
+   ],
+   "group": "g-hk-radio-q07",
+   "split": "report"
+  },
+  {
+   "id": "hk-radio-q08",
+   "person": "hk-radio",
+   "category": "particle",
+   "question": "게스트한테 미리 안내할 때 내가 편하다고 한 전달 방식이 뭐야?",
+   "previous": null,
+   "gold": [
+    "hk-radio-m08"
+   ],
+   "group": "g-hk-radio-q08",
+   "split": "report"
+  },
+  {
+   "id": "hk-radio-q09",
+   "person": "hk-radio",
+   "category": "particle",
+   "question": "신청곡을 추릴 때 같은 가수 건 몇 번까지 틀 수 있지?",
+   "previous": null,
+   "gold": [
+    "hk-radio-m09"
+   ],
+   "group": "g-hk-radio-q09",
+   "split": "report"
+  },
+  {
+   "id": "hk-radio-q10",
+   "person": "hk-radio",
+   "category": "particle",
+   "question": "수신함에 남은 편지는 언제까지 내가 모으기로 했죠?",
+   "previous": null,
+   "gold": [
+    "hk-radio-m10"
+   ],
+   "group": "g-hk-radio-q10",
+   "split": "report"
+  },
+  {
+   "id": "hk-radio-q11",
+   "person": "hk-radio",
+   "category": "paraphrase",
+   "question": "다른 나라 말로 대화한 걸 들려줄 때 청취자가 맨 처음 듣는 건 번역된 버전이야, 현지 말이야?",
+   "previous": null,
+   "gold": [
+    "hk-radio-m11"
+   ],
+   "group": "g-hk-radio-q11",
+   "split": "report"
+  },
+  {
+   "id": "hk-radio-q12",
+   "person": "hk-radio",
+   "category": "paraphrase",
+   "question": "돈을 보탠 업체를 소개할 때 이름을 몇 차례 불러 주는 게 우리 방식이었어?",
+   "previous": null,
+   "gold": [
+    "hk-radio-m12"
+   ],
+   "group": "g-hk-radio-q12",
+   "split": "report"
+  },
+  {
+   "id": "hk-radio-q13",
+   "person": "hk-radio",
+   "category": "paraphrase",
+   "question": "해가 진 뒤 마이크 앞에서 21:00을 내가 어떤 식으로 풀어 읽기로 했더라?",
+   "previous": null,
+   "gold": [
+    "hk-radio-m13"
+   ],
+   "group": "g-hk-radio-q13",
+   "split": "report"
+  },
+  {
+   "id": "hk-radio-q14",
+   "person": "hk-radio",
+   "category": "paraphrase",
+   "question": "청취자 귀에 갑자기 아무것도 안 들릴 때 우선 뭘 틀어서 공백을 메워?",
+   "previous": null,
+   "gold": [
+    "hk-radio-m14"
+   ],
+   "group": "g-hk-radio-q14",
+   "split": "report"
+  },
+  {
+   "id": "hk-radio-q15",
+   "person": "hk-radio",
+   "category": "paraphrase",
+   "question": "보낸 이가 누구인지 감춘 채 편지를 읽어 줄 땐 그 사람 대신 어떤 단서를 남겨 뒀지?",
+   "previous": null,
+   "gold": [
+    "hk-radio-m15"
+   ],
+   "group": "g-hk-radio-q15",
+   "split": "report"
+  },
+  {
+   "id": "hk-radio-q16",
+   "person": "hk-radio",
+   "category": "time",
+   "question": "딱 두 주 전 토요일 장날 중계 시험 때 탁자를 어디로 옮겼더라?",
+   "previous": null,
+   "gold": [
+    "hk-radio-m16"
+   ],
+   "group": "g-hk-radio-q16",
+   "split": "report"
+  },
+  {
+   "id": "hk-radio-q17",
+   "person": "hk-radio",
+   "category": "time",
+   "question": "일주일 전 토요일 장날 중계 시험에서 비를 피해 자리 잡은 곳이 어디였지?",
+   "previous": null,
+   "gold": [
+    "hk-radio-m17"
+   ],
+   "group": "g-hk-radio-q17",
+   "split": "report"
+  },
+  {
+   "id": "hk-radio-q18",
+   "person": "hk-radio",
+   "category": "time",
+   "question": "지난달 첫 토요일 장날 중계 시험은 어디서 진행했지?",
+   "previous": null,
+   "gold": [
+    "hk-radio-m18"
+   ],
+   "group": "g-hk-radio-q18",
+   "split": "report"
+  },
+  {
+   "id": "hk-radio-q19",
+   "person": "hk-radio",
+   "category": "time",
+   "question": "지난여름에 이틀 걸려 청취 모임 전시용으로 찍어 둔 게 뭐였어?",
+   "previous": null,
+   "gold": [
+    "hk-radio-m19"
+   ],
+   "group": "g-hk-radio-q19",
+   "split": "report"
+  },
+  {
+   "id": "hk-radio-q20",
+   "person": "hk-radio",
+   "category": "time",
+   "question": "어제 구술 녹취를 예고대로 공개하지 못한 이유가 뭐였더라?",
+   "previous": null,
+   "gold": [
+    "hk-radio-m20"
+   ],
+   "group": "g-hk-radio-q20",
+   "split": "report"
+  },
+  {
+   "id": "hk-radio-q21",
+   "person": "hk-radio",
+   "category": "multi_turn",
+   "question": "그건 누가 따 준 소리였더라?",
+   "previous": "바람우체국 첫 회의 손종 소리 얘기야.",
+   "gold": [
+    "hk-radio-m21"
+   ],
+   "group": "g-hk-radio-q21",
+   "split": "report"
+  },
+  {
+   "id": "hk-radio-q22",
+   "person": "hk-radio",
+   "category": "multi_turn",
+   "question": "거기서는 어떤 식으로 인사하기로 했지?",
+   "previous": "학생들이 견학 와서 유리창 너머로 방송을 구경하는 순서 말이야.",
+   "gold": [
+    "hk-radio-m22"
+   ],
+   "group": "g-hk-radio-q22",
+   "split": "report"
+  },
+  {
+   "id": "hk-radio-q23",
+   "person": "hk-radio",
+   "category": "multi_turn",
+   "question": "그거 어디로 보내고 어떻게 포장하기로 했더라?",
+   "previous": "지난번에 턴테이블 버리기 전에 바늘만 빼 놨잖아.",
+   "gold": [
+    "hk-radio-m23",
+    "hk-radio-m24"
+   ],
+   "group": "g-hk-radio-q23",
+   "split": "report"
+  },
+  {
+   "id": "hk-radio-q24",
+   "person": "hk-radio",
+   "category": "multi_turn",
+   "question": "끝에서 얼마만큼 살려 달라고 했지?",
+   "previous": "마을 산책 녹음 끝에 애들 발소리 남은 부분 기억나?",
+   "gold": [
+    "hk-radio-m25"
+   ],
+   "group": "g-hk-radio-q24",
+   "split": "report"
+  },
+  {
+   "id": "hk-radio-q25",
+   "person": "hk-radio",
+   "category": "multi_turn",
+   "question": "그건 어떤 판본을 남겨 두는 거였지?",
+   "previous": "울림이 유난히 길었던 방에서 읽은 동화 파일을 정리 중이야.",
+   "gold": [
+    "hk-radio-m26"
+   ],
+   "group": "g-hk-radio-q25",
+   "split": "report"
+  },
+  {
+   "id": "hk-radio-q26",
+   "person": "hk-radio",
+   "category": "unrelated",
+   "question": "우리 동네에서 새 FM 주파수를 신청하려면 올해 접수처가 어디야?",
+   "previous": null,
+   "gold": [],
+   "group": "g-hk-radio-q26",
+   "split": "report"
+  },
+  {
+   "id": "hk-radio-q27",
+   "person": "hk-radio",
+   "category": "unrelated",
+   "question": "스튜디오 유리창 청소를 다음에 맡기로 한 업체 이름이 뭐였지?",
+   "previous": null,
+   "gold": [],
+   "group": "g-hk-radio-q27",
+   "split": "report"
+  },
+  {
+   "id": "hk-radio-q28",
+   "person": "hk-radio",
+   "category": "unrelated",
+   "question": "이번 달 우체국 기념우표는 무슨 그림이야?",
+   "previous": null,
+   "gold": [],
+   "group": "g-hk-radio-q28",
+   "split": "report"
+  },
+  {
+   "id": "hk-radio-q29",
+   "person": "hk-radio",
+   "category": "unrelated",
+   "question": "겨울 장터에서 붕어빵을 파는 날이 따로 있을까?",
+   "previous": null,
+   "gold": [],
+   "group": "g-hk-radio-q29",
+   "split": "report"
+  },
+  {
+   "id": "hk-radio-q30",
+   "person": "hk-radio",
+   "category": "unrelated",
+   "question": "산책길에서 들은 새소리만으로 종을 알아보는 방법을 알려줘.",
+   "previous": null,
+   "gold": [],
+   "group": "g-hk-radio-q30",
+   "split": "report"
+  },
+  {
+   "id": "hk-theater-q01",
+   "person": "hk-theater",
+   "category": "same_word",
+   "question": "달그림자 투사판 뒷면에 붙은 초록 스티커가 무슨 뜻이었지?",
+   "previous": null,
+   "gold": [
+    "hk-theater-m01"
+   ],
+   "group": "g-hk-theater-q01",
+   "split": "report"
+  },
+  {
+   "id": "hk-theater-q02",
+   "person": "hk-theater",
+   "category": "same_word",
+   "question": "회전무대 원점 표시는 바닥 어디를 보고 맞추기로 했어?",
+   "previous": null,
+   "gold": [
+    "hk-theater-m02"
+   ],
+   "group": "g-hk-theater-q02",
+   "split": "report"
+  },
+  {
+   "id": "hk-theater-q03",
+   "person": "hk-theater",
+   "category": "same_word",
+   "question": "물결천 운반 상자는 눕혀도 되나, 싣는 방향을 다시 알려줘.",
+   "previous": null,
+   "gold": [
+    "hk-theater-m03"
+   ],
+   "group": "g-hk-theater-q03",
+   "split": "report"
+  },
+  {
+   "id": "hk-theater-q04",
+   "person": "hk-theater",
+   "category": "same_word",
+   "question": "여우 인형 목소리를 맞출 때 내가 먼저 들어 보는 부분이 어디였더라?",
+   "previous": null,
+   "gold": [
+    "hk-theater-m04"
+   ],
+   "group": "g-hk-theater-q04",
+   "split": "report"
+  },
+  {
+   "id": "hk-theater-q05",
+   "person": "hk-theater",
+   "category": "same_word",
+   "question": "첫눈 장면 예비 눈송이는 내가 몇 봉지로 나누기로 했지?",
+   "previous": null,
+   "gold": [
+    "hk-theater-m05"
+   ],
+   "group": "g-hk-theater-q05",
+   "split": "report"
+  },
+  {
+   "id": "hk-theater-q06",
+   "person": "hk-theater",
+   "category": "particle",
+   "question": "조종대에서 긴 줄을 받을 자리는 어느 쪽이야?",
+   "previous": null,
+   "gold": [
+    "hk-theater-m06"
+   ],
+   "group": "g-hk-theater-q06",
+   "split": "report"
+  },
+  {
+   "id": "hk-theater-q07",
+   "person": "hk-theater",
+   "category": "particle",
+   "question": "검은막을 내릴 때 밑을 얼마나 띄우라고 했나?",
+   "previous": null,
+   "gold": [
+    "hk-theater-m07"
+   ],
+   "group": "g-hk-theater-q07",
+   "split": "report"
+  },
+  {
+   "id": "hk-theater-q08",
+   "person": "hk-theater",
+   "category": "particle",
+   "question": "손전등극에서 집에 달린 창 중 여는 건 어떤 거야?",
+   "previous": null,
+   "gold": [
+    "hk-theater-m08"
+   ],
+   "group": "g-hk-theater-q08",
+   "split": "report"
+  },
+  {
+   "id": "hk-theater-q09",
+   "person": "hk-theater",
+   "category": "particle",
+   "question": "종이배를 칠할 때 내가 원한 표면 느낌이 뭐였지?",
+   "previous": null,
+   "gold": [
+    "hk-theater-m09"
+   ],
+   "group": "g-hk-theater-q09",
+   "split": "report"
+  },
+  {
+   "id": "hk-theater-q10",
+   "person": "hk-theater",
+   "category": "particle",
+   "question": "동작보를 정리할 때 멈추는 박은 어떤 기호를 넣어?",
+   "previous": null,
+   "gold": [
+    "hk-theater-m10"
+   ],
+   "group": "g-hk-theater-q10",
+   "split": "report"
+  },
+  {
+   "id": "hk-theater-q11",
+   "person": "hk-theater",
+   "category": "paraphrase",
+   "question": "벌레가 걸을 때 달각거리는 건 속에 뭘 넣어 둔 덕이야?",
+   "previous": null,
+   "gold": [
+    "hk-theater-m11"
+   ],
+   "group": "g-hk-theater-q11",
+   "split": "report"
+  },
+  {
+   "id": "hk-theater-q12",
+   "person": "hk-theater",
+   "category": "paraphrase",
+   "question": "관객이 보던 대사가 화면에서 사라지면 글로 따라갈 수 있게 뭘 건네지?",
+   "previous": null,
+   "gold": [
+    "hk-theater-m12"
+   ],
+   "group": "g-hk-theater-q12",
+   "split": "report"
+  },
+  {
+   "id": "hk-theater-q13",
+   "person": "hk-theater",
+   "category": "paraphrase",
+   "question": "내가 원한 장면 전환은 무대 위쪽을 어떻게 꾸미는 거였더라?",
+   "previous": null,
+   "gold": [
+    "hk-theater-m13"
+   ],
+   "group": "g-hk-theater-q13",
+   "split": "report"
+  },
+  {
+   "id": "hk-theater-q14",
+   "person": "hk-theater",
+   "category": "paraphrase",
+   "question": "허리를 숙이는 할멈의 얼굴에서 소품이 떨어지지 않게 해 둔 장치가 뭐야?",
+   "previous": null,
+   "gold": [
+    "hk-theater-m14"
+   ],
+   "group": "g-hk-theater-q14",
+   "split": "report"
+  },
+  {
+   "id": "hk-theater-q15",
+   "person": "hk-theater",
+   "category": "paraphrase",
+   "question": "손뼉 때문에 작별 인사를 놓친 분들은 어디서 그 말을 다시 읽을 수 있게 하기로 했지?",
+   "previous": null,
+   "gold": [
+    "hk-theater-m15"
+   ],
+   "group": "g-hk-theater-q15",
+   "split": "report"
+  },
+  {
+   "id": "hk-theater-q16",
+   "person": "hk-theater",
+   "category": "time",
+   "question": "지난달 종이숲에서 새 무리가 날아갈 때 무슨 소품을 흔들었지?",
+   "previous": null,
+   "gold": [
+    "hk-theater-m16"
+   ],
+   "group": "g-hk-theater-q16",
+   "split": "report"
+  },
+  {
+   "id": "hk-theater-q17",
+   "person": "hk-theater",
+   "category": "time",
+   "question": "두 달 전 종이숲에서 날아오르는 새들의 소리는 어떻게 냈더라?",
+   "previous": null,
+   "gold": [
+    "hk-theater-m17"
+   ],
+   "group": "g-hk-theater-q17",
+   "split": "report"
+  },
+  {
+   "id": "hk-theater-q18",
+   "person": "hk-theater",
+   "category": "time",
+   "question": "어제 종이숲에서 새들이 날 때 어떤 재료를 썼어?",
+   "previous": null,
+   "gold": [
+    "hk-theater-m18"
+   ],
+   "group": "g-hk-theater-q18",
+   "split": "report"
+  },
+  {
+   "id": "hk-theater-q19",
+   "person": "hk-theater",
+   "category": "time",
+   "question": "이번 주 월요일부터 이틀 동안 작은 북을 맞췄잖아. 끝에 뭘 받쳤지?",
+   "previous": null,
+   "gold": [
+    "hk-theater-m19"
+   ],
+   "group": "g-hk-theater-q19",
+   "split": "report"
+  },
+  {
+   "id": "hk-theater-q20",
+   "person": "hk-theater",
+   "category": "time",
+   "question": "지난주 토요일엔 작은 북의 여운을 늘리려고 어디를 손봤지?",
+   "previous": null,
+   "gold": [
+    "hk-theater-m20"
+   ],
+   "group": "g-hk-theater-q20",
+   "split": "report"
+  },
+  {
+   "id": "hk-theater-q21",
+   "person": "hk-theater",
+   "category": "multi_turn",
+   "question": "그럼 어디에 표시해 둬야 해?",
+   "previous": "아이 관객한테 인형 발끝까지 보일지 빈 객석에서 확인해 보자.",
+   "gold": [
+    "hk-theater-m21"
+   ],
+   "group": "g-hk-theater-q21",
+   "split": "report"
+  },
+  {
+   "id": "hk-theater-q22",
+   "person": "hk-theater",
+   "category": "multi_turn",
+   "question": "그거 열 때 뭘 썼더라?",
+   "previous": "반딧불이 불빛이 약해서 배터리를 갈아야겠어.",
+   "gold": [
+    "hk-theater-m22"
+   ],
+   "group": "g-hk-theater-q22",
+   "split": "report"
+  },
+  {
+   "id": "hk-theater-q23",
+   "person": "hk-theater",
+   "category": "multi_turn",
+   "question": "어디에 두기로 했지?",
+   "previous": "빗방울 장면에 보낼 녹음본을 이제 다 만들었어.",
+   "gold": [
+    "hk-theater-m23"
+   ],
+   "group": "g-hk-theater-q23",
+   "split": "report"
+  },
+  {
+   "id": "hk-theater-q24",
+   "person": "hk-theater",
+   "category": "multi_turn",
+   "question": "그건 얼마나 느슨하게 두면 돼?",
+   "previous": "악어가 입을 다물면 이가 자꾸 맞부딪혀서 조종 줄을 다시 보려고.",
+   "gold": [
+    "hk-theater-m24"
+   ],
+   "group": "g-hk-theater-q24",
+   "split": "report"
+  },
+  {
+   "id": "hk-theater-q25",
+   "person": "hk-theater",
+   "category": "multi_turn",
+   "question": "불 켜기 전에 뭘 먼저 했으면 좋겠다고 했지?",
+   "previous": "다음 순회 공연장이 처음 가는 곳이네. 내가 선호하는 첫 연습 순서를 짜 줘.",
+   "gold": [
+    "hk-theater-m25"
+   ],
+   "group": "g-hk-theater-q25",
+   "split": "report"
+  },
+  {
+   "id": "hk-theater-q26",
+   "person": "hk-theater",
+   "category": "unrelated",
+   "question": "종이숲 막공 예매 창구는 오늘 몇 시에 닫아?",
+   "previous": null,
+   "gold": [],
+   "group": "g-hk-theater-q26",
+   "split": "report"
+  },
+  {
+   "id": "hk-theater-q27",
+   "person": "hk-theater",
+   "category": "unrelated",
+   "question": "요즘 동네에서 헌 우산천을 기증받을 만한 곳이 있을까?",
+   "previous": null,
+   "gold": [],
+   "group": "g-hk-theater-q27",
+   "split": "report"
+  },
+  {
+   "id": "hk-theater-q28",
+   "person": "hk-theater",
+   "category": "unrelated",
+   "question": "순회공연 차를 하루 빌리려면 주행거리 제한이 얼마나 돼?",
+   "previous": null,
+   "gold": [],
+   "group": "g-hk-theater-q28",
+   "split": "report"
+  },
+  {
+   "id": "hk-theater-q29",
+   "person": "hk-theater",
+   "category": "unrelated",
+   "question": "여우 인형을 그린 기념 엽서의 인쇄 단가를 알아봐 줘.",
+   "previous": null,
+   "gold": [],
+   "group": "g-hk-theater-q29",
+   "split": "report"
+  },
+  {
+   "id": "hk-theater-q30",
+   "person": "hk-theater",
+   "category": "unrelated",
+   "question": "인형극 뒤풀이에 쓸 레몬청을 덜 달게 만드는 법이 궁금해.",
+   "previous": null,
+   "gold": [],
+   "group": "g-hk-theater-q30",
+   "split": "report"
+  },
+  {
+   "id": "hk-weaving-q01",
+   "person": "hk-weaving",
+   "category": "same_word",
+   "question": "자투리함 정리를 할 때 손바닥보다 작은 건 어디로 보내?",
+   "previous": null,
+   "gold": [
+    "hk-weaving-m01"
+   ],
+   "group": "g-hk-weaving-q01",
+   "split": "report"
+  },
+  {
+   "id": "hk-weaving-q02",
+   "person": "hk-weaving",
+   "category": "same_word",
+   "question": "매듭 사전 원본을 보려는데 어디 가서 꺼내지?",
+   "previous": null,
+   "gold": [
+    "hk-weaving-m02"
+   ],
+   "group": "g-hk-weaving-q02",
+   "split": "report"
+  },
+  {
+   "id": "hk-weaving-q03",
+   "person": "hk-weaving",
+   "category": "same_word",
+   "question": "직조일지 첫 장에 내가 어떤 사진 넣는 걸 좋아했지?",
+   "previous": null,
+   "gold": [
+    "hk-weaving-m03"
+   ],
+   "group": "g-hk-weaving-q03",
+   "split": "report"
+  },
+  {
+   "id": "hk-weaving-q04",
+   "person": "hk-weaving",
+   "category": "same_word",
+   "question": "별고리 무늬 도안에 빈 네모가 나오면 어떻게 하라는 뜻이야?",
+   "previous": null,
+   "gold": [
+    "hk-weaving-m04"
+   ],
+   "group": "g-hk-weaving-q04",
+   "split": "report"
+  },
+  {
+   "id": "hk-weaving-q05",
+   "person": "hk-weaving",
+   "category": "same_word",
+   "question": "마루장터 시연용으로 돗자리는 어떤 상태의 것을 챙기기로 했지?",
+   "previous": null,
+   "gold": [
+    "hk-weaving-m05"
+   ],
+   "group": "g-hk-weaving-q05",
+   "split": "report"
+  },
+  {
+   "id": "hk-weaving-q06",
+   "person": "hk-weaving",
+   "category": "particle",
+   "question": "정경틀을 돌리다 어디까지 셌는지 헷갈려. 우리 표시 방법이 뭐였지?",
+   "previous": null,
+   "gold": [
+    "hk-weaving-m06"
+   ],
+   "group": "g-hk-weaving-q06",
+   "split": "report"
+  },
+  {
+   "id": "hk-weaving-q07",
+   "person": "hk-weaving",
+   "category": "particle",
+   "question": "북집으로 돌아온 빈 북 가운데 손볼 녀석은 무슨 표식으로 가려내?",
+   "previous": null,
+   "gold": [
+    "hk-weaving-m07"
+   ],
+   "group": "g-hk-weaving-q07",
+   "split": "report"
+  },
+  {
+   "id": "hk-weaving-q08",
+   "person": "hk-weaving",
+   "category": "particle",
+   "question": "씨실로 쓰려고 고른 건 손에 닿는 느낌이 어떤 재료였어?",
+   "previous": null,
+   "gold": [
+    "hk-weaving-m08"
+   ],
+   "group": "g-hk-weaving-q08",
+   "split": "report"
+  },
+  {
+   "id": "hk-weaving-q09",
+   "person": "hk-weaving",
+   "category": "particle",
+   "question": "눈금끈을 젖은 채로 가져왔어. 어디 걸어 둘까?",
+   "previous": null,
+   "gold": [
+    "hk-weaving-m09"
+   ],
+   "group": "g-hk-weaving-q09",
+   "split": "report"
+  },
+  {
+   "id": "hk-weaving-q10",
+   "person": "hk-weaving",
+   "category": "particle",
+   "question": "조각보를 받을 때 딸려 온 메모가 한 장 있어. 어디에 보관해?",
+   "previous": null,
+   "gold": [
+    "hk-weaving-m10"
+   ],
+   "group": "g-hk-weaving-q10",
+   "split": "report"
+  },
+  {
+   "id": "hk-weaving-q11",
+   "person": "hk-weaving",
+   "category": "paraphrase",
+   "question": "내가 짜고 남긴 귀퉁이를 자료실에 주고 싶어. 무엇으로 싸서 누구 이름을 써야 하지?",
+   "previous": null,
+   "gold": [
+    "hk-weaving-m11"
+   ],
+   "group": "g-hk-weaving-q11",
+   "split": "report"
+  },
+  {
+   "id": "hk-weaving-q12",
+   "person": "hk-weaving",
+   "category": "paraphrase",
+   "question": "콘센트 없는 야외 행사에서 시범을 보이려면 우리 장비 중 뭘 챙길까?",
+   "previous": null,
+   "gold": [
+    "hk-weaving-m12"
+   ],
+   "group": "g-hk-weaving-q12",
+   "split": "report"
+  },
+  {
+   "id": "hk-weaving-q13",
+   "person": "hk-weaving",
+   "category": "paraphrase",
+   "question": "뒤집으면 그림이 달라지는 짜임은 도감에 어떻게 실었지?",
+   "previous": null,
+   "gold": [
+    "hk-weaving-m13"
+   ],
+   "group": "g-hk-weaving-q13",
+   "split": "report"
+  },
+  {
+   "id": "hk-weaving-q14",
+   "person": "hk-weaving",
+   "category": "paraphrase",
+   "question": "꼬마들이 엮은 게 갈수록 가운데로 오므라들면 가장자리에 뭘 끼워 줬더라?",
+   "previous": null,
+   "gold": [
+    "hk-weaving-m14"
+   ],
+   "group": "g-hk-weaving-q14",
+   "split": "report"
+  },
+  {
+   "id": "hk-weaving-q15",
+   "person": "hk-weaving",
+   "category": "paraphrase",
+   "question": "햇살 잘 드는 칸에 두려고 따로 골라 둔 샘플이 어떤 거야?",
+   "previous": null,
+   "gold": [
+    "hk-weaving-m15"
+   ],
+   "group": "g-hk-weaving-q15",
+   "split": "report"
+  },
+  {
+   "id": "hk-weaving-q16",
+   "person": "hk-weaving",
+   "category": "time",
+   "question": "지난달 줄무늬 견본 교환회 때 포장을 하다 빠진 걸 발견했잖아. 뭘 더 썼지?",
+   "previous": null,
+   "gold": [
+    "hk-weaving-m16"
+   ],
+   "group": "g-hk-weaving-q16",
+   "split": "report"
+  },
+  {
+   "id": "hk-weaving-q17",
+   "person": "hk-weaving",
+   "category": "time",
+   "question": "두 달 전 줄무늬 견본 교환회에서 종이가 접힌다고 했을 때는 어떻게 보강했더라?",
+   "previous": null,
+   "gold": [
+    "hk-weaving-m17"
+   ],
+   "group": "g-hk-weaving-q17",
+   "split": "report"
+  },
+  {
+   "id": "hk-weaving-q18",
+   "person": "hk-weaving",
+   "category": "time",
+   "question": "어제 큰 베틀 발판 소리 때문에 어디를 손봤어?",
+   "previous": null,
+   "gold": [
+    "hk-weaving-m18"
+   ],
+   "group": "g-hk-weaving-q18",
+   "split": "report"
+  },
+  {
+   "id": "hk-weaving-q19",
+   "person": "hk-weaving",
+   "category": "time",
+   "question": "지난주에 큰 베틀 발판이 움직이지 않았던 건 밑에 뭐가 걸려서였지?",
+   "previous": null,
+   "gold": [
+    "hk-weaving-m19"
+   ],
+   "group": "g-hk-weaving-q19",
+   "split": "report"
+  },
+  {
+   "id": "hk-weaving-q20",
+   "person": "hk-weaving",
+   "category": "time",
+   "question": "지난여름에 사흘짜리 헌옷 수업을 열었지. 맨 첫날 손댄 게 뭐였어?",
+   "previous": null,
+   "gold": [
+    "hk-weaving-m20"
+   ],
+   "group": "g-hk-weaving-q20",
+   "split": "report"
+  },
+  {
+   "id": "hk-weaving-q21",
+   "person": "hk-weaving",
+   "category": "multi_turn",
+   "question": "그대로 뭐부터 해 두라고 했지?",
+   "previous": "띠베틀 대여분을 돌려받는 중이야. 세로실이 아직 걸려 있어.",
+   "gold": [
+    "hk-weaving-m21"
+   ],
+   "group": "g-hk-weaving-q21",
+   "split": "report"
+  },
+  {
+   "id": "hk-weaving-q22",
+   "person": "hk-weaving",
+   "category": "multi_turn",
+   "question": "끝을 만져 보면 어떻게 알 수 있더라?",
+   "previous": "상설 촉감 표본을 꿰어 둔 줄이 어느 쪽부터인지 모르겠어.",
+   "gold": [
+    "hk-weaving-m22"
+   ],
+   "group": "g-hk-weaving-q22",
+   "split": "report"
+  },
+  {
+   "id": "hk-weaving-q23",
+   "person": "hk-weaving",
+   "category": "multi_turn",
+   "question": "거기에 뭘 해 놓기로 했지?",
+   "previous": "개막 전에 만져 볼 커튼 천 가림막 기억나? 안쪽 고리 말이야.",
+   "gold": [
+    "hk-weaving-m23"
+   ],
+   "group": "g-hk-weaving-q23",
+   "split": "report"
+  },
+  {
+   "id": "hk-weaving-q24",
+   "person": "hk-weaving",
+   "category": "multi_turn",
+   "question": "내가 좋아했던 순서대로 알려 줘.",
+   "previous": "직물 낭독회 순서를 정하는 중이야. 제목은 언제 꺼낼까?",
+   "gold": [
+    "hk-weaving-m24"
+   ],
+   "group": "g-hk-weaving-q24",
+   "split": "report"
+  },
+  {
+   "id": "hk-weaving-q25",
+   "person": "hk-weaving",
+   "category": "multi_turn",
+   "question": "다음 사람이 바로 이어 하려면 어떻게 마무리하지?",
+   "previous": "감다 만 실 타래를 잠깐 치워야 해. 남은 부분이 계속 꼬이네.",
+   "gold": [
+    "hk-weaving-m25"
+   ],
+   "group": "g-hk-weaving-q25",
+   "split": "report"
+  },
+  {
+   "id": "hk-weaving-q26",
+   "person": "hk-weaving",
+   "category": "unrelated",
+   "question": "해외 직물 도록을 빌리면 연체료가 하루에 얼마야?",
+   "previous": null,
+   "gold": [],
+   "group": "g-hk-weaving-q26",
+   "split": "report"
+  },
+  {
+   "id": "hk-weaving-q27",
+   "person": "hk-weaving",
+   "category": "unrelated",
+   "question": "다음 공방 장터에 들어오는 푸드트럭은 몇 시에 문을 열어?",
+   "previous": null,
+   "gold": [],
+   "group": "g-hk-weaving-q27",
+   "split": "report"
+  },
+  {
+   "id": "hk-weaving-q28",
+   "person": "hk-weaving",
+   "category": "unrelated",
+   "question": "재봉틀 오일 묻은 청바지가 있는데 세탁소에 그냥 맡겨도 될까?",
+   "previous": null,
+   "gold": [],
+   "group": "g-hk-weaving-q28",
+   "split": "report"
+  },
+  {
+   "id": "hk-weaving-q29",
+   "person": "hk-weaving",
+   "category": "unrelated",
+   "question": "직조 체험에 오는 단체가 관광버스를 세울 만한 주차장이 근처에 있을까?",
+   "previous": null,
+   "gold": [],
+   "group": "g-hk-weaving-q29",
+   "split": "report"
+  },
+  {
+   "id": "hk-weaving-q30",
+   "person": "hk-weaving",
+   "category": "unrelated",
+   "question": "마을 지도에 있는 오래된 물레방아를 누가 지었는지 궁금해.",
+   "previous": null,
+   "gold": [],
+   "group": "g-hk-weaving-q30",
+   "split": "report"
+  },
+  {
+   "id": "hk-bikes-q01",
+   "person": "hk-bikes",
+   "category": "same_word",
+   "question": "바람개비 점검표 원본 어디 두기로 했지?",
+   "previous": null,
+   "gold": [
+    "hk-bikes-m01"
+   ],
+   "group": "g-hk-bikes-q01",
+   "split": "report"
+  },
+  {
+   "id": "hk-bikes-q02",
+   "person": "hk-bikes",
+   "category": "same_word",
+   "question": "순환 대여권 잔여 횟수는 어디서 확인해?",
+   "previous": null,
+   "gold": [
+    "hk-bikes-m02"
+   ],
+   "group": "g-hk-bikes-q02",
+   "split": "report"
+  },
+  {
+   "id": "hk-bikes-q03",
+   "person": "hk-bikes",
+   "category": "same_word",
+   "question": "모래내 우회로 대신 지도에 뭘 그려 달라고 했었지?",
+   "previous": null,
+   "gold": [
+    "hk-bikes-m03"
+   ],
+   "group": "g-hk-bikes-q03",
+   "split": "report"
+  },
+  {
+   "id": "hk-bikes-q04",
+   "person": "hk-bikes",
+   "category": "same_word",
+   "question": "분실물 장부 첫 칸에 쓰는 게 뭐였더라?",
+   "previous": null,
+   "gold": [
+    "hk-bikes-m04"
+   ],
+   "group": "g-hk-bikes-q04",
+   "split": "report"
+  },
+  {
+   "id": "hk-bikes-q05",
+   "person": "hk-bikes",
+   "category": "same_word",
+   "question": "초보 교실 신청자가 몇 명이 되면 강사를 더 부르기로 했어?",
+   "previous": null,
+   "gold": [
+    "hk-bikes-m05"
+   ],
+   "group": "g-hk-bikes-q05",
+   "split": "report"
+  },
+  {
+   "id": "hk-bikes-q06",
+   "person": "hk-bikes",
+   "category": "particle",
+   "question": "공기주입기를 찾는데 어디로 가면 돼?",
+   "previous": null,
+   "gold": [
+    "hk-bikes-m06"
+   ],
+   "group": "g-hk-bikes-q06",
+   "split": "report"
+  },
+  {
+   "id": "hk-bikes-q07",
+   "person": "hk-bikes",
+   "category": "particle",
+   "question": "수신호를 배운 다음에는 혼자 뭘 해도 된다고 했지?",
+   "previous": null,
+   "gold": [
+    "hk-bikes-m07"
+   ],
+   "group": "g-hk-bikes-q07",
+   "split": "report"
+  },
+  {
+   "id": "hk-bikes-q08",
+   "person": "hk-bikes",
+   "category": "particle",
+   "question": "안장마다 높이를 어떻게 구별하면 좋겠다고 했지?",
+   "previous": null,
+   "gold": [
+    "hk-bikes-m08"
+   ],
+   "group": "g-hk-bikes-q08",
+   "split": "report"
+  },
+  {
+   "id": "hk-bikes-q09",
+   "person": "hk-bikes",
+   "category": "particle",
+   "question": "화물칸에 짐이 밀리지 않게 뭘 넣어 놨어?",
+   "previous": null,
+   "gold": [
+    "hk-bikes-m09"
+   ],
+   "group": "g-hk-bikes-q09",
+   "split": "report"
+  },
+  {
+   "id": "hk-bikes-q10",
+   "person": "hk-bikes",
+   "category": "particle",
+   "question": "보조바퀴에 딸려 나간 연장들은 어디에 되돌려 놓지?",
+   "previous": null,
+   "gold": [
+    "hk-bikes-m10"
+   ],
+   "group": "g-hk-bikes-q10",
+   "split": "report"
+  },
+  {
+   "id": "hk-bikes-q11",
+   "person": "hk-bikes",
+   "category": "paraphrase",
+   "question": "어두워지기 전에 앞쪽 불빛이 들어오는 걸 어떤 식으로 기록해 달라고 했지?",
+   "previous": null,
+   "gold": [
+    "hk-bikes-m11"
+   ],
+   "group": "g-hk-bikes-q11",
+   "split": "report"
+  },
+  {
+   "id": "hk-bikes-q12",
+   "person": "hk-bikes",
+   "category": "paraphrase",
+   "question": "세워 두는 다리가 안 접히는 건 누가 실수로 빌려 가지 않게 어떻게 표시해?",
+   "previous": null,
+   "gold": [
+    "hk-bikes-m12"
+   ],
+   "group": "g-hk-bikes-q12",
+   "split": "report"
+  },
+  {
+   "id": "hk-bikes-q13",
+   "person": "hk-bikes",
+   "category": "paraphrase",
+   "question": "펄럭이는 원단이 살에 감길까 걱정하는 손님에게 어떤 기종을 내주기로 했더라?",
+   "previous": null,
+   "gold": [
+    "hk-bikes-m13"
+   ],
+   "group": "g-hk-bikes-q13",
+   "split": "report"
+  },
+  {
+   "id": "hk-bikes-q14",
+   "person": "hk-bikes",
+   "category": "paraphrase",
+   "question": "언제까지 돌려줘야 하는지 손님한테 어디를 보라고 하면 돼?",
+   "previous": null,
+   "gold": [
+    "hk-bikes-m14"
+   ],
+   "group": "g-hk-bikes-q14",
+   "split": "report"
+  },
+  {
+   "id": "hk-bikes-q15",
+   "person": "hk-bikes",
+   "category": "paraphrase",
+   "question": "소나기에 젖은 머리 보호구는 물기를 훔치고 어디에 펼쳐 두더라?",
+   "previous": null,
+   "gold": [
+    "hk-bikes-m15"
+   ],
+   "group": "g-hk-bikes-q15",
+   "split": "report"
+  },
+  {
+   "id": "hk-bikes-q16",
+   "person": "hk-bikes",
+   "category": "time",
+   "question": "두 달 전 강변 순회 정비에서 어느 부위를 손봤지?",
+   "previous": null,
+   "gold": [
+    "hk-bikes-m16"
+   ],
+   "group": "g-hk-bikes-q16",
+   "split": "report"
+  },
+  {
+   "id": "hk-bikes-q17",
+   "person": "hk-bikes",
+   "category": "time",
+   "question": "지난달 강변에 나갔을 때 덜덜거리던 곳이 어디였더라?",
+   "previous": null,
+   "gold": [
+    "hk-bikes-m17"
+   ],
+   "group": "g-hk-bikes-q17",
+   "split": "report"
+  },
+  {
+   "id": "hk-bikes-q18",
+   "person": "hk-bikes",
+   "category": "time",
+   "question": "어제 강변 순회 정비에서 교체한 부품을 알려 줘.",
+   "previous": null,
+   "gold": [
+    "hk-bikes-m18"
+   ],
+   "group": "g-hk-bikes-q18",
+   "split": "report"
+  },
+  {
+   "id": "hk-bikes-q19",
+   "person": "hk-bikes",
+   "category": "time",
+   "question": "지난주 토요일 길잡이 모임에서는 어디서 모여 출발했지?",
+   "previous": null,
+   "gold": [
+    "hk-bikes-m19"
+   ],
+   "group": "g-hk-bikes-q19",
+   "split": "report"
+  },
+  {
+   "id": "hk-bikes-q20",
+   "person": "hk-bikes",
+   "category": "time",
+   "question": "이번 주 초 이틀간 써 본 표지 중 멀리서도 읽혔던 색 조합이 뭐였어?",
+   "previous": null,
+   "gold": [
+    "hk-bikes-m20"
+   ],
+   "group": "g-hk-bikes-q20",
+   "split": "report"
+  },
+  {
+   "id": "hk-bikes-q21",
+   "person": "hk-bikes",
+   "category": "multi_turn",
+   "question": "다 쓰고 나면 어디에 걸어 두기로 했더라?",
+   "previous": "어린이 자전거 뒤에 꽂는 깃대 얘기야.",
+   "gold": [
+    "hk-bikes-m21"
+   ],
+   "group": "g-hk-bikes-q21",
+   "split": "report"
+  },
+  {
+   "id": "hk-bikes-q22",
+   "person": "hk-bikes",
+   "category": "multi_turn",
+   "question": "두 군데에서 뭘 받고, 그 뒤엔 어디서 말리기로 했어?",
+   "previous": "종주를 끝낸 사람한테 증서를 써 주려고 해.",
+   "gold": [
+    "hk-bikes-m22",
+    "hk-bikes-m23"
+   ],
+   "group": "g-hk-bikes-q22",
+   "split": "report"
+  },
+  {
+   "id": "hk-bikes-q23",
+   "person": "hk-bikes",
+   "category": "multi_turn",
+   "question": "전에 어느 쪽에서 찍은 걸 쓰자고 했었지?",
+   "previous": "방향을 잡는 자세를 새로 온 사람들에게 보여 줄 거야.",
+   "gold": [
+    "hk-bikes-m24"
+   ],
+   "group": "g-hk-bikes-q23",
+   "split": "report"
+  },
+  {
+   "id": "hk-bikes-q24",
+   "person": "hk-bikes",
+   "category": "multi_turn",
+   "question": "그건 몇 면으로 접혀 있었어?",
+   "previous": "멀리 나가는 날 나눠 주는 종이 지도 말인데.",
+   "gold": [
+    "hk-bikes-m25"
+   ],
+   "group": "g-hk-bikes-q24",
+   "split": "report"
+  },
+  {
+   "id": "hk-bikes-q25",
+   "person": "hk-bikes",
+   "category": "multi_turn",
+   "question": "몇 분 전에 각각 하기로 했어?",
+   "previous": "오늘 대여를 끝낸다고 알리는 방송 준비 중이야.",
+   "gold": [
+    "hk-bikes-m26"
+   ],
+   "group": "g-hk-bikes-q25",
+   "split": "report"
+  },
+  {
+   "id": "hk-bikes-q26",
+   "person": "hk-bikes",
+   "category": "unrelated",
+   "question": "강변 순회 정비에 다음 달에도 참가하려면 어디에 신청서를 내야 해?",
+   "previous": null,
+   "gold": [],
+   "group": "g-hk-bikes-q26",
+   "split": "report"
+  },
+  {
+   "id": "hk-bikes-q27",
+   "person": "hk-bikes",
+   "category": "unrelated",
+   "question": "여행 가방을 하루 보관할 수 있는 기차역 물품함 요금이 궁금해.",
+   "previous": null,
+   "gold": [],
+   "group": "g-hk-bikes-q27",
+   "split": "report"
+  },
+  {
+   "id": "hk-bikes-q28",
+   "person": "hk-bikes",
+   "category": "unrelated",
+   "question": "우리 대여소 앞 공사, 내년 봄에 끝난다는 게 맞아?",
+   "previous": null,
+   "gold": [],
+   "group": "g-hk-bikes-q28",
+   "split": "report"
+  },
+  {
+   "id": "hk-bikes-q29",
+   "person": "hk-bikes",
+   "category": "unrelated",
+   "question": "타이어 옆면에 적힌 영문 약어를 읽는 법 좀 알려줄래?",
+   "previous": null,
+   "gold": [],
+   "group": "g-hk-bikes-q29",
+   "split": "report"
+  },
+  {
+   "id": "hk-bikes-q30",
+   "person": "hk-bikes",
+   "category": "unrelated",
+   "question": "동네 걷기 대회 포스터를 크게 인쇄하려면 그림 해상도가 얼마나 필요해?",
+   "previous": null,
+   "gold": [],
+   "group": "g-hk-bikes-q30",
+   "split": "report"
+  }
+ ]
+}

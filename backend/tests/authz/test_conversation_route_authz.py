@@ -31,12 +31,14 @@ DOMAIN_MODULES = {
         "conversation_agent_protocol",
         "conversation_agent_protocol_sdk",
         "conversation_branches",
+        "conversation_child_tasks",
         "conversation_crud",
         "conversation_files",
         "conversation_followup",
         "conversation_messages",
         "conversation_pinned_summaries",
         "conversation_run_inputs",
+        "conversation_run_steers",
         "conversation_runs",
         "conversation_side_chats",
         "conversation_traces",
@@ -75,7 +77,7 @@ def test_conversation_family_routes_declare_their_plan_policy(monkeypatch) -> No
         for method in route.methods
     ]
     # +9 memory routes (plan 15 PR-B1), +5 (PR-B2), +2 (Q14), +3 (PR-B3)
-    assert len(routes) == 108
+    assert len(routes) == 115
     assert [r for r in routes if r[2] != _expected(r[1])] == []
     memory = next(r for r in app.routes if isinstance(r, APIRoute) and r.path in RES_ROUTES)
     assert policy_of(memory.endpoint) == RES(
@@ -233,6 +235,24 @@ async def _conversation_count(agent_id: uuid.UUID) -> int:
     async with TestSession() as db:
         rows = await db.scalars(select(Conversation.id).where(Conversation.agent_id == agent_id))
         return len(list(rows))
+
+
+@pytest.mark.asyncio
+async def test_steer_rechecks_revoked_agent_run_permission(
+    client: AsyncClient, install, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(settings, "chat_steer_enabled", True)
+    agent_id, _ = await _seed_agent()
+    created = await client.post(f"/api/agents/{agent_id}/conversations", json={"title": "c"})
+    conversation_id = created.json()["id"]
+    install(_service("enforce"))
+    denied = await client.post(
+        f"/api/conversations/{conversation_id}/runs/{uuid.uuid4()}/steers",
+        json={"client_request_id": str(uuid.uuid4()), "text": "keep going"},
+    )
+    assert denied.status_code == 404
+    receipts = await client.get(f"/api/conversations/{conversation_id}/steers")
+    assert receipts.json() == []
 
 
 @pytest.mark.asyncio

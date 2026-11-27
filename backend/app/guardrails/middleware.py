@@ -2,7 +2,7 @@
 
 Stages covered here:
 
-* ① ``input`` — the user's new message, once per run at the first model call; a block
+* ① ``input`` — the current user request and its staged directives before model dispatch; a block
   answers with a notice instead of calling the model, a warning is only recorded.
 * ② ``llm_send`` — ``awrap_model_call`` changes only this call's copy of the messages;
   the stored history, checkpoint and screen keep the original values (plan §3.1). A block
@@ -19,6 +19,7 @@ API is guarded; the sync hooks refuse rather than run unchecked.
 
 from __future__ import annotations
 
+import asyncio
 import hashlib
 import logging
 import uuid
@@ -54,6 +55,7 @@ from app.guardrails.model_pack import detect_texts
 from app.guardrails.pseudonyms import Pseudonyms
 from app.guardrails.rules import RuleSet, Stage
 from app.guardrails.stream import GuardrailStreamTransformer
+from app.schemas.conversation_graph_input import STEER_INPUT_MARKER
 from app.security import key_provider
 
 logger = logging.getLogger(__name__)
@@ -61,6 +63,8 @@ logger = logging.getLogger(__name__)
 SUMMARIZATION_MIDDLEWARE_NAME = "SummarizationMiddleware"
 _CACHE_SIZE = 2048
 _SKIPPED_BLOCKS = frozenset({"thinking", "redacted_thinking", "reasoning"})
+_BLOCKED_INPUTS = "moldy_guardrail_blocked_inputs"
+_BLOCKED_INPUT_TEXT = "[가드레일 입력 정책에 따라 제외됨]"
 _SYNC_REFUSAL = "guardrails run on the async agent API only (ainvoke / astream)"
 
 
@@ -150,6 +154,50 @@ def _rebuild[M: BaseMessage](message: M, changes: dict[_Slot, str]) -> M:
     return message.model_copy(update=update)
 
 
+def _current_inputs(
+    messages: Sequence[AnyMessage], *, end: int | None = None
+) -> list[tuple[int, HumanMessage]]:
+    """The last ordinary user request and any steers at the same model boundary."""
+    group: list[tuple[int, HumanMessage]] = []
+    found_ordinary = False
+    for index in reversed(range(len(messages) if end is None else end)):
+        message = messages[index]
+        if isinstance(message, HumanMessage):
+            if message.response_metadata.get(STEER_INPUT_MARKER) is True:
+                group.append((index, message))
+            elif not found_ordinary:
+                group.append((index, message))
+                found_ordinary = True
+        elif group:
+            break
+    return list(reversed(group))
+
+
+def _omit_refused_history(messages: Sequence[AnyMessage]) -> list[AnyMessage]:
+    """Keep checkpoint originals. Exclude a denied input from later provider requests."""
+    safe = list(messages)
+    denied_ids: set[str] = set()
+    for index in reversed(range(len(messages))):
+        message = messages[index]
+        if isinstance(message, AIMessage):
+            refs = message.response_metadata.get(_BLOCKED_INPUTS)
+            if not isinstance(refs, list):
+                continue
+            denied_ids.update(ref for ref in refs if isinstance(ref, str))
+            # Graph messages have stable IDs. A direct caller may pass unkeyed
+            # messages, so its refusal identifies those within the same input group.
+            offsets = {ref for ref in refs if type(ref) is int}
+            if offsets:
+                group = _current_inputs(messages, end=index)
+                for offset, (pos, human) in enumerate(group):
+                    if offset in offsets:
+                        safe[pos] = HumanMessage(content=_BLOCKED_INPUT_TEXT, id=human.id)
+        elif isinstance(message, HumanMessage) and message.id in denied_ids:
+            # Rebuild the model's copy so attachments cannot carry the denied input either.
+            safe[index] = HumanMessage(content=_BLOCKED_INPUT_TEXT, id=message.id)
+    return safe
+
+
 @dataclass
 class Guard:
     """One run's rules, company key and detection cache, shared by every hook of the run."""
@@ -165,8 +213,9 @@ class Guard:
     _key: bytes | None = None
     _log: EventLog | None = None
     pseudonyms: Pseudonyms = field(init=False)
-    # ① Human messages already checked this run (a run checks each new message once).
-    _inputs_checked: set[str] = field(default_factory=set)
+    # Root and child may check the same input concurrently. Keep decisions, never input text.
+    _input_decisions: dict[str, tuple[Decision, ...]] = field(default_factory=dict)
+    _input_lock: asyncio.Lock = field(default_factory=asyncio.Lock)
 
     def __post_init__(self) -> None:
         if self.scope is not None:
@@ -274,34 +323,48 @@ class Guard:
         guarded = [_rebuild(m, changes[i]) if i in changes else m for i, m in enumerate(messages)]
         return guarded, tuple(decisions)
 
-    async def check_input(self, messages: Sequence[AnyMessage]) -> tuple[Decision, ...]:
-        """① The latest user message, once per run, before the model sees anything.
-
-        Checked at the model call (not ``before_agent``) so a block answers the way a
-        blocked request does, through the model node the screen already renders.
-        """
+    async def check_input(
+        self, messages: Sequence[AnyMessage]
+    ) -> tuple[list[str | int], tuple[Decision, ...]]:
+        """Check every input in the current group and return the IDs and reasons for a refusal."""
         if not self.rules.packs_for("input"):
-            return ()
-        human = next((m for m in reversed(messages) if isinstance(m, HumanMessage)), None)
-        if human is None:
-            return ()
-        text = "\n".join(t for _, t in _message_texts(0, human))
-        digest = hashlib.sha256(text.encode()).hexdigest()
-        if not text or digest in self._inputs_checked:
-            return ()
-        self._inputs_checked.add(digest)
-        [result] = await self.check([text], "input")
-        return result.decisions
+            return [], ()
+        inputs: list[tuple[str | int, str]] = []
+        texts: dict[str, str] = {}
+        for offset, (_index, human) in enumerate(_current_inputs(messages)):
+            text = "\n".join(value for _, value in _message_texts(0, human))
+            if text:
+                digest = hashlib.sha256(text.encode()).hexdigest()
+                inputs.append((human.id or offset, digest))
+                texts[digest] = text
+        async with self._input_lock:
+            fresh = {key: text for key, text in texts.items() if key not in self._input_decisions}
+            if fresh:
+                checked = await self.check(list(fresh.values()), "input")
+                self._input_decisions.update(
+                    (key, result.decisions) for key, result in zip(fresh, checked, strict=True)
+                )
+        blocked_ids: list[str | int] = []
+        decisions: list[Decision] = []
+        for message_id, digest in inputs:
+            result = self._input_decisions[digest]
+            if any(item.action == "block" for item in result):
+                blocked_ids.append(message_id)
+            decisions.extend(result)
+        return blocked_ids, tuple(decisions)
 
     async def guard_request(
         self,
         request: ModelRequest,
         handler: Callable[[ModelRequest], Awaitable[Any]],
     ) -> Any:
-        attempted = await self.check_input(request.messages)
-        if any(d.action == "block" for d in attempted):
-            return ModelResponse(result=[AIMessage(content=block_notice(attempted))])
-        messages, decisions = await self.guard_messages(request.messages)
+        blocked_ids, attempted = await self.check_input(request.messages)
+        if blocked_ids:
+            refusal = AIMessage(
+                content=block_notice(attempted), response_metadata={_BLOCKED_INPUTS: blocked_ids}
+            )
+            return ModelResponse(result=[refusal])
+        messages, decisions = await self.guard_messages(_omit_refused_history(request.messages))
         if any(d.action == "block" for d in decisions):
             return ModelResponse(result=[AIMessage(content=block_notice(decisions))])
         return await handler(request.override(messages=messages))

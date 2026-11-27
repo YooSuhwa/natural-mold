@@ -32,6 +32,7 @@ FILE_EVENT: Final = "file_event"
 # ``_summarization_event`` is committed. The public done payload carries only
 # an opaque ``history_id`` plus ``cutoff_index``; internal paths never cross wire.
 COMPACTION: Final = "moldy.compaction"
+RUN_STEER: Final = "moldy.run_steer"
 # Generative UI side-channel (chat-generative-ui-dev-plan §2.1). Emitted as a
 # ``custom`` protocol event (``name="moldy.ui_data"``) carrying a typed
 # ``{type, props}`` payload the frontend renders via an allowlist registry. Shares

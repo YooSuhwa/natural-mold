@@ -18,7 +18,7 @@
 
 [기능](#기능) · [빠른 시작](#빠른-시작) · [로컬 개발](#로컬-개발) · [설정](#설정) · [아키텍처](#아키텍처) · [테스트](#테스트) · [문서](#문서)
 
-<!-- project-current-source: migration=i39_skill_approval_default; deepagents=0.7.42; ruff=0.16.5; refreshed=2026-11-27 -->
+<!-- project-current-source: migration=i50_chat_model_attempts; deepagents=0.7.42; ruff=0.16.5; refreshed=2026-11-27 -->
 
 </div>
 
@@ -39,7 +39,7 @@ OpenFGA 모델로 단계적으로 옮길 수 있습니다.
 | 프론트엔드 | Next.js 16 (App Router), React 19, TailwindCSS v4, shadcn/ui, assistant-ui, TanStack Query, Jotai, next-intl |
 | 백엔드 | FastAPI, SQLAlchemy 2.0 async, Alembic, APScheduler, Python 3.12 |
 | 에이전트 런타임 | LangChain 1.x, LangGraph 1.2.24, `deepagents` 0.7.42 (`create_deep_agent`), LangGraph `AsyncPostgresSaver` |
-| 데이터 | PostgreSQL 16, Alembic head `i39_skill_approval_default` |
+| 데이터 | PostgreSQL 16, Alembic head `i50_chat_model_attempts` |
 | 권한 | 소유자 판정(legacy) 또는 OpenFGA(shadow / enforce), 선택적 PostgreSQL 행 단위 보안(RLS) |
 | 라이선스 | MIT |
 
@@ -236,7 +236,7 @@ docker compose up -d postgres
 cd backend
 cp .env.example .env            # ENCRYPTION_KEYS, JWT_SECRET 설정
 uv sync
-uv run alembic upgrade head     # head: i39_skill_approval_default
+uv run alembic upgrade head     # head: i50_chat_model_attempts
 uv run uvicorn app.main:app --reload --reload-dir app --port 8001
 
 # 프론트엔드 (http://localhost:3000), 다른 터미널에서

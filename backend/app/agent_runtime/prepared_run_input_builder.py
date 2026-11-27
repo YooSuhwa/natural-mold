@@ -17,7 +17,11 @@ from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
+from uuid import UUID
 
+from langchain.agents.middleware import AgentMiddleware
+
+from app.agent_runtime.chat_steer_middleware import root_steer_middleware
 from app.agent_runtime.lease_model_factory import LeaseModelSpec
 from app.agent_runtime.message_utils import RuntimeMessage, convert_to_langchain_messages
 from app.agent_runtime.prepared_run_input_policy import unsupported
@@ -26,6 +30,12 @@ from app.agent_runtime.prepared_run_tool_inputs import (
     PreparedToolSet,
     merged_origins,
     prepared_tool_set,
+)
+from app.agent_runtime.runtime.goal_run import (
+    GOAL_READ_BUILTINS,
+    GoalRunMiddleware,
+    goal_setup_allowed,
+    readable_goal_tool_configs,
 )
 from app.agent_runtime.runtime.memory_recall_middleware import MemoryRecallMiddleware
 from app.agent_runtime.runtime.reliability import EmptyContentRetryMiddleware
@@ -68,6 +78,7 @@ class PreparedChildSource:
     model: LeaseModelSpec
     tool_configs: tuple[Mapping[str, Any], ...] = ()
     middleware_configs: tuple[Mapping[str, Any], ...] = ()
+    agent_id: UUID | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -80,6 +91,7 @@ class PreparedRunSources:
     children: tuple[PreparedChildSource, ...] = ()
     memory_prompt: str = ""
     is_trigger_mode: bool = False
+    track_child_tasks: bool = False
     secret_reference_ids: tuple[str, ...] = ()
     versions: Mapping[str, str] | None = None
     run_id: str | None = None
@@ -254,8 +266,12 @@ def build_preparation_inputs(
 
     cfg = sources.cfg
     trigger = sources.is_trigger_mode
+    if cfg.goal_followup and not goal_setup_allowed(
+        cfg.runtime_profile, cfg.middleware_configs or []
+    ):
+        raise unsupported("goal_followup_runtime_restricted")
     builder = SnapshotCatalogBuilder()
-    skills_prefix = _freeze_skills(cfg, builder)
+    skills_prefix = None if cfg.goal_followup else _freeze_skills(cfg, builder)
     memory = _freeze_agents_md(cfg, sources.data_dir, builder)
     prompt = _prompt(cfg.system_prompt, cfg, bindings)
     if not trigger:
@@ -272,26 +288,51 @@ def build_preparation_inputs(
         *bindings.build_skill_dependency_tool_configs(
             agent_skills=cfg.agent_skills or [],
             existing_tool_configs=cfg.tools_config,
-            user_id=cfg.user_id,
+            user_id=str(cfg.org_context.user_id),
             agent_id=cfg.agent_id,
+            org_id=str(cfg.org_context.org_id),
+            tenant_id=str(cfg.org_context.tenant_id),
         ),
     ]
     root_tools = prepared_tool_set(
-        configs,
+        readable_goal_tool_configs(configs) if cfg.goal_followup else configs,
         create_tool=bindings.create_tool_for_runtime,
         allow_mcp=True,
         stored_policy=_stored(cfg),
         ask_user_tool=None if trigger else bindings.ask_user_tool,
     )
-    children, child_tools, child_sets = _child_specs(sources, bindings)
+    allow_children = not (cfg.goal_followup or cfg.independent_job)
+    children, child_tools, child_sets = (
+        _child_specs(sources, bindings) if allow_children else ([], {}, [])
+    )
     if trigger or cfg.unattended_approval is not None:
         _refuse_unattended_approvals(sources, bindings, root_tools, child_sets)
+    root_middleware: list[AgentMiddleware[Any, Any, Any]] = []
+    if cfg.goal_context or cfg.goal_followup:
+        readers = [
+            tool
+            for tool, origin in zip(root_tools.tools, root_tools.origins, strict=True)
+            if origin.source == "builtin" and origin.key in GOAL_READ_BUILTINS
+        ]
+        root_middleware.append(
+            GoalRunMiddleware(
+                cfg.thread_id, cfg.goal_context, automatic=cfg.goal_followup, read_tools=readers
+            )
+        )
     output = sources.run_root / "output"
     output.mkdir(parents=True, exist_ok=True)
     conversation_prefix = f"/conversations/{cfg.thread_id}"
     # Same write surface as the stored policy: inspect mode gets no write route.
     writes = _write_allowed(cfg)
+    root_middleware.extend(
+        root_steer_middleware(
+            cfg, run_id=sources.run_id, is_trigger_mode=trigger, prepared_output_root=output
+        )
+    )
+    if cfg.memory_recall_block:
+        root_middleware.append(MemoryRecallMiddleware(cfg.memory_recall_block))
     return PreparationInputs(
+        independent_job=cfg.independent_job,
         thread_id=cfg.thread_id,
         system_prompt=prompt,
         messages=tuple(convert_to_langchain_messages(sources.messages_history)),
@@ -306,11 +347,16 @@ def build_preparation_inputs(
         mcp_configs=root_tools.mcp_configs,
         subagents=tuple(children),
         custom_middleware=(EmptyContentRetryMiddleware(max_retries=1),),
-        root_middleware=(
-            (MemoryRecallMiddleware(cfg.memory_recall_block),) if cfg.memory_recall_block else ()
-        ),
+        root_middleware=tuple(root_middleware),
         mcp_interrupts=not trigger,
         child_tools=child_tools,
+        child_task_agents={
+            f"root/{child.runtime_name}": child.agent_id
+            for child in sources.children
+            if child.agent_id is not None
+        }
+        if allow_children and sources.track_child_tasks
+        else {},
         interrupt_on=_interrupts(
             cfg.middleware_configs,
             root_tools,

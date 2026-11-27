@@ -135,7 +135,9 @@ async def test_choosing_a_model_needs_the_confirmed_count_and_starts_a_reembeddi
     after = await memory_vectors.change(db, tenant, context, model_id=model.id, confirm_count=3)
     assert after.model is not None and after.model.id == model.id
     assert not after.floor_measured  # no measured floor yet: keywords only
-    key = memory_index.backfill_key("text-embedding-3-large", 1024, 1)
+    embedder = await memory_vectors.embedder_for(db, tenant)
+    assert embedder is not None
+    key = memory_index.backfill_key(memory_embedder.vector_model_key(embedder), 1024, 1)
     job = await db.scalar(select(Job).where(Job.idempotency_key == key))
     assert job is not None and job.payload == {"all": True}
     assert after.job_state == job.state
@@ -155,13 +157,15 @@ async def test_turning_vectors_off_keeps_or_drops_them_and_is_audited(db: AsyncS
     tenant = await _tenant(db)
     await memory_vectors.change(db, tenant, context, model_id=model.id, confirm_count=1)
     record_id = await db.scalar(select(memory_writes.MemoryRecord.id))
+    embedder = await memory_vectors.embedder_for(db, tenant)
+    assert embedder is not None
     db.add(
         MemoryEmbedding(
             org_id=context.org_id,
             tenant_id=TEST_TENANT_ID,
             record_id=record_id,
             user_id=TEST_USER_ID,
-            model="text-embedding-3-large",
+            model=memory_embedder.vector_model_key(embedder),
             dimensions=1024,
             text_hash="h",
             vector=b"\x00\x00\x80?",

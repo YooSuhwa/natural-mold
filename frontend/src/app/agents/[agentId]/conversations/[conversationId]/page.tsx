@@ -44,12 +44,19 @@ import { useLangGraphDraftConversation } from '@/lib/chat/langgraph-runtime/use-
 import { ChatRuntimeSection } from '@/components/chat/chat-runtime-section'
 import { ToolIconProvider } from '@/components/chat/tool-ui/tool-icon-context'
 import { ChatEmptyState } from '@/components/chat/chat-empty-state'
+import { ConversationGoalCard } from './_components/conversation-goal-card'
+import { conversationGoalKeys } from '@/lib/hooks/use-conversation-goal'
 import { ChatPageHeader } from '@/components/chat/chat-page-header'
+import { ChatWorkCommandConversationContext } from '@/components/chat/conversation-context'
+import { useIndependentChatJobs } from '@/lib/hooks/use-independent-chat-jobs'
+import { IndependentJobPanel } from '@/components/chat/independent-job-panel'
+import { IndependentJobCancelProvider } from '@/components/chat/independent-job-cancel-provider'
 import { PinnedConversationSummary } from '@/components/chat/pinned-conversation-summary'
 import { AgentReadinessGate } from '@/components/readiness/agent-readiness-gate'
 import { ExportDialog } from '@/components/chat/export-dialog'
 import { SideChatWorkspace } from '@/components/chat/side-chat/side-chat-workspace'
 import { SideChatPanel, ConversationDetailRail } from '@/components/chat/side-chat/side-chat-panel'
+import { Button } from '@/components/ui/button'
 import { Skeleton } from '@/components/ui/skeleton'
 
 const EMPTY_MESSAGES: Message[] = []
@@ -98,10 +105,12 @@ export default function ChatPage({
   const isPromotedDraftRoute = conversationId === 'new' && !isDraftConversation
   // W7-4 — envelope에서 conversation 누적 비용을 가져와 토큰 바에 흘림. 같은
   // query observer 하나에서 messages와 cost를 함께 파생해 채팅 트리 리렌더를 줄인다.
-  const { data: envelope, isLoading: messagesLoading } = useMessagesEnvelope(
-    messageEnvelopeConversationId,
-    shouldLoadMessageEnvelope,
-  )
+  const {
+    data: envelope,
+    isLoading: messagesLoading,
+    isError: historyFailed,
+    refetch: retryHistory,
+  } = useMessagesEnvelope(messageEnvelopeConversationId, shouldLoadMessageEnvelope)
   const messages = envelope?.messages ?? EMPTY_MESSAGES
   const markConversationRead = useMarkConversationRead(agentId)
   const { mutate: markRead, isPending: isMarkingRead } = markConversationRead
@@ -201,6 +210,18 @@ export default function ChatPage({
     ? langGraphDraftConversationId
     : routeConversationId
   const resolvedSideEffectConversationId = activeConversationId ?? routeConversationId
+  const envelopeRun = envelope?.active_run ?? envelope?.latest_run
+  const independentJobs = useIndependentChatJobs(
+    activeConversationId,
+    envelopeRun?.conversation_id === activeConversationId ? envelopeRun.id : null,
+  )
+  const jobList = independentJobs.query.isSuccess ? independentJobs.query.data : null
+  const isIndependentJob =
+    envelope?.conversation_source === 'independent_job' ||
+    jobList?.parent_job?.child_conversation_id === activeConversationId
+  const sourceUnavailable =
+    !isDraftConversation && (historyFailed || !envelope?.conversation_source)
+  const readOnlyConversation = isIndependentJob || sourceUnavailable
   const titleConversationId = routeConversationId
   const resolvedConversationTitle = useConversationTitle(
     agentId,
@@ -290,6 +311,9 @@ export default function ChatPage({
       : routeConversationId
     invalidateConversationNavigators(queryClient, agentId, settledConversationId)
     if (settledConversationId) {
+      void queryClient.invalidateQueries({
+        queryKey: conversationGoalKeys.detail(settledConversationId),
+      })
       void queryClient.refetchQueries({
         queryKey: conversationKeys.messages(settledConversationId),
         type: 'active',
@@ -382,6 +406,14 @@ export default function ChatPage({
     startedConversationIdRef.current = draftConversationId
     setSuppressEmptyStateForConversationId(draftConversationId)
   }, [isDraftConversation, langGraphDraftConversationId, retainDraftConversation])
+  const handleGoalCreated = useCallback(
+    (createdConversationId: string) => {
+      if (!isDraftConversation || commitDraftConversation() !== createdConversationId) return
+      promoteDraftRoute(createdConversationId)
+      syncPromotedDraftNavigator(createdConversationId)
+    },
+    [commitDraftConversation, isDraftConversation, promoteDraftRoute, syncPromotedDraftNavigator],
+  )
   const handleNewMessageAccepted = useCallback(() => {
     const acceptedConversationId =
       commitDraftConversation() ?? startedConversationIdRef.current ?? langGraphDraftConversationId
@@ -429,79 +461,117 @@ export default function ChatPage({
 
   return (
     <SideChatWorkspace
+      disabled={readOnlyConversation}
       key={activeConversationId ?? 'draft'}
       conversationId={useLangGraphRuntime ? activeConversationId : null}
       title={currentTitle ?? agent?.name ?? ''}
     >
       <div className="moldy-app-surface flex min-h-0 flex-1 gap-3 overflow-hidden p-3">
         {/* 메인 채팅 카드 */}
-        <section className="moldy-panel flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
-          <ChatPageHeader
-            agent={agent}
-            agentId={agentId}
-            title={currentTitle}
-            onNewConversation={handleNewConversation}
-            onOpenSettings={handleOpenSettings}
-            onOpenTrace={handleOpenTrace}
-            onToggleArtifacts={handleToggleArtifacts}
-          />
-          <PinnedConversationSummary conversationId={activeConversationId} />
-          <AgentReadinessGate
-            agentId={agentId}
-            agentName={agent?.name}
-            conversationId={activeConversationId}
-          />
-
-          {/* Thread */}
-          {(!isPromotedDraftRoute && !isDraftConversation && messagesLoading) ||
-          isLangGraphDraftBootstrapping ? (
-            <div className="flex-1 px-4 py-4">
-              <div className="mx-auto max-w-3xl space-y-4">
-                {Array.from({ length: 3 }).map((_, i) => (
-                  <div key={i} className="flex gap-3">
-                    <Skeleton className="size-8 rounded-full" />
-                    <Skeleton className="moldy-skeleton-message h-16 flex-1" />
-                  </div>
-                ))}
-              </div>
-            </div>
-          ) : (
-            <ToolIconProvider iconIds={toolIconIds} mcpServers={mcpServerNames}>
-              <ChatRuntimeSection
-                activeConversationId={activeConversationId}
-                activeRun={envelope?.active_run ?? null}
-                agentId={agentId}
-                agentImageUrl={agent?.image_url}
-                agentName={agent?.name}
-                attachmentAdapter={moldyAttachmentAdapter}
-                emptyContent={renderedEmptyContent}
-                feedbackAdapter={feedbackAdapter}
-                latestRun={envelope?.latest_run ?? null}
-                messages={messages}
-                modelName={agent?.model?.display_name}
-                showContextGauge
-                contextWindow={agent?.model?.context_window ?? null}
-                onBeforeNewMessage={handleBeforeNewMessage}
-                onNewMessageAccepted={handleNewMessageAccepted}
-                onRuntimeStatusChange={handleRuntimeStatusChange}
-                onStreamEnd={onStreamEnd}
-                streamFn={streamFn}
-                totalCost={envelope?.total_estimated_cost}
-                useLangGraphRuntime={useLangGraphRuntime}
-                user={user}
-                linkedSkills={agent?.skills}
-                commandActions={{
-                  createNewConversation: handleNewConversation,
-                  openFilesRail: handleToggleArtifacts,
-                  ...(activeConversationId ? { openExportChooser: () => setExportOpen(true) } : {}),
-                }}
+        <IndependentJobCancelProvider
+          conversationId={activeConversationId}
+          jobs={jobList?.jobs ?? []}
+        >
+          <section className="moldy-panel flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
+            <ChatPageHeader
+              agent={agent}
+              agentId={agentId}
+              title={currentTitle}
+              onNewConversation={handleNewConversation}
+              onOpenSettings={handleOpenSettings}
+              onOpenTrace={handleOpenTrace}
+              onToggleArtifacts={handleToggleArtifacts}
+            />
+            {activeConversationId && jobList ? (
+              <IndependentJobPanel
+                conversationId={activeConversationId}
+                runId={readOnlyConversation ? null : independentJobs.runId}
+                list={jobList}
+                onJob={independentJobs.applyJob}
               />
-            </ToolIconProvider>
-          )}
-        </section>
+            ) : null}
+            {activeConversationId && !readOnlyConversation ? (
+              <ConversationGoalCard
+                key={activeConversationId}
+                conversationId={activeConversationId}
+                onCreating={isDraftConversation ? retainDraftConversation : undefined}
+                onCreated={handleGoalCreated}
+              />
+            ) : null}
+            {sourceUnavailable && !messagesLoading && (historyFailed || envelope) ? (
+              <div role="alert" className="flex items-center gap-2 border-b px-4 py-2 text-sm">
+                <span>{t('sourceUnavailable')}</span>
+                <Button size="sm" variant="outline" onClick={() => void retryHistory()}>
+                  {t('retrySource')}
+                </Button>
+              </div>
+            ) : null}
+            <PinnedConversationSummary conversationId={activeConversationId} />
+            <AgentReadinessGate
+              agentId={agentId}
+              agentName={agent?.name}
+              conversationId={activeConversationId}
+            />
+
+            {/* Thread */}
+            {(!isPromotedDraftRoute && !isDraftConversation && messagesLoading) ||
+            isLangGraphDraftBootstrapping ? (
+              <div className="flex-1 px-4 py-4">
+                <div className="mx-auto max-w-3xl space-y-4">
+                  {Array.from({ length: 3 }).map((_, i) => (
+                    <div key={i} className="flex gap-3">
+                      <Skeleton className="size-8 rounded-full" />
+                      <Skeleton className="moldy-skeleton-message h-16 flex-1" />
+                    </div>
+                  ))}
+                </div>
+              </div>
+            ) : (
+              <ToolIconProvider iconIds={toolIconIds} mcpServers={mcpServerNames}>
+                <ChatRuntimeSection
+                  enableRunSteer={!readOnlyConversation}
+                  activeConversationId={activeConversationId}
+                  readOnlyConversation={readOnlyConversation}
+                  activeRun={envelope?.active_run ?? null}
+                  agentId={agentId}
+                  agentImageUrl={agent?.image_url}
+                  agentName={agent?.name}
+                  attachmentAdapter={moldyAttachmentAdapter}
+                  emptyContent={renderedEmptyContent}
+                  feedbackAdapter={feedbackAdapter}
+                  latestRun={envelope?.latest_run ?? null}
+                  messages={messages}
+                  modelName={agent?.model?.display_name}
+                  showContextGauge
+                  contextWindow={agent?.model?.context_window ?? null}
+                  onBeforeNewMessage={handleBeforeNewMessage}
+                  onNewMessageAccepted={handleNewMessageAccepted}
+                  onRuntimeStatusChange={handleRuntimeStatusChange}
+                  onStreamEnd={onStreamEnd}
+                  streamFn={streamFn}
+                  totalCost={envelope?.total_estimated_cost}
+                  useLangGraphRuntime={useLangGraphRuntime}
+                  user={user}
+                  linkedSkills={agent?.skills}
+                  commandActions={{
+                    createNewConversation: handleNewConversation,
+                    openFilesRail: handleToggleArtifacts,
+                    ...(activeConversationId
+                      ? { openExportChooser: () => setExportOpen(true) }
+                      : {}),
+                  }}
+                />
+              </ToolIconProvider>
+            )}
+          </section>
+        </IndependentJobCancelProvider>
 
         {/* 우측 RightRail — sub-agent / tool-result / outline 패널 슬롯 */}
-        <ConversationDetailRail conversationId={activeConversationId} />
+        <ChatWorkCommandConversationContext.Provider
+          value={readOnlyConversation ? null : activeConversationId}
+        >
+          <ConversationDetailRail conversationId={activeConversationId} />
+        </ChatWorkCommandConversationContext.Provider>
         <SideChatPanel agent={agent} user={user} />
         {activeConversationId ? (
           <ExportDialog

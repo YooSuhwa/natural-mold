@@ -1,0 +1,311 @@
+{
+  "schema_version": 1,
+  "source_sha": "06ea83969a16fc1b61ecd0740f22f3dc81534a33",
+  "driver": "httpx ASGITransport, signed user cookie + CSRF, no browser/network proxy",
+  "checkpointer": "AsyncPostgresSaver",
+  "concurrency": "one run at a time; one current_datetime tool per run",
+  "network_model_calls": 0,
+  "postgres": "16.15 (Homebrew)",
+  "deepagents": "0.7.42",
+  "langgraph": "1.2.24",
+  "setting": "one ordinary chat worker; two directives admitted while its clock tool waits",
+  "start": "UTC created_at of accepted SQL receipt (same host; set before commit)",
+  "end": "model call containing matching IDs and text after the clock tool result",
+  "companion": "monotonic interval from HTTP acknowledgment to entering the model",
+  "attempted_runs": 24,
+  "planned_steers": 48,
+  "verified_ordered_once_and_applied": 48,
+  "failed_runs": 0,
+  "p95_method": "nearest rank; both admissions share the next invocation within each run",
+  "receipt_to_model_p95_ms": 132.007,
+  "trials": [
+    {
+      "trial": 1,
+      "receipt_to_model_ms": [
+        113.962,
+        70.987
+      ],
+      "ack_to_model_ms": [
+        110.586,
+        67.332
+      ],
+      "post_terminal_receipt_reads": 1
+    },
+    {
+      "trial": 2,
+      "receipt_to_model_ms": [
+        92.103,
+        61.562
+      ],
+      "ack_to_model_ms": [
+        90.134,
+        60.003
+      ],
+      "post_terminal_receipt_reads": 1
+    },
+    {
+      "trial": 3,
+      "receipt_to_model_ms": [
+        119.175,
+        82.698
+      ],
+      "ack_to_model_ms": [
+        116.919,
+        78.794
+      ],
+      "post_terminal_receipt_reads": 1
+    },
+    {
+      "trial": 4,
+      "receipt_to_model_ms": [
+        93.175,
+        62.415
+      ],
+      "ack_to_model_ms": [
+        91.446,
+        60.724
+      ],
+      "post_terminal_receipt_reads": 1
+    },
+    {
+      "trial": 5,
+      "receipt_to_model_ms": [
+        108.521,
+        71.263
+      ],
+      "ack_to_model_ms": [
+        106.546,
+        69.21
+      ],
+      "post_terminal_receipt_reads": 1
+    },
+    {
+      "trial": 6,
+      "receipt_to_model_ms": [
+        99.067,
+        65.626
+      ],
+      "ack_to_model_ms": [
+        97.072,
+        63.479
+      ],
+      "post_terminal_receipt_reads": 1
+    },
+    {
+      "trial": 7,
+      "receipt_to_model_ms": [
+        110.397,
+        69.378
+      ],
+      "ack_to_model_ms": [
+        108.386,
+        66.813
+      ],
+      "post_terminal_receipt_reads": 1
+    },
+    {
+      "trial": 8,
+      "receipt_to_model_ms": [
+        89.863,
+        60.215
+      ],
+      "ack_to_model_ms": [
+        88.276,
+        58.392
+      ],
+      "post_terminal_receipt_reads": 1
+    },
+    {
+      "trial": 9,
+      "receipt_to_model_ms": [
+        134.407,
+        95.312
+      ],
+      "ack_to_model_ms": [
+        132.73,
+        92.616
+      ],
+      "post_terminal_receipt_reads": 1
+    },
+    {
+      "trial": 10,
+      "receipt_to_model_ms": [
+        132.007,
+        75.167
+      ],
+      "ack_to_model_ms": [
+        130.195,
+        72.964
+      ],
+      "post_terminal_receipt_reads": 1
+    },
+    {
+      "trial": 11,
+      "receipt_to_model_ms": [
+        105.203,
+        66.495
+      ],
+      "ack_to_model_ms": [
+        103.243,
+        63.283
+      ],
+      "post_terminal_receipt_reads": 1
+    },
+    {
+      "trial": 12,
+      "receipt_to_model_ms": [
+        108.437,
+        73.588
+      ],
+      "ack_to_model_ms": [
+        106.124,
+        69.642
+      ],
+      "post_terminal_receipt_reads": 1
+    },
+    {
+      "trial": 13,
+      "receipt_to_model_ms": [
+        103.994,
+        70.124
+      ],
+      "ack_to_model_ms": [
+        102.324,
+        68.589
+      ],
+      "post_terminal_receipt_reads": 1
+    },
+    {
+      "trial": 14,
+      "receipt_to_model_ms": [
+        101.102,
+        69.664
+      ],
+      "ack_to_model_ms": [
+        99.297,
+        68.029
+      ],
+      "post_terminal_receipt_reads": 1
+    },
+    {
+      "trial": 15,
+      "receipt_to_model_ms": [
+        101.671,
+        73.213
+      ],
+      "ack_to_model_ms": [
+        99.717,
+        71.547
+      ],
+      "post_terminal_receipt_reads": 1
+    },
+    {
+      "trial": 16,
+      "receipt_to_model_ms": [
+        107.435,
+        69.485
+      ],
+      "ack_to_model_ms": [
+        104.873,
+        67.407
+      ],
+      "post_terminal_receipt_reads": 1
+    },
+    {
+      "trial": 17,
+      "receipt_to_model_ms": [
+        140.814,
+        100.312
+      ],
+      "ack_to_model_ms": [
+        138.565,
+        97.86
+      ],
+      "post_terminal_receipt_reads": 1
+    },
+    {
+      "trial": 18,
+      "receipt_to_model_ms": [
+        101.632,
+        68.184
+      ],
+      "ack_to_model_ms": [
+        99.784,
+        66.377
+      ],
+      "post_terminal_receipt_reads": 1
+    },
+    {
+      "trial": 19,
+      "receipt_to_model_ms": [
+        101.515,
+        68.293
+      ],
+      "ack_to_model_ms": [
+        99.932,
+        66.813
+      ],
+      "post_terminal_receipt_reads": 1
+    },
+    {
+      "trial": 20,
+      "receipt_to_model_ms": [
+        88.189,
+        61.217
+      ],
+      "ack_to_model_ms": [
+        86.86,
+        59.616
+      ],
+      "post_terminal_receipt_reads": 1
+    },
+    {
+      "trial": 21,
+      "receipt_to_model_ms": [
+        105.629,
+        70.102
+      ],
+      "ack_to_model_ms": [
+        101.498,
+        66.905
+      ],
+      "post_terminal_receipt_reads": 1
+    },
+    {
+      "trial": 22,
+      "receipt_to_model_ms": [
+        112.888,
+        79.394
+      ],
+      "ack_to_model_ms": [
+        111.059,
+        77.638
+      ],
+      "post_terminal_receipt_reads": 1
+    },
+    {
+      "trial": 23,
+      "receipt_to_model_ms": [
+        110.909,
+        80.334
+      ],
+      "ack_to_model_ms": [
+        109.064,
+        78.415
+      ],
+      "post_terminal_receipt_reads": 1
+    },
+    {
+      "trial": 24,
+      "receipt_to_model_ms": [
+        115.419,
+        74.59
+      ],
+      "ack_to_model_ms": [
+        111.284,
+        72.304
+      ],
+      "post_terminal_receipt_reads": 1
+    }
+  ]
+}

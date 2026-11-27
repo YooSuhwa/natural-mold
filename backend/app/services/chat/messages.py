@@ -20,7 +20,7 @@ from app.agent_runtime.message_utils import langchain_messages_to_response, pars
 from app.authz.conversation_scope import require_private_conversation
 from app.authz.org_context import OrgContext
 from app.authz.scoping import private_scope_predicate
-from app.models.conversation import Conversation
+from app.models.conversation import INDEPENDENT_JOB_SOURCE, Conversation
 from app.models.message_attachment import MessageAttachment
 from app.models.message_feedback import MessageFeedback
 from app.schemas.conversation import MessageAttachmentBrief, MessageFeedbackBrief
@@ -155,6 +155,7 @@ async def list_messages_from_checkpointer(
             db,
             conversation_id=conversation.id,
             responses=responses,
+            independent_context=context if conversation.source == INDEPENDENT_JOB_SOURCE else None,
         )
     secrets = tuple(await collect_conversation_secret_values(db, conversation, context))
     _redact_response_tool_calls(responses, secret_values=secrets)

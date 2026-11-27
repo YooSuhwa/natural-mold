@@ -249,7 +249,7 @@ describe('useLangGraphDraftConversation', () => {
     rerender({ isDraftConversation: false })
 
     await waitFor(() => {
-      expect(mocks.delete).toHaveBeenCalledWith('conversation-v3')
+      expect(mocks.delete).toHaveBeenCalledWith('conversation-v3', { onlyIfDraft: true })
     })
   })
 

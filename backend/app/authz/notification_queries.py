@@ -22,7 +22,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.authz import denials
 from app.authz.candidates import granted_resource_ids
 from app.authz.error_codes import authorization_error
-from app.authz.notifications import RETENTION, now
+from app.authz.goal_approval_notifications import accessible_goal_approvals, is_goal_approval
+from app.authz.notifications import APPROVAL_KINDS, INDEPENDENT_APPROVAL_MARKER, RETENTION, now
 from app.authz.org_context import OrgContext
 from app.authz.principal import Principal
 from app.authz.service import AuthzService
@@ -40,6 +41,7 @@ from app.schemas.notification import (
     NotificationView,
     UnreadCount,
 )
+from app.services.chat_notification_access import WORK_TARGET, accessible_work_targets
 
 
 async def _scope(db: AsyncSession, ctx: OrgContext) -> ColumnElement[bool]:
@@ -66,10 +68,22 @@ def _decode(cursor: str) -> tuple[datetime, UUID]:
         raise authorization_error("invalid_cursor") from error
 
 
+def _is_independent_approval(row: Notification) -> bool:
+    return (
+        row.target_type == "approval_request"
+        and row.kind in APPROVAL_KINDS
+        and (row.payload or {}).get(INDEPENDENT_APPROVAL_MARKER) is True
+    )
+
+
 async def _accessible(
     db: AsyncSession, authz: AuthzService, ctx: OrgContext, rows: Sequence[Notification]
 ) -> set[str]:
-    kept: set[str] = set()
+    work_ids = {row.target_id for row in rows if row.target_type == WORK_TARGET and row.target_id}
+    kept = await accessible_work_targets(db, ctx, work_ids)
+    kept.update(
+        await accessible_goal_approvals(db, ctx, [row.id for row in rows if is_goal_approval(row)])
+    )
     principal = Principal.for_user(ctx)
     for name, kind in SHARE_TYPES.items():
         ids = {row.target_id for row in rows if row.target_type == name and row.target_id}
@@ -113,6 +127,14 @@ async def _views(
     db: AsyncSession, authz: AuthzService, ctx: OrgContext, rows: Sequence[Notification]
 ) -> list[NotificationView]:
     kept = await _accessible(db, authz, ctx, rows)
+    independent_ids = {
+        row.target_id for row in rows if row.target_id and _is_independent_approval(row)
+    }
+    allowed_independent: set[UUID] = set()
+    if independent_ids:
+        from app.approvals.independent_visibility import authorized_independent_approval_ids
+
+        allowed_independent = await authorized_independent_approval_ids(db, ctx, independent_ids)
     shared = await _still_shared(db, ctx, rows)
     actors = {row.actor_id for row in rows if row.actor_id}
     people = {
@@ -121,21 +143,35 @@ async def _views(
     }
     views: list[NotificationView] = []
     for row in rows:
-        payload = {k: v for k, v in (row.payload or {}).items() if k != "target_name"}
+        goal_approval = is_goal_approval(row)
+        payload = {
+            k: v
+            for k, v in (row.payload or {}).items()
+            if k not in {"target_name", "chat_goal", INDEPENDENT_APPROVAL_MARKER}
+        }
         target, link = None, row.link
         if row.target_type is not None:
             # H-06 usage warnings name the recipient's own limit, not a shared resource;
             # approval notices go only to the request's own decider (17.2); a workflow's
             # notify step writes only to the run's own runner (workflow-nodes-plan N6).
-            own = row.target_type in {"usage_limit", "approval_request", "workflow_run"}
+            own = (
+                row.target_type in {"usage_limit", "approval_request", "workflow_run"}
+                and not goal_approval
+            )
             key = f"{row.target_type}:{row.target_id}"
             disclosed = row.kind == "grant.received" and key in shared
             visible = own or key in kept or disclosed
+            if _is_independent_approval(row) and row.target_id not in allowed_independent:
+                visible = False
+                link = None
+                payload = {}
             target = NotificationTarget(type=row.target_type, accessible=visible)
             if visible:
                 target.id, target.name = row.target_id, (row.payload or {}).get("target_name")
             if not (own or key in kept):
                 link = None
+                if goal_approval:
+                    payload = {}
         actor = None
         if row.actor_id is not None and (target is None or target.accessible):
             actor = NotificationActor(id=row.actor_id, display_name=people.get(row.actor_id))

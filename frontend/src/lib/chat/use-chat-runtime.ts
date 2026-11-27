@@ -2,6 +2,7 @@
 
 import { useRef, useState, useCallback, useMemo, useEffect } from 'react'
 import {
+  fromThreadMessageLike,
   useExternalStoreRuntime,
   useExternalMessageConverter,
   type DictationAdapter,
@@ -22,6 +23,7 @@ import type {
   ArtifactSummary,
   FileEventPayload,
 } from '@/lib/types'
+import { recoveryErrorCode } from '@/lib/chat-runs/recovery-error'
 import { isActiveRunStatus } from '@/lib/chat-runs/status'
 import {
   chatCancelInFlightAtom,
@@ -36,7 +38,8 @@ import {
   startExcludedCapabilitiesRunAtom,
 } from '@/lib/stores/chat-excluded-capabilities'
 import { EXCLUDED_CAPABILITIES_EVENT, parseExcludedCapabilities } from './excluded-capabilities'
-import { convertMessage } from './convert-message'
+import { convertMessage, type MessageForRender } from './convert-message'
+import { useLegacyPartialOutput } from './use-legacy-partial-output'
 import { extractText } from './utils'
 import { streamResumeDecisions } from '@/lib/sse/stream-resume'
 import { streamEdit } from '@/lib/sse/stream-edit'
@@ -57,6 +60,7 @@ import { toStandardInterruptPayload } from './auth-required-interrupt'
 import { hasHydratedSingleActionInterrupt } from './legacy-pending-interrupt'
 import { artifactKeys } from '@/lib/api/artifacts'
 import { conversationRunsApi } from '@/lib/api/conversation-runs'
+import { useIndependentJobCancelChoice } from '@/components/chat/independent-job-cancel-provider'
 import { reportClientError, reportClientWarning } from '@/lib/logging/client-logger'
 import { agentQueryKeys } from '@/lib/query-keys/agents'
 import { conversationQueryKeys } from '@/lib/query-keys/conversations'
@@ -396,6 +400,7 @@ export function useChatRuntime({
   const [, setStreamError] = useState<string | null>(null)
   const abortRef = useRef<AbortController | null>(null)
   const cancelInFlightRef = useRef(false)
+  const chooseCancelScope = useIndependentJobCancelChoice(conversationId)
   const cancelNoticePendingRef = useRef(false)
   // 가장 최근에 emit된 interrupt_id (resume 시 stale 검증용)
   const lastInterruptIdRef = useRef<string | null>(null)
@@ -497,20 +502,57 @@ export function useChatRuntime({
       ? latestRun
       : null
 
+  const partialFailedRunId =
+    !isRunning &&
+    !isActiveRunStatus(activeRun?.status) &&
+    latestRun?.status === 'failed' &&
+    latestRun.conversation_id === conversationId &&
+    latestRun.error_code === 'partial_model_stream'
+      ? latestRun.id
+      : undefined
+  const verifiedPartial = useLegacyPartialOutput(conversationId, partialFailedRunId)
+  const partialOutput = partialFailedRunId ? verifiedPartial : undefined
+
   const allMessages = useMemo(() => {
     // 검색류 N개 그룹핑은 더 이상 메시지 사전변환(deep-research compaction)에
     // 의존하지 않는다 — 렌더 시점 `MessagePrimitive.GroupedParts`가 모든 표면에서
     // 일반화해 처리한다(Phase-2b). 여기서는 fetch/stream 병합만 한다.
-    const merged = mergeMessagesForRender({
+    const merged: MessageForRender[] = mergeMessagesForRender({
       messages,
-      streamingMessages,
+      // Failed partial turns are displayed from the branch-proved, redacted snapshot.
+      streamingMessages: partialFailedRunId ? [] : streamingMessages,
       // eslint-disable-next-line react-hooks/refs -- merge needs the last committed snapshot without triggering renders.
       previousMessages: prevMessagesRef.current,
       isRunning,
     })
+    if (
+      !isRunning &&
+      latestRun?.status === 'failed' &&
+      latestRun.conversation_id === conversationId
+    ) {
+      const reason = recoveryErrorCode(latestRun.error_code)
+      if (reason) {
+        // assistant-ui merges consecutive assistant messages unless the previous reply ends a group.
+        const boundary = merged.findLastIndex((message) => message.role === 'assistant')
+        const previousAnswer = merged[boundary]
+        if (previousAnswer) merged[boundary] = { ...previousAnswer, terminalNoticeBoundary: true }
+        return [
+          ...merged,
+          {
+            id: `moldy-failed-${latestRun.id}`,
+            role: 'assistant' as const,
+            conversation_id: latestRun.conversation_id,
+            content: tPage(`recovery.${reason}`),
+            tool_calls: null,
+            tool_call_id: null,
+            created_at: latestRun.completed_at ?? latestRun.updated_at,
+          },
+        ]
+      }
+    }
     if (!durableCanceledRun) return merged
     return appendDurableCanceledNotice(merged, tPage('canceled'), durableCanceledRun)
-  }, [isRunning, messages, streamingMessages, durableCanceledRun, tPage])
+  }, [isRunning, messages, streamingMessages, partialFailedRunId, durableCanceledRun, latestRun, conversationId, tPage])
 
   const streamingUsageTotals = useMemo(
     () => sumMessageUsage(streamingMessages),
@@ -1343,7 +1385,24 @@ export function useChatRuntime({
     cancelInFlightRef.current = true
     setChatCancelInFlight(true)
     try {
-      const run = await conversationRunsApi.cancel(activeConversationId, runId)
+      const confirmation = chooseCancelScope?.(runId)
+      const scope = confirmation ? await confirmation : 'parent'
+      if (scope === 'dismiss') return
+      if (confirmation) {
+        const current = await conversationRunsApi.active(activeConversationId)
+        if (
+          current?.id !== runId ||
+          (current.status !== 'queued' && current.status !== 'running') ||
+          controller?.signal.aborted ||
+          activeConversationId !== conversationIdRef.current ||
+          runId !== runIdRef.current
+        )
+          return
+      }
+      const run =
+        scope === 'cascade'
+          ? await conversationRunsApi.cancel(activeConversationId, runId, true)
+          : await conversationRunsApi.cancel(activeConversationId, runId)
       queryClient.invalidateQueries({ queryKey: agentQueryKeys.all })
       queryClient.invalidateQueries({
         queryKey: conversationQueryKeys.prefix(activeConversationId),
@@ -1365,7 +1424,7 @@ export function useChatRuntime({
       cancelInFlightRef.current = false
       setChatCancelInFlight(false)
     }
-  }, [queryClient, setChatCancelInFlight])
+  }, [chooseCancelScope, queryClient, setChatCancelInFlight])
 
   /** M-CHAT1b — edit a user message in place via LangGraph thread fork. */
   const onEdit = useCallback(
@@ -1453,8 +1512,26 @@ export function useChatRuntime({
     }
   }, [feedbackAdapter, attachmentAdapter, dictationAdapter])
 
+  const displayedMessages = useMemo(() => {
+    if (!partialFailedRunId || !partialOutput) return threadMessages
+    const id = `moldy-failed-${partialFailedRunId}`
+    // A display-only terminal notice. No partial tool call enters the application history.
+    return [
+      ...threadMessages,
+      fromThreadMessageLike(
+        {
+          id,
+          role: 'assistant',
+          content: tPage('partialModelStream'),
+          metadata: { custom: { terminalNotice: 'failed' } },
+        },
+        id,
+        { type: 'complete', reason: 'stop' },
+      ),
+    ]
+  }, [partialFailedRunId, partialOutput, tPage, threadMessages])
   const runtime = useExternalStoreRuntime({
-    messages: threadMessages,
+    messages: displayedMessages,
     isRunning,
     onNew,
     onEdit,
@@ -1477,5 +1554,12 @@ export function useChatRuntime({
     [streamFn, _runStream],
   )
 
-  return { runtime, onResumeDecisions, registerDecision, sendMessage }
+  return {
+    runtime,
+    onResumeDecisions,
+    registerDecision,
+    sendMessage,
+    partialFailedRunId,
+    partialOutput,
+  }
 }

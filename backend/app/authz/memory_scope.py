@@ -16,7 +16,7 @@ from app.authz.org_context import OrgContext
 from app.authz.scoping import private_scope_predicate
 from app.models.agent import Agent
 from app.models.conversation import Conversation
-from app.models.memory import MemoryProposal, MemoryRecord
+from app.models.memory import MEMORY_APPROVAL_CHANNELS, MemoryProposal, MemoryRecord
 
 
 def _agent_parent(
@@ -65,6 +65,33 @@ def private_memory_record_predicate(
         private_scope_predicate(MemoryRecord, context),
         _agent_parent(MemoryRecord.agent_id, MemoryRecord, context, shared),
         _source_conversation(MemoryRecord.source_conversation_id, MemoryRecord, context, shared),
+    )
+
+
+def recallable_memory_record_predicate(
+    context: OrgContext, shared: Collection[UUID] = ()
+) -> ColumnElement[bool]:
+    """Owner, surviving parents, and approval attestation for search and indexing."""
+    return and_(
+        private_memory_record_predicate(context, shared),
+        MemoryRecord.flags["legacy_rejected"].as_string().is_(None),
+        MemoryRecord.deleted_at.is_(None),
+        MemoryRecord.revoked_at.is_(None),
+        MemoryRecord.revoked_by.is_(None),
+        or_(
+            and_(
+                MemoryRecord.approved_by == context.user_id,
+                MemoryRecord.approved_at.is_not(None),
+                MemoryRecord.approval_channel.in_(MEMORY_APPROVAL_CHANNELS),
+            ),
+            # Migrated records predate the approval ledger; partial attestations do not.
+            and_(
+                MemoryRecord.origin == "legacy",
+                MemoryRecord.approved_by.is_(None),
+                MemoryRecord.approved_at.is_(None),
+                MemoryRecord.approval_channel.is_(None),
+            ),
+        ),
     )
 
 

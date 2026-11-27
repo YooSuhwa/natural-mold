@@ -14,6 +14,12 @@ from langchain_core.tools import BaseTool
 from app.agent_runtime.memory_paths import memory_access
 from app.agent_runtime.runtime import memory_context
 from app.agent_runtime.runtime.connection_guard import with_connection_guard
+from app.agent_runtime.runtime.direct_stream_retry import (
+    DirectStreamRetryMiddleware,
+    configured_attempts,
+    direct_stream_retry_for,
+)
+from app.agent_runtime.runtime.goal_run import GoalRunMiddleware, readable_goal_tool_configs
 from app.agent_runtime.runtime.memory_recall_middleware import MemoryRecallMiddleware
 from app.agent_runtime.runtime.shared_memo import load_shared_memo, memo_governed
 from app.agent_runtime.runtime.usage_guard import with_usage_guard
@@ -59,7 +65,7 @@ async def prepare_runtime_components_impl(
     """Build standard or trigger components before Deep Agents graph creation."""
     assert_pre_marker("prepare_runtime_components_impl")
     # Skills the company switched off are not part of the run (plan 3.8).
-    cfg.agent_skills = skills_on(cfg.tool_risk, cfg.agent_skills)
+    cfg.agent_skills = [] if cfg.goal_followup else skills_on(cfg.tool_risk, cfg.agent_skills)
 
     last_mark = bindings.perf_counter()
 
@@ -83,16 +89,21 @@ async def prepare_runtime_components_impl(
     mark_timing("model_ms")
 
     langchain_tools: list[BaseTool] = []
+    goal_read_tools: list[BaseTool] = []
     mcp_configs: list[dict[str, Any]] = []
     runtime_tool_configs = [
         *cfg.tools_config,
         *bindings.build_skill_dependency_tool_configs(
             agent_skills=cfg.agent_skills or [],
             existing_tool_configs=cfg.tools_config,
-            user_id=cfg.user_id,
+            user_id=str(cfg.org_context.user_id),
             agent_id=cfg.agent_id,
+            org_id=str(cfg.org_context.org_id),
+            tenant_id=str(cfg.org_context.tenant_id),
         ),
     ]
+    if cfg.goal_followup:
+        runtime_tool_configs = readable_goal_tool_configs(runtime_tool_configs)
     for tool_config in runtime_tool_configs:
         if tool_config.get("mcp_server_url"):
             mcp_configs.append(tool_config)
@@ -100,11 +111,16 @@ async def prepare_runtime_components_impl(
         tool = bindings.create_tool_for_runtime(tool_config)
         if tool is not None:
             langchain_tools.append(tool)
+            if cfg.goal_followup:
+                goal_read_tools.append(tool)
 
     langchain_tools.extend(await bindings.build_mcp_tools(mcp_configs))
+    before_builtin_helpers = len(langchain_tools)
     bindings.append_temporal_tools(langchain_tools)
     bindings.append_e2e_scripted_search_tool(langchain_tools)
     bindings.append_e2e_ui_data_demo_tool(langchain_tools)
+    if cfg.goal_followup:
+        goal_read_tools.extend(langchain_tools[before_builtin_helpers:])
 
     memory_write_policy = await bindings.memory_write_policy_for_run(
         cfg,
@@ -145,11 +161,13 @@ async def prepare_runtime_components_impl(
     configured_middleware_types = {
         str(config.get("type")) for config in (cfg.middleware_configs or []) if config.get("type")
     }
+    guarded_retry = direct_stream_retry_for(cfg)
     rules = effective_rules(cfg)
     filtered_middleware = [
         config
         for config in (cfg.middleware_configs or [])
         if config.get("type") not in bindings.deepagent_builtin_types
+        and not (guarded_retry and config.get("type") == "model_retry")
         # The old PII middleware steps aside where the guardrail checks the same value.
         and not covered_by_guardrails(config, rules)
     ]
@@ -157,12 +175,23 @@ async def prepare_runtime_components_impl(
         filtered_middleware,
         cfg.provider_api_keys or {},
     )
-    middleware = bindings.build_default_reliability_middleware(
-        model_candidates,
-        configured_types=configured_middleware_types,
+    middleware = (
+        []
+        if guarded_retry
+        else bindings.build_default_reliability_middleware(
+            model_candidates,
+            configured_types=configured_middleware_types,
+        )
     )
     middleware += bindings.build_middleware_instances(resolved_middleware)
     middleware += bindings.get_provider_middleware(cfg.provider)
+    if guarded_retry:
+        middleware.append(
+            DirectStreamRetryMiddleware(
+                fallbacks=model_candidates[1:],
+                max_attempts=configured_attempts(cfg.middleware_configs),
+            )
+        )
     mark_timing("middleware_ms")
 
     backend = (
@@ -178,6 +207,13 @@ async def prepare_runtime_components_impl(
             data_dir=bindings.data_dir,
             output_root=bindings.conversation_output_dir,
         )
+        if (
+            not stored_policy
+            and not is_trigger_mode
+            and cfg.run_path == "chat"
+            and cfg.usage_root_agent_id is None
+        ):
+            skill_ctx.goal_sandbox_run_id = run_id
         if cfg.user_id and not stored_policy:
             async with bindings.runtime_db_session_factory(cfg.org_context) as runtime_db:
                 await bindings.resolve_runtime_credentials(skill_ctx, db=runtime_db, cfg=cfg)
@@ -296,6 +332,29 @@ async def prepare_runtime_components_impl(
     )
     middleware = with_connection_guard(middleware, cfg, langchain_tools, mode=mode)
     middleware = await with_usage_guard(middleware, cfg)
+    if include_agent_memory_file and (cfg.goal_context or cfg.goal_followup):
+        middleware.append(
+            GoalRunMiddleware(
+                cfg.thread_id,
+                cfg.goal_context,
+                automatic=cfg.goal_followup,
+                read_tools=goal_read_tools,
+            )
+        )
+    if include_agent_memory_file and not is_trigger_mode:
+        from app.chat_recovery.identity import verify_prepared_recovery_inputs
+
+        await verify_prepared_recovery_inputs(
+            cfg,
+            system_prompt=system_prompt,
+            tools=langchain_tools,
+            middleware=middleware,
+            interrupts=interrupt_on,
+            permissions=permissions,
+            write_policy=memory_write_policy,
+            memory_sources=memory_sources,
+            data_dir=bindings.data_dir,
+        )
     return RuntimeComponents(
         model_candidates=model_candidates,
         model=model,

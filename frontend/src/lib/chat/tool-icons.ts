@@ -34,6 +34,7 @@ const EXACT_TOOL_ICONS: Readonly<Record<string, LucideIcon>> = {
   resolve_relative_date: ClockIcon,
   // web / search
   web_search: SearchIcon,
+  research_search: SearchIcon,
   tavily_search: SearchIcon,
   google_search: SearchIcon,
   google_news_search: SearchIcon,

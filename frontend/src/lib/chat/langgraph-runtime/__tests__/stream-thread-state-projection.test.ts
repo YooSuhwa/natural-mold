@@ -10,6 +10,55 @@ import {
 } from '../stream-thread-state-projection'
 
 describe('stream thread state projection', () => {
+  it('hydrates partial output as a display-only notice without adding it to graph messages', () => {
+    const display = {
+      text: '첫 행까지만 받았어요.',
+      tools: [{ name: 'send_email', state: 'unknown' }],
+      truncated: false,
+    }
+    const state = {
+      values: { messages: [{ type: 'human', id: 'question', content: '확인해 주세요.' }] },
+      metadata: {
+        latest_run: {
+          id: 'failed-turn',
+          status: 'failed',
+          error_code: 'partial_model_stream',
+          partial_output: {
+            ...display,
+            tools: [
+              {
+                ...display.tools[0],
+                args: { to: 'fixture@example.invalid' },
+                raw_result: 'unprojected',
+              },
+            ],
+          },
+        },
+      },
+    }
+
+    expect(terminalRunNoticeFromThreadState(state)?.partialOutput).toEqual(display)
+    expect(messagesFromThreadState(state)?.map((message) => message.id)).toEqual(['question'])
+  })
+
+  it('ignores partial output attached to an unrelated failure and rejects malformed evidence', () => {
+    const partial = {
+      text: 'unverified text',
+      tools: [{ name: 'send_email', state: 'completed' }],
+      truncated: false,
+    }
+    const notice = (code: string, evidence: unknown) =>
+      terminalRunNoticeFromThreadState({
+        metadata: {
+          latest_run: { id: 'run', status: 'failed', error_code: code, partial_output: evidence },
+        },
+      })
+
+    expect(notice('access_denied', partial)?.partialOutput).toBeUndefined()
+    expect(notice('partial_model_stream', undefined)?.partialOutput).toBeNull()
+    expect(notice('partial_model_stream', { ...partial, text: 1 })?.partialOutput).toBeNull()
+  })
+
   it('correlates only a completed exact run for replay hydration', () => {
     expect(
       completedRunIdFromThreadState({

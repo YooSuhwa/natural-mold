@@ -16,6 +16,7 @@ import type {
   RegistrationPolicy,
 } from '@/lib/types/organization'
 import { useOrgErrorMessage } from '../lib/error-message'
+import { OrgImagePolicySection } from './org-image-policy-section'
 import { OrgSelectField } from './org-select-field'
 
 const MEMBER_ROLES: readonly DefaultMemberRole[] = ['member', 'builder']
@@ -28,10 +29,15 @@ const REGISTRATION: readonly RegistrationChoice[] = [
   'closed',
 ]
 
-/** S08 "가입·공유 정책": default role, join method and public links (`PATCH /api/orgs/{id}`). */
+/** Organization policy permissions and optimistic concurrency follow the organization view. */
 export function OrgPolicySection({ view, canEdit }: { view: OrganizationView; canEdit: boolean }) {
   // Remount on a new version so a refetch (also after stale_version) reseeds the form.
-  return <OrgPolicyForm key={view.updated_at} view={view} canEdit={canEdit} />
+  return (
+    <>
+      <OrgPolicyForm key={view.updated_at} view={view} canEdit={canEdit} />
+      <OrgImagePolicySection key={view.id + view.updated_at} view={view} canEdit={canEdit} />
+    </>
+  )
 }
 
 function OrgPolicyForm({ view, canEdit }: { view: OrganizationView; canEdit: boolean }) {
@@ -44,15 +50,20 @@ function OrgPolicyForm({ view, canEdit }: { view: OrganizationView; canEdit: boo
     initial.registration_policy ?? 'inherit',
   )
   const [publicLinks, setPublicLinks] = useState(initial.allow_public_share_links)
+  const initialGoalSandbox = initial.goal_sandbox_enabled ?? false
+  const [goalSandbox, setGoalSandbox] = useState(initialGoalSandbox)
+  const goalSandboxChanged = goalSandbox !== initialGoalSandbox
   const next: OrganizationSettings = {
     default_member_role: role,
     registration_policy: registration === 'inherit' ? null : registration,
     allow_public_share_links: publicLinks,
+    ...(goalSandboxChanged && { goal_sandbox_enabled: goalSandbox }),
   }
   const dirty =
     next.default_member_role !== initial.default_member_role ||
     next.registration_policy !== initial.registration_policy ||
-    next.allow_public_share_links !== initial.allow_public_share_links
+    next.allow_public_share_links !== initial.allow_public_share_links ||
+    goalSandboxChanged
 
   function save() {
     update.mutate(
@@ -98,6 +109,20 @@ function OrgPolicyForm({ view, canEdit }: { view: OrganizationView; canEdit: boo
             checked={publicLinks}
             disabled={!canEdit}
             onCheckedChange={setPublicLinks}
+          />
+        </FormFieldShell>
+        <FormFieldShell
+          id="org-goal-sandbox"
+          label={t('goalSandbox')}
+          description={t('goalSandboxHint')}
+          layout="inline"
+        >
+          <Switch
+            id="org-goal-sandbox"
+            aria-describedby="org-goal-sandbox-description"
+            checked={goalSandbox}
+            disabled={!canEdit}
+            onCheckedChange={setGoalSandbox}
           />
         </FormFieldShell>
         {canEdit ? (

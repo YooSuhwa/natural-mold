@@ -19,9 +19,10 @@ async permit entirely.
 from __future__ import annotations
 
 import asyncio
-from collections.abc import AsyncIterator, Awaitable, Callable, Mapping
-from contextlib import AbstractAsyncContextManager
-from dataclasses import dataclass
+from collections.abc import AsyncIterator, Awaitable, Callable, Iterator, Mapping
+from contextlib import AbstractAsyncContextManager, contextmanager
+from contextvars import ContextVar
+from dataclasses import dataclass, replace
 from typing import Any, Protocol, TypeVar, cast
 
 from app.agent_runtime.lease_dispatch_permit import (
@@ -31,8 +32,19 @@ from app.agent_runtime.lease_dispatch_permit import (
     SessionFactory,
     open_dispatch_permit,
 )
-from app.agent_runtime.lease_provider_retry_policy import LeaseProviderRetryPolicy
+from app.agent_runtime.lease_provider_retry_policy import (
+    LeaseProviderRetryPolicy,
+    is_retryable_provider_error,
+)
 from app.agent_runtime.runtime_config import PreparedRunLease
+from app.agent_runtime.stream_retry_authority import StreamAttemptDenied, check_stream_attempt
+from app.agent_runtime.stream_retry_policy import (
+    AttemptOutcome,
+    PartialModelStreamError,
+    record_stream_attempt,
+    stream_error_retryable,
+    stream_retry_enabled,
+)
 
 PROVIDER_TRANSPORT_NOT_SINGLE_SEND = "provider_transport_not_single_send"
 
@@ -129,6 +141,7 @@ class LeaseSendGuard:
     kind: PermitKind = "provider"
     permit_opener: PermitOpener = open_dispatch_permit
     sleep: Callable[[float], Awaitable[None]] = asyncio.sleep
+    provider: str = ""
 
     def _permit(self) -> AbstractAsyncContextManager[DispatchPermit]:
         return self.permit_opener(
@@ -159,34 +172,96 @@ class LeaseSendGuard:
             number += 1
 
     async def stream(self, attempt: Callable[[], AsyncIterator[T]]) -> AsyncIterator[T]:
-        """Admit eager stream establishment (first chunk) under one fresh permit."""
+        """Reopen only before delivery. Even an emitted role/tool delta stops replay."""
 
+        enabled = stream_retry_enabled(self.provider)
+        observation = _observed_stream.get()
+        if enabled and observation is not None and observation.guard is self:
+            observation.started = True
         number = 1
-        while True:
-            chunks = attempt()
-            try:
-                async with self._permit():
-                    first = await anext(chunks, _END)
-            except Exception as exc:  # noqa: BLE001 — classified by the retry policy
-                await _aclose(chunks)
-                await self._backoff_or_raise(exc, number)
-                number += 1
-                continue
-            break
-        if first is _END:
-            return
+        output_started = False
+        unreported_send = 0
+
+        def record(outcome: AttemptOutcome) -> None:
+            nonlocal unreported_send
+            if enabled and unreported_send:
+                record_stream_attempt(
+                    attempt=unreported_send, output_started=output_started, outcome=outcome
+                )
+                unreported_send = 0
+
         try:
-            yield cast(T, first)
-            async for chunk in chunks:
-                yield chunk
-        finally:
-            await _aclose(chunks)
+            while True:
+                if enabled:
+                    try:
+                        await check_stream_attempt(prepared=True)
+                    except Exception:
+                        record("denied")
+                        raise
+                chunks = attempt()
+                admitted = False
+                try:
+                    async with self._permit():
+                        admitted = True
+                        # Count the previous response as retried only when its
+                        # replacement is admitted. A stop in backoff has one send.
+                        record("retry")
+                        unreported_send = number
+                        first = await anext(chunks, _END)
+                    if first is not _END:
+                        output_started = True
+                        yield cast(T, first)
+                        async for chunk in chunks:
+                            yield chunk
+                    record("success")
+                    return
+                except (DispatchDeniedError, LeaseProviderTransportError, StreamAttemptDenied):
+                    record("denied")
+                    raise
+                except Exception as exc:  # noqa: BLE001 — classify only the unopened response
+                    if enabled and not admitted:
+                        record("denied")
+                        raise
+                    if output_started:
+                        record("partial")
+                        if enabled:
+                            raise PartialModelStreamError() from exc
+                        raise
+                    transient = (
+                        stream_error_retryable(exc, is_retryable_provider_error)
+                        if enabled
+                        else is_retryable_provider_error(exc)
+                    )
+                    if not transient:
+                        record("unclassified")
+                        raise
+                    if number >= self.policy.max_attempts:
+                        record("exhausted")
+                        raise
+                finally:
+                    await _aclose(chunks)
+                await self.sleep(self.policy.delay_for(number))
+                number += 1
+        except (asyncio.CancelledError, GeneratorExit):
+            record("cancelled")
+            raise
 
 
 async def _aclose(chunks: AsyncIterator[Any]) -> None:
     close = getattr(chunks, "aclose", None)
     if close is not None:
         await close()
+
+
+@dataclass(slots=True)
+class _ObservedStream:
+    guard: LeaseSendGuard
+    started: bool = False
+
+
+_observed_stream: ContextVar[_ObservedStream | None] = ContextVar(
+    "observed_lease_stream", default=None
+)
 
 
 class LeaseBoundChatModelMixin:
@@ -196,18 +271,32 @@ class LeaseBoundChatModelMixin:
     attribute; a model without a bound guard refuses to send.
     """
 
-    def bind_lease_guard(self, guard: LeaseSendGuard) -> None:
+    def bind_lease_guard(self, guard: LeaseSendGuard, *, provider: str | None = None) -> None:
         """Bind the per-model send guard once, at lease construction."""
 
         if getattr(self, "_lease_guard", None) is not None:
             raise LeaseProviderTransportError("lease send guard is already bound")
-        self._lease_guard = guard
+        self._lease_guard = guard if provider is None else replace(guard, provider=provider)
 
     def _require_lease_guard(self) -> LeaseSendGuard:
         guard = getattr(self, "_lease_guard", None)
         if not isinstance(guard, LeaseSendGuard):
             raise LeaseProviderTransportError("lease send guard is not bound")
         return guard
+
+    @contextmanager
+    def observe_stream_retry_budget(self) -> Iterator[_ObservedStream | None]:
+        """Let the outer empty-result handler distinguish streams from plain ainvoke."""
+        guard = self._require_lease_guard()
+        if not stream_retry_enabled(guard.provider):
+            yield None
+            return
+        observation = _ObservedStream(guard)
+        token = _observed_stream.set(observation)
+        try:
+            yield observation
+        finally:
+            _observed_stream.reset(token)
 
     async def _agenerate(
         self, messages: Any, stop: Any = None, run_manager: Any = None, **kwargs: Any

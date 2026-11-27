@@ -418,6 +418,7 @@ async def copy_conversation_attachments_to_inputs(
     db: AsyncSession,
     *,
     storage_path: str,
+    conversation_id: uuid.UUID,
     attachment_ids: Sequence[uuid.UUID],
     context: OrgContext,
 ) -> list[str]:
@@ -429,7 +430,8 @@ async def copy_conversation_attachments_to_inputs(
 
     result = await db.execute(
         select(MessageAttachment).where(
-            MessageAttachment.id.in_(list(attachment_ids)),
+            MessageAttachment.id.in_(attachment_ids),
+            MessageAttachment.conversation_id == conversation_id,
             private_scope_predicate(MessageAttachment, context),
         )
     )

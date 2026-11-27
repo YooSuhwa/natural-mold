@@ -17,6 +17,12 @@ from typing import Any
 from app.agent_runtime.agent_stream_facade_bindings import langgraph_attr
 from app.agent_runtime.message_utils import RuntimeMessage
 from app.agent_runtime.run_metrics import RunMetricsAccumulator
+from app.agent_runtime.run_recovery_checkpoint import (
+    RECOVER_GRAPH_HEAD,
+    bind_recoverable_input,
+    bind_recoverable_state_input,
+    verified_resume_config,
+)
 from app.agent_runtime.run_start_events import excluded_capabilities_of
 from app.agent_runtime.runtime_config import AgentConfig
 from app.agent_runtime.streaming import StreamErrorRecord
@@ -103,9 +109,14 @@ async def _stream_langgraph_with_secrets(
         is_trigger_mode=False,
         run_id=run_id,
     )
-    actual_input = lc_messages if stream_input is _USE_PREPPED_LC_MESSAGES else stream_input
-    if actual_input == []:
+    if stream_input is RECOVER_GRAPH_HEAD:
+        config = await verified_resume_config(agent, config, cfg, run_id)
         actual_input = None
+    elif stream_input is _USE_PREPPED_LC_MESSAGES:
+        bind_recoverable_input(lc_messages, run_id)
+        actual_input = lc_messages or None
+    else:
+        actual_input = await bind_recoverable_state_input(stream_input, run_id, agent, config)
     async for chunk in _stream_langgraph_body(
         cfg,
         agent=agent,
@@ -180,6 +191,15 @@ async def _stream_langgraph_body(
     )
     try:
         with activation:
+            steer_receipts = None
+            if cfg.steer_store is not None:
+                steer_receipts = cfg.steer_store.receipt_feed(
+                    cfg.org_context,
+                    cfg.thread_id,
+                    run_id,
+                    source=moldy_source,
+                    profile=cfg.runtime_profile,
+                )
             async for chunk in langgraph_attr("stream_agent_response_langgraph")(
                 agent,
                 actual_input,
@@ -205,6 +225,7 @@ async def _stream_langgraph_body(
                 excluded_capabilities=excluded_capabilities_of(cfg),
                 # AD-4 — 인터럽트 review_configs에 세션 동의 옵션 플래그 주석.
                 session_consent_tools=cfg.skill_builder_consent_offer_tools,
+                steer_receipts=steer_receipts,
                 run_metrics=run_metrics,
             ):
                 yield chunk

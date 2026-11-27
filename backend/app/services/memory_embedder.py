@@ -9,7 +9,9 @@ registry (``models.kind = 'embedding'``), picked in the company memory settings.
 from __future__ import annotations
 
 import hashlib
+import json
 import logging
+import math
 import uuid
 from dataclasses import dataclass
 from typing import Protocol
@@ -18,6 +20,7 @@ import numpy as np
 
 from app.database import async_session, platform_session
 from app.outbound.client import outbound_http_client
+from app.services.memory_recall_policy import RecallMode
 
 logger = logging.getLogger(__name__)
 
@@ -43,6 +46,10 @@ class OpenAIShapedEmbedder:
     base_url: str
     # The company's model-change count (``memory_vectors``): one backfill per change.
     generation: int = 0
+    registry_id: uuid.UUID | None = None
+    provider: str = ""
+    recall_mode: RecallMode = "off"
+    recall_floor: float | None = None
 
     async def embed(self, texts: list[str], *, seconds: float) -> list[np.ndarray]:
         headers = {"Authorization": f"Bearer {self.api_key}"} if self.api_key else {}
@@ -55,7 +62,9 @@ class OpenAIShapedEmbedder:
             response.raise_for_status()
             data = sorted(response.json()["data"], key=lambda item: item["index"])
         vectors = [normalized(item["embedding"]) for item in data]
-        if len(vectors) != len(texts) or any(v.shape != (self.dimensions,) for v in vectors):
+        if [item["index"] for item in data] != list(range(len(texts))) or not all(
+            valid_vector(v, self.dimensions) for v in vectors
+        ):
             raise ValueError("embedding reply does not match the request")
         return vectors
 
@@ -74,11 +83,20 @@ def from_bytes(blob: bytes) -> np.ndarray:
     return np.frombuffer(blob, dtype="<f4")
 
 
+def valid_vector(vector: np.ndarray, dimensions: int) -> bool:
+    """The stored and query vectors used in a dot product must be finite unit vectors."""
+    return vector.shape == (dimensions,) and math.isclose(
+        float(np.linalg.norm(vector)), 1.0, rel_tol=1e-5
+    )
+
+
 def text_hash(text: str) -> str:
     return hashlib.sha256(text.encode("utf-8")).hexdigest()
 
 
-async def resolve_embedder(tenant_id: uuid.UUID | None) -> MemoryEmbedder | None:
+async def resolve_embedder(
+    tenant_id: uuid.UUID | None, *, org_id: uuid.UUID | None = None
+) -> MemoryEmbedder | None:
     """The company's memory vector model, or ``None`` (recall then uses keywords only).
 
     Read in a platform session: the model may be a platform row and its credential a
@@ -92,10 +110,27 @@ async def resolve_embedder(tenant_id: uuid.UUID | None) -> MemoryEmbedder | None
     try:
         async with platform_session("memory.embedding_model", maker=async_session) as db:
             tenant = await db.get(Tenant, tenant_id)
-            return await memory_vectors.embedder_for(db, tenant) if tenant else None
-    except Exception:  # noqa: BLE001 - a broken setting must not break a run
-        logger.warning("memory embedding model lookup failed", exc_info=True)
+            if tenant is None:
+                return None
+            return await memory_vectors.embedder_for(db, tenant, org_id=org_id)
+    except Exception as exc:  # noqa: BLE001 - a broken setting must not break a run
+        logger.warning("memory embedding model lookup failed: %s", type(exc).__name__)
         return None
+
+
+def vector_model_key(embedder: MemoryEmbedder) -> str:
+    """Persist the identity of the registered model and the endpoint that produced a vector."""
+    registry_id = getattr(embedder, "registry_id", None)
+    if registry_id is None:
+        return embedder.model
+    identity = (
+        str(registry_id),
+        getattr(embedder, "provider", ""),
+        getattr(embedder, "base_url", "").rstrip("/"),
+        embedder.model,
+        embedder.dimensions,
+    )
+    return "v2:" + text_hash(json.dumps(identity, separators=(",", ":")))
 
 
 __all__ = [
@@ -106,4 +141,6 @@ __all__ = [
     "resolve_embedder",
     "text_hash",
     "to_bytes",
+    "valid_vector",
+    "vector_model_key",
 ]

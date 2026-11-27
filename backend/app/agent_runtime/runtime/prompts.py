@@ -2,11 +2,21 @@
 
 from __future__ import annotations
 
+from datetime import UTC
+
 from app.agent_runtime.temporal import build_temporal_context_prompt
 
 
 def _system_prompt_with_temporal_context(system_prompt: str) -> str:
-    block = build_temporal_context_prompt().strip()
+    from app.chat_recovery.fence import current_run_fence
+
+    fence = current_run_fence()
+    reference = fence.started_at if fence else None
+    # ConversationRun.started_at is UTC in a timezone-naive database column. A new
+    # worker must give "today" the meaning it had when this same run began.
+    if reference is not None and reference.tzinfo is None:
+        reference = reference.replace(tzinfo=UTC)
+    block = build_temporal_context_prompt(now=reference).strip()
     prompt = system_prompt.strip()
     return f"{prompt}\n\n{block}" if prompt else block
 

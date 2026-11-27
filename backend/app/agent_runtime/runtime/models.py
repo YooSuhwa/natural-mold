@@ -13,6 +13,7 @@ from typing import Any
 
 from langchain_core.language_models import BaseChatModel
 
+from app.agent_runtime.runtime.direct_stream_retry import direct_stream_retry_for
 from app.agent_runtime.runtime_config import AgentConfig
 from app.exceptions import AppError
 
@@ -74,6 +75,9 @@ def _resolve_middleware_model_params(
 def _model_constructor_params(cfg: AgentConfig) -> dict[str, Any]:
     params = dict(cfg.model_params or {})
     params.pop("recursion_limit", None)
+    params.pop("_moldy_single_send", None)
+    if direct_stream_retry_for(cfg):
+        params["_moldy_single_send"] = True
     # Forward the model context limit so ``create_chat_model`` injects it into
     # ``model.profile`` (auto-summarization threshold = single source of truth).
     if cfg.context_window:

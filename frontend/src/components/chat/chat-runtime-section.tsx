@@ -21,15 +21,16 @@ import type { AnyStream } from '@langchain/react'
 import { AssistantThread, type AssistantThreadProps } from '@/components/chat/assistant-thread'
 import { FailedMessageRetryProvider } from '@/components/chat/failed-message-retry'
 import { useBrowserDictation } from '@/components/chat/use-browser-dictation'
+import { blocksInputRetry } from '@/lib/chat-runs/recovery-error'
 import { useChatRuntime } from '@/lib/chat/use-chat-runtime'
+import { RunSteerStreamSync } from '@/lib/chat/langgraph-runtime/run-steer-events'
 import { useMoldyLangGraphStream } from '@/lib/chat/langgraph-runtime/use-moldy-langgraph-stream'
-import {
-  SubagentRuntimeProvider,
-  usePublishSubagentRuntime,
-} from '@/lib/chat/langgraph-runtime/subagent-runtime'
+import { ScopedSubagentRuntimeProvider } from '@/components/chat/delegated-child-tasks'
+import { usePublishSubagentRuntime } from '@/lib/chat/langgraph-runtime/subagent-runtime'
 import { HiTLContext, type HiTLContextValue } from '@/lib/chat/hitl-context'
 import { ALL_DATA_UI } from '@/lib/chat/data-ui'
 import { ALL_TOOLKIT, createMoldyChatTools } from '@/lib/chat/tool-ui-registry'
+import type { PartialModelOutput } from '@/lib/chat/langgraph-runtime/partial-model-output'
 import type { ConversationRun, Message, SSEEvent } from '@/lib/types'
 import type { User } from '@/lib/types/user'
 import type { StreamChatOptions } from '@/lib/sse/stream-chat'
@@ -57,7 +58,9 @@ type ThreadRenderProps = Pick<
   AssistantThreadProps,
   | 'agentImageUrl'
   | 'agentName'
+  | 'readOnlyConversation'
   | 'composerHint'
+  | 'enableRunSteer'
   | 'conversationId'
   | 'contextWindow'
   | 'dictationAvailability'
@@ -74,6 +77,7 @@ type ThreadRenderProps = Pick<
 > & { readonly retryLastFailedRunId?: string }
 
 export interface ChatRuntimeSectionProps {
+  readonly readOnlyConversation?: boolean
   readonly compact?: boolean
   readonly threadHeader?: ReactNode
   readonly activeConversationId: string | null
@@ -84,6 +88,7 @@ export interface ChatRuntimeSectionProps {
   readonly attachmentAdapter?: AttachmentAdapter
   /** Composer 위 커스텀 힌트 (스킬 빌더 "예시로 시험" 등). */
   readonly composerHint?: ReactNode
+  readonly enableRunSteer?: boolean
   readonly emptyContent: ReactNode
   readonly feedbackAdapter?: FeedbackAdapter
   readonly latestRun: ConversationRun | null
@@ -106,6 +111,7 @@ export interface ChatRuntimeSectionProps {
 }
 
 export function ChatRuntimeSection({
+  readOnlyConversation,
   compact,
   threadHeader,
   activeConversationId,
@@ -115,6 +121,7 @@ export function ChatRuntimeSection({
   agentName,
   attachmentAdapter,
   composerHint,
+  enableRunSteer = false,
   emptyContent,
   feedbackAdapter,
   latestRun,
@@ -142,10 +149,12 @@ export function ChatRuntimeSection({
   const threadProps = useMemo<ThreadRenderProps>(
     () => ({
       compact,
+      readOnlyConversation,
       threadHeader,
       agentImageUrl,
       agentName,
       composerHint,
+      enableRunSteer,
       conversationId: activeConversationId ?? undefined,
       contextWindow,
       dictationAvailability: dictation.availability,
@@ -164,11 +173,13 @@ export function ChatRuntimeSection({
     }),
     [
       compact,
+      readOnlyConversation,
       threadHeader,
       activeConversationId,
       agentImageUrl,
       agentName,
       composerHint,
+      enableRunSteer,
       contextWindow,
       dictation.availability,
       dictation.resetFailure,
@@ -249,24 +260,33 @@ function LegacyRuntimeSection({
   threadProps,
   totalCost,
 }: LegacyRuntimeSectionProps) {
-  const { runtime, onResumeDecisions, registerDecision } = useChatRuntime({
-    messages,
-    totalCost,
-    streamFn,
-    onStreamEnd,
-    conversationId: activeConversationId ?? undefined,
-    feedbackAdapter,
-    attachmentAdapter,
-    dictationAdapter,
-    activeRun,
-    latestRun,
-  })
+  const { runtime, onResumeDecisions, registerDecision, partialFailedRunId, partialOutput } =
+    useChatRuntime({
+      messages,
+      totalCost,
+      streamFn,
+      onStreamEnd,
+      conversationId: activeConversationId ?? undefined,
+      feedbackAdapter,
+      attachmentAdapter,
+      dictationAdapter,
+      activeRun,
+      latestRun,
+    })
   const hitlValue = useMemo(
     () => ({ onResumeDecisions, registerDecision }),
     [onResumeDecisions, registerDecision],
   )
 
-  return <RuntimeFrame hitlValue={hitlValue} runtime={runtime} threadProps={threadProps} />
+  return (
+    <RuntimeFrame
+      hitlValue={hitlValue}
+      runtime={runtime}
+      threadProps={threadProps}
+      failedRunId={partialFailedRunId}
+      partialOutput={partialOutput}
+    />
+  )
 }
 
 interface LangGraphRuntimeSectionProps {
@@ -346,17 +366,27 @@ function LangGraphRuntimeSection({
   }, [isRunning, onRuntimeStatusChange, onStreamEnd])
 
   return (
-    <RuntimeFrame
-      activities={activities}
-      deepAgentsState={deepAgentsState}
-      hitlValue={hitlValue}
-      runtime={assistantRuntime}
-      messageQueue={messageQueue}
-      retryFailedInput={retryFailedInput}
-      failedRunId={threadRunNotice?.status === 'failed' ? threadRunNotice.id : undefined}
-      subagentStream={stream}
-      threadProps={threadProps}
-    />
+    <>
+      {threadProps.enableRunSteer && (
+        <RunSteerStreamSync conversationId={conversationId} stream={stream} />
+      )}
+      <RuntimeFrame
+        activities={activities}
+        deepAgentsState={deepAgentsState}
+        hitlValue={hitlValue}
+        runtime={assistantRuntime}
+        messageQueue={messageQueue}
+        retryFailedInput={retryFailedInput}
+        partialOutput={threadRunNotice?.partialOutput}
+        failedRunId={
+          threadRunNotice?.status === 'failed' && !blocksInputRetry(threadRunNotice.recoveryError)
+            ? threadRunNotice.id
+            : undefined
+        }
+        subagentStream={stream}
+        threadProps={threadProps}
+      />
+    </>
   )
 }
 
@@ -366,6 +396,7 @@ interface RuntimeFrameProps {
   readonly hitlValue: HiTLContextValue
   readonly runtime: AssistantRuntime
   readonly failedRunId?: string
+  readonly partialOutput?: PartialModelOutput | null
   readonly messageQueue?: ServerMessageQueueController
   readonly retryFailedInput?: (input: ConversationRunInput) => Promise<void>
   readonly subagentStream?: AnyStream | null
@@ -375,7 +406,8 @@ interface RuntimeFrameProps {
 function RuntimeFrame({
   activities,
   deepAgentsState,
-  failedRunId,
+  failedRunId: terminalFailedRunId,
+  partialOutput,
   hitlValue,
   runtime,
   messageQueue,
@@ -383,6 +415,7 @@ function RuntimeFrame({
   subagentStream,
   threadProps,
 }: RuntimeFrameProps) {
+  const failedRunId = threadProps.readOnlyConversation ? undefined : terminalFailedRunId
   const queueSnapshot = useSyncExternalStore(
     messageQueue?.subscribe ?? EMPTY_SUBSCRIBE,
     messageQueue?.getSnapshot ?? EMPTY_QUEUE_SNAPSHOT,
@@ -397,7 +430,7 @@ function RuntimeFrame({
     operation?.kind === 'queued' || operation?.kind === 'applied' ? operation.inputId : null
   const retryLastFailedInput = useFailedInputRetryAction(
     queueSnapshot?.items ?? [],
-    failedRunId,
+    partialOutput === undefined ? failedRunId : undefined,
     retryFailedInput,
   )
   const { retryLastFailedRunId: _retryLastFailedRunId, ...assistantThreadProps } = threadProps
@@ -408,10 +441,14 @@ function RuntimeFrame({
 
   const thread = (
     <HiTLContext.Provider value={hitlValue}>
-      <SubagentRuntimeProvider stream={subagentStream}>
+      <ScopedSubagentRuntimeProvider
+        conversationId={threadProps.conversationId}
+        stream={subagentStream}
+      >
         <FailedMessageRetryProvider
           value={{
             failedRunId,
+            partialOutput,
             retryAction: retryLastFailedInput,
           }}
         >
@@ -421,6 +458,7 @@ function RuntimeFrame({
               ...assistantThreadProps.commandActions,
               retryLastFailedInput,
             }}
+            retryLastFailedInput={retryLastFailedInput}
             resourceContextResetKey={queueAcceptanceKey ?? threadProps.resourceContextResetKey}
             activities={activities}
             dataUI={ALL_DATA_UI}
@@ -431,7 +469,7 @@ function RuntimeFrame({
             enableMessageQueue={Boolean(messageQueue)}
           />
         </FailedMessageRetryProvider>
-      </SubagentRuntimeProvider>
+      </ScopedSubagentRuntimeProvider>
     </HiTLContext.Provider>
   )
 

@@ -43,6 +43,7 @@ import {
   sanitizePlaywrightEnvironment,
   validatePlaywrightCliArguments,
 } from './e2e-lane-contract.mjs'
+import { INDEPENDENT_JOB_SPEC, independentJobBackendEnvironment } from './e2e-lane-runtime.mjs'
 import {
   authenticationSetupFailure,
   resolveSkillNodeModulesDirectory,
@@ -52,6 +53,22 @@ import { collectJsonNodes, parseArguments, runIsolatedLane } from './run-e2e-lan
 const frontendRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..')
 
 describe('E2E lane contract', () => {
+  it('grants loopback to the independent model fixture only in its dedicated scripted selection', () => {
+    const spec = INDEPENDENT_JOB_SPEC
+    expect(independentJobBackendEnvironment('scripted-full', [spec])).toEqual({
+      INDEPENDENT_CHAT_JOBS_ENABLED: 'true',
+      CHAT_WORK_NOTIFICATIONS_ENABLED: 'true',
+      CREDENTIAL_HTTP_ALLOWED_HOSTS: '127.0.0.1',
+      OUTBOUND_PRIVATE_ALLOWED_HOSTS: '127.0.0.1',
+    })
+    expect(independentJobBackendEnvironment('scripted-full', [])).toBeUndefined()
+    expect(independentJobBackendEnvironment('scripted-full', ['e2e/smoke.spec.ts'])).toBeUndefined()
+    expect(() => independentJobBackendEnvironment('live-manual', [spec])).toThrow('scripted-full')
+    expect(() =>
+      independentJobBackendEnvironment('scripted-full', [spec, 'e2e/smoke.spec.ts']),
+    ).toThrow('alone')
+  })
+
   it('consumes only the redundant fixed worker and retry options', () => {
     expect(
       parseArguments('scripted', [
@@ -78,6 +95,20 @@ describe('E2E lane contract', () => {
     expect(() => assertE2ELaneNodeVersion('v22.18.0')).not.toThrow()
     expect(() => assertE2ELaneNodeVersion('v25.8.1')).toThrow('E2E lanes require Node.js 22.')
     expect(() => assertE2ELaneNodeVersion('not-a-version')).toThrow('E2E lanes require Node.js 22.')
+  })
+
+  it('enables chat goal delivery only in the opted-in scripted organization', () => {
+    const optIn = { E2E_CHAT_GOAL_NOTIFICATIONS: '1' }
+    const env = buildLaneEnvironment('scripted', optIn, 'scripted-full')
+    expect(env.CONVERSATION_GOAL_ORG_IDS).toBe('["a79a6b5b-9a26-5e0a-8d6c-c9977f83f592"]')
+    expect(env.CHAT_WORK_NOTIFICATIONS_ENABLED).toBe('true')
+    expect(
+      buildLaneEnvironment('scripted', {
+        CONVERSATION_GOAL_ORG_IDS: '[]',
+        CHAT_WORK_NOTIFICATIONS_ENABLED: 'true',
+      }).CHAT_WORK_NOTIFICATIONS_ENABLED,
+    ).toBeUndefined()
+    expect(() => buildLaneEnvironment('scripted', optIn, 'scripted-smoke')).toThrow('scripted-full')
   })
 
   it('builds once with webpack and serves the isolated production frontend', () => {

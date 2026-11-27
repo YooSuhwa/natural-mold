@@ -488,6 +488,8 @@ class MemoryVectorStatusOut(BaseModel):
     job_progress: int | None = None
     # False: the chosen model has no measured floor, so recall still uses keywords only.
     floor_measured: bool
+    quality_floor: float | None = None
+    recall_mode: Literal["off", "shadow", "serve"] = "off"
     can_manage: bool
 
 
@@ -497,3 +499,4 @@ class MemoryVectorUpdate(BaseModel):
     confirm_count: int = Field(ge=0)
     # Turning off: also remove the stored vectors (kept by default).
     drop_vectors: bool = False
+    recall_mode: Literal["off", "shadow", "serve"] | None = None

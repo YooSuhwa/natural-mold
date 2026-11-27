@@ -237,6 +237,7 @@ async def _attach_files(
                 filename=source.filename,
                 mime_type=source.mime_type,
                 size_bytes=source.size_bytes,
+                content_sha256=source.content_sha256,
                 storage_path=str(target),
                 url=f"/api/uploads/{copy_id}",
             )

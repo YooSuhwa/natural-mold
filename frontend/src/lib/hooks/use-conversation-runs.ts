@@ -7,6 +7,8 @@ import { agentQueryKeys } from '@/lib/query-keys/agents'
 import { conversationKeys } from './use-conversations'
 
 export const conversationRunKeys = {
+  partialOutput: (conversationId: string, runId: string) =>
+    ['conversations', conversationId, 'runs', runId, 'partial-output'] as const,
   active: (conversationId: string) => ['conversations', conversationId, 'runs', 'active'] as const,
   detail: (conversationId: string, runId: string) =>
     ['conversations', conversationId, 'runs', runId] as const,

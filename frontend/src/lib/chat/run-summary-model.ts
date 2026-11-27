@@ -1,3 +1,4 @@
+import { recoveryErrorCode, type RecoveryErrorCode } from '@/lib/chat-runs/recovery-error'
 import type { RunActivity } from '@/lib/chat/langgraph-runtime/activity-model'
 import type {
   ConversationRunActivityMetric,
@@ -34,6 +35,7 @@ export interface RunSummaryActivity {
 
 export interface RunSummary {
   readonly runId: string
+  readonly recoveryError?: RecoveryErrorCode
   readonly status: ConversationRunStatus
   readonly elapsedMs: number | null
   readonly startedAtMs: number | null
@@ -69,8 +71,11 @@ export function buildPersistedRunSummary(
   runId: string,
   status: ConversationRunStatus,
   metrics: ConversationRunMetrics | null,
+  errorCode?: string | null,
 ): RunSummary {
+  const recoveryError = status === 'failed' ? recoveryErrorCode(errorCode) : undefined
   return {
+    ...(recoveryError && { recoveryError }),
     runId,
     status,
     elapsedMs: metrics?.elapsed_ms ?? null,

@@ -3,7 +3,6 @@ from __future__ import annotations
 import uuid
 
 from fastapi import APIRouter, Depends, Query
-from fastapi.responses import FileResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.authz.org_context import OrgContext
@@ -19,6 +18,7 @@ from app.schemas.artifact import (
 )
 from app.services import artifact_service
 from app.services.artifact_service import ArtifactNotFoundError, is_text_preview_artifact
+from app.services.goal_sandbox_file_reads import ConversationFileResponse, hold_goal_sandbox_reads
 
 router = APIRouter(tags=["artifacts"])
 
@@ -83,20 +83,23 @@ async def get_conversation_artifact_content(
             artifact_id=artifact_id,
         )
         if is_text_preview_artifact(summary):
-            return await artifact_service.read_artifact_text_content(
-                db,
-                context=context,
-                artifact_id=artifact_id,
-                conversation_id=conversation_id,
-            )
+            async with hold_goal_sandbox_reads(context, summary.conversation_id):
+                return await artifact_service.read_artifact_text_content(
+                    db,
+                    context=context,
+                    artifact_id=artifact_id,
+                    conversation_id=conversation_id,
+                )
         _artifact, _version, path = await artifact_service.get_artifact_download_path(
             db,
             context=context,
             artifact_id=artifact_id,
             conversation_id=conversation_id,
         )
-        return FileResponse(
+        return ConversationFileResponse(
             path,
+            context=context,
+            conversation_id=summary.conversation_id,
             media_type=summary.mime_type,
             headers={"Cache-Control": "private, max-age=300"},
         )
@@ -128,8 +131,10 @@ async def download_conversation_artifact(
             artifact_id=artifact_id,
         )
         await db.commit()
-        return FileResponse(
+        return ConversationFileResponse(
             path,
+            context=context,
+            conversation_id=artifact.conversation_id,
             filename=artifact.display_name,
             media_type=artifact.mime_type,
             headers={"Cache-Control": "private, max-age=300"},
@@ -266,18 +271,21 @@ async def get_artifact_library_content(
             artifact_id=artifact_id,
         )
         if is_text_preview_artifact(summary):
-            return await artifact_service.read_artifact_text_content(
-                db,
-                context=context,
-                artifact_id=artifact_id,
-            )
+            async with hold_goal_sandbox_reads(context, summary.conversation_id):
+                return await artifact_service.read_artifact_text_content(
+                    db,
+                    context=context,
+                    artifact_id=artifact_id,
+                )
         _artifact, _version, path = await artifact_service.get_artifact_download_path(
             db,
             context=context,
             artifact_id=artifact_id,
         )
-        return FileResponse(
+        return ConversationFileResponse(
             path,
+            context=context,
+            conversation_id=summary.conversation_id,
             media_type=summary.mime_type,
             headers={"Cache-Control": "private, max-age=300"},
         )
@@ -304,8 +312,10 @@ async def download_artifact_library_item(
             artifact_id=artifact_id,
         )
         await db.commit()
-        return FileResponse(
+        return ConversationFileResponse(
             path,
+            context=context,
+            conversation_id=artifact.conversation_id,
             filename=artifact.display_name,
             media_type=artifact.mime_type,
             headers={"Cache-Control": "private, max-age=300"},

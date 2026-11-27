@@ -78,6 +78,8 @@ async def promote_pending_input(
     )
     if queued is None:
         raise queue_input_not_found()
+    if queued.source == "goal_followup":
+        raise _conflict("A goal followup cannot interrupt a user input")
     if queued.status != "pending":
         raise _conflict("Only pending conversation inputs can be promoted")
     if queued.revision != expected_revision:

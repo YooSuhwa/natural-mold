@@ -67,7 +67,7 @@ def _noop(_event: str) -> None:
     return None
 
 
-def _binding(target: RunExecutionTarget, thread_id: str) -> PreparedRunBinding:
+def _binding(target: RunExecutionTarget, inputs: PreparationInputs) -> PreparedRunBinding:
     conversation = target.conversation
     context = conversation.context
     return PreparedRunBinding(
@@ -77,7 +77,8 @@ def _binding(target: RunExecutionTarget, thread_id: str) -> PreparedRunBinding:
         agent_id=conversation.agent_id,
         conversation_id=conversation.conversation_id,
         run_id=target.run_id,
-        thread_id=thread_id,
+        thread_id=inputs.thread_id,
+        independent_job=inputs.independent_job,
     )
 
 
@@ -134,7 +135,7 @@ async def materialize_and_activate(
             transient.add(closer)
         trace("prepare_inputs")
         materialized = await materialize_prepared_lease(
-            _binding(target, inputs.thread_id),
+            _binding(target, inputs),
             inputs,
             session_factory=session_factory,
             seams=seams,

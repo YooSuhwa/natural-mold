@@ -1,6 +1,7 @@
 import os
 from pathlib import Path
 from typing import Final, Literal
+from uuid import UUID
 
 from pydantic import AliasChoices, Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
@@ -34,8 +35,13 @@ class Settings(AuthzSettings):
 
     # LLM API Keys
     openai_api_key: str = ""
+    openai_prompt_cache_org_ids: frozenset[UUID] = frozenset()
     anthropic_api_key: str = ""
     google_api_key: str = ""
+    # Provider families whose gateway stream errors have been verified by the operator.
+    chat_stream_retry_providers: frozenset[Literal["openai", "openai_compatible", "openrouter"]] = (
+        frozenset()
+    )
 
     # Naver Open API
     naver_client_id: str = ""
@@ -166,6 +172,12 @@ class Settings(AuthzSettings):
     # Domains every ``requires_network`` skill may reach besides its own
     # ``execution_profile.network_domains`` (comma separated, ``*.`` wildcards).
     skill_sandbox_allowed_domains: str = ""
+    # Goal-scoped workspaces require organization consent and a measured,
+    # operator-provisioned comparison for this exact deployment and skill.
+    goal_sandbox_enabled: bool = False
+    goal_sandbox_evidence_path: Path | None = None
+    goal_sandbox_idle_seconds: int = Field(default=600, ge=15)
+    goal_sandbox_retention_seconds: int = Field(default=1_800, ge=60)
     # Guardrail Korean model pack (docker/pii-detector). An empty URL, or the
     # service failing, falls back to the Korean rules pack.
     guardrail_pii_model_url: str = ""
@@ -266,6 +278,8 @@ class Settings(AuthzSettings):
     # recall database time limit. The vector width is the embedding model's (``models``).
     memory_embedding_timeout_seconds: float = 1.0
     memory_recall_statement_timeout_ms: int = 300
+    # Operator-reviewed reports, one <tenant UUID>/<model UUID>.json per candidate.
+    memory_recall_quality_dir: Path | None = None
 
     # Shared MCP runtime (mcp-runtime/, plan §7.3): its base URL inside the network and the
     # secret it shares with the backend for run tokens (never JWT_SECRET). Empty URL: off.
@@ -384,14 +398,28 @@ class Settings(AuthzSettings):
     e2e_llm_base_url: str = ""
     e2e_llm_api_key: str = ""
     e2e_llm_model: str = ""
+    # Explicit organization enrollment for continuous goals. Empty disables new work.
+    conversation_goal_org_ids: frozenset[UUID] = frozenset()
+    # Opt-in for checkpoint recovery of ordinary runs with durable owner fencing.
+    chat_run_recovery_enabled: bool = False
+    chat_run_recovery_max_attempts: int = Field(default=2, ge=0)
+    # Controls new notifications. Already queued work drains after disabling the switch.
+    chat_work_notifications_enabled: bool = False
+    independent_chat_jobs_enabled: bool = False
     chat_run_stale_after_seconds: int = 300
     chat_run_stale_sweep_interval_seconds: int = 60
+    # Admit text instructions for the next model call of an existing chat run.
+    chat_steer_enabled: bool = False
     # Auto-compaction marker (dev-plan-context-compaction-marker.md). When on, the
     # v3 stream suppresses deepagents summarization tokens (leak guard) and emits a
     # ``moldy.compaction`` side-channel event (running/done) so the chat UI can show
     # a transient "압축 중…" indicator + a permanent "이전 대화를 요약했어요" marker.
     # Off = legacy behavior (summarization tokens flow through, no marker).
     compaction_marker_enabled: bool = True
+    # Write immutable original-message archives on standard chat roots. Prepared leases
+    # only authorize run-local storage. Existing archive reads survive disabling writes.
+    chat_archive_writes_enabled: bool = False
+    child_tasks_enabled: bool = False
     # Parent Task 10 — opt-in gate for executing runs through a prepared lease
     # (materialize under the canonical locks, then dispatch the frozen graph).
     # Off = every entry keeps the legacy ``_prepare_agent`` path.

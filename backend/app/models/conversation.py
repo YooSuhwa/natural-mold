@@ -14,6 +14,9 @@ if TYPE_CHECKING:
     from app.models.agent import Agent
 
 
+INDEPENDENT_JOB_SOURCE = "independent_job"
+
+
 class Conversation(RequiredOrgScope, Base):
     __tablename__ = "conversations"
     __table_args__ = (

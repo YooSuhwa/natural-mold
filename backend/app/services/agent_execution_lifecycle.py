@@ -24,6 +24,7 @@ import anyio
 from app.authz.conversation_run_scope import RunConversationTarget, RunExecutionTarget
 from app.authz.org_context import OrgContext
 from app.services.agent_execution_supervision import OwnerFlags, poll_cancel
+from app.services.stream_attempt_owner import stream_attempt_owner
 
 TerminalOutcome = Literal["completed", "failed", "canceled"]
 FailureHandler = Callable[["OwnedRuntime", BaseException], Awaitable[None]]
@@ -35,6 +36,7 @@ class RuntimeOwnershipRequest:
     conversation_id: uuid.UUID
     root_agent_id: uuid.UUID
     context: OrgContext
+    independent_job: bool = False
 
 
 @dataclass(frozen=True, slots=True)
@@ -119,7 +121,8 @@ async def supervise_owned_run(
         async with anyio.create_task_group() as tasks:
             tasks.start_soon(poller.run, runtime, heartbeat)
             try:
-                yield
+                with stream_attempt_owner(execution_target(runtime.request), registry):
+                    yield
             except (GeneratorExit, anyio.get_cancelled_exc_class()) as error:
                 with anyio.CancelScope(shield=True):
                     await poller.stop()

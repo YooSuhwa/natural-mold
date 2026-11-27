@@ -21,6 +21,7 @@ from app.routers.conversation_protocol_persistence import QueuedRunStart
 from app.routers.conversation_protocol_start import RunStartEntry
 from app.schemas.conversation_scope import ConversationAutoTitle, ConversationPromotion
 from app.services import chat_service, conversation_run_service
+from app.services.chat.image_description_admission import freeze_direct_admission
 from app.services.chat_resource_context_payload import resource_context_user_message
 from app.services.conversation_audit_service import record_conversation_audit
 
@@ -128,6 +129,14 @@ async def finalize_direct_run_start(
             context=context,
             attachment_ids=attachment_ids,
         )
+        await freeze_direct_admission(
+            db,
+            context=context,
+            conversation_id=conversation.id,
+            run_id=run_id,
+            root_model_id=cfg.model_id,
+            attachment_ids=attachment_ids,
+        )
         if cfg.runtime_profile == "skill_builder" and cfg.draft_workspace_path:
             # 빌더 챗 (AD-2/§6-3): 이번 턴 첨부를 드래프트 워크스페이스
             # ``inputs/``로 **복사**한다 — uploads 마운트 금지.
@@ -136,6 +145,7 @@ async def finalize_direct_run_start(
             await skill_draft_workspace.copy_conversation_attachments_to_inputs(
                 db,
                 storage_path=cfg.draft_workspace_path,
+                conversation_id=conversation.id,
                 attachment_ids=attachment_ids,
                 context=context,
             )

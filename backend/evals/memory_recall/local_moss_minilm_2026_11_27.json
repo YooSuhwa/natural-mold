@@ -1,0 +1,3234 @@
+{
+  "schema": "moldy.memory-recall.quality.v1",
+  "corpus_sha256": "9eb543ed3fff0302cfabb55a7ea127534cc34eca663c5fdd06319f38b578898a",
+  "candidate": {
+    "tenant_id": "f250dfa8-4f57-5103-9157-3105e1e669bc",
+    "org_id": "563aab2d-817f-527d-9d45-9791e6dd85a5",
+    "model_id": "d801927b-e2f7-5fbf-9539-c6909a40f6bb",
+    "provider": "openai_compatible",
+    "base_url": "http://127.0.0.1:59367/v1",
+    "model": "inferedge/moss-minilm@bootstrap-2026-08-11",
+    "dimensions": 384,
+    "cosine_floor": 0.42
+  },
+  "keyword_floor": 0.3,
+  "analyzer": "suffix",
+  "modes": {
+    "keyword": {
+      "categories": {
+        "same_word": {
+          "metric": "recall_at_10",
+          "n": 25,
+          "value": 1.0,
+          "ci95": [
+            0.8668077490609516,
+            1.0
+          ]
+        },
+        "particle": {
+          "metric": "recall_at_10",
+          "n": 25,
+          "value": 0.4,
+          "ci95": [
+            0.2340330237774797,
+            0.59260542641033
+          ]
+        },
+        "paraphrase": {
+          "metric": "recall_at_10",
+          "n": 25,
+          "value": 0.0,
+          "ci95": [
+            0.0,
+            0.1331922509390484
+          ]
+        },
+        "time": {
+          "metric": "recall_at_10",
+          "n": 25,
+          "value": 0.6,
+          "ci95": [
+            0.40739457358967,
+            0.7659669762225203
+          ]
+        },
+        "multi_turn": {
+          "metric": "recall_at_10",
+          "n": 25,
+          "value": 0.48,
+          "ci95": [
+            0.28,
+            0.68
+          ]
+        },
+        "unrelated": {
+          "metric": "irrelevant_rejection",
+          "n": 25,
+          "value": 0.96,
+          "ci95": [
+            0.8045593626380627,
+            0.9929037664980127
+          ]
+        }
+      },
+      "mean_prompt_tokens": {
+        "n": 150,
+        "value": 79.90666666666667,
+        "ci95": [
+          63.830333333333336,
+          95.7675
+        ]
+      },
+      "p95_elapsed_ms": {
+        "n": 150,
+        "value": 3.8999589160084724,
+        "ci95": [
+          3.300792071968317,
+          4.76266595069319
+        ]
+      }
+    },
+    "hybrid": {
+      "categories": {
+        "same_word": {
+          "metric": "recall_at_10",
+          "n": 25,
+          "value": 1.0,
+          "ci95": [
+            0.8668077490609516,
+            1.0
+          ]
+        },
+        "particle": {
+          "metric": "recall_at_10",
+          "n": 25,
+          "value": 0.8,
+          "ci95": [
+            0.6086904963045967,
+            0.9113941531319742
+          ]
+        },
+        "paraphrase": {
+          "metric": "recall_at_10",
+          "n": 25,
+          "value": 0.4,
+          "ci95": [
+            0.2340330237774797,
+            0.59260542641033
+          ]
+        },
+        "time": {
+          "metric": "recall_at_10",
+          "n": 25,
+          "value": 0.64,
+          "ci95": [
+            0.44518497748164876,
+            0.7975211922554177
+          ]
+        },
+        "multi_turn": {
+          "metric": "recall_at_10",
+          "n": 25,
+          "value": 0.72,
+          "ci95": [
+            0.56,
+            0.86
+          ]
+        },
+        "unrelated": {
+          "metric": "irrelevant_rejection",
+          "n": 25,
+          "value": 0.0,
+          "ci95": [
+            0.0,
+            0.1331922509390484
+          ]
+        }
+      },
+      "mean_prompt_tokens": {
+        "n": 150,
+        "value": 611.02,
+        "ci95": [
+          606.1926666666667,
+          615.7666666666667
+        ]
+      },
+      "p95_elapsed_ms": {
+        "n": 150,
+        "value": 31.9250839529559,
+        "ci95": [
+          29.189875000156462,
+          32.7275829622522
+        ]
+      }
+    }
+  },
+  "mean_added_prompt_tokens_vs_keyword": {
+    "n": 150,
+    "value": 531.1133333333333,
+    "ci95": [
+      514.5123333333333,
+      547.408
+    ]
+  },
+  "gate": {
+    "passed": false,
+    "reason": "irrelevant_rejection_below_0.90"
+  },
+  "per_question": {
+    "keyword": {
+      "hk-exhibits-q01": {
+        "inserted": [
+          "hk-exhibits-m01"
+        ],
+        "tokens": 156,
+        "ms": 4.521834081970155
+      },
+      "hk-exhibits-q02": {
+        "inserted": [
+          "hk-exhibits-m02"
+        ],
+        "tokens": 161,
+        "ms": 2.087292028591037
+      },
+      "hk-exhibits-q03": {
+        "inserted": [
+          "hk-exhibits-m03"
+        ],
+        "tokens": 161,
+        "ms": 2.1422080462798476
+      },
+      "hk-exhibits-q04": {
+        "inserted": [
+          "hk-exhibits-m04"
+        ],
+        "tokens": 167,
+        "ms": 2.1073330426588655
+      },
+      "hk-exhibits-q05": {
+        "inserted": [
+          "hk-exhibits-m05"
+        ],
+        "tokens": 161,
+        "ms": 2.0335830049589276
+      },
+      "hk-exhibits-q06": {
+        "inserted": [
+          "hk-exhibits-m06"
+        ],
+        "tokens": 154,
+        "ms": 2.078708028420806
+      },
+      "hk-exhibits-q07": {
+        "inserted": [
+          "hk-exhibits-m07"
+        ],
+        "tokens": 154,
+        "ms": 2.418832969851792
+      },
+      "hk-exhibits-q08": {
+        "inserted": [],
+        "tokens": 0,
+        "ms": 2.30037490837276
+      },
+      "hk-exhibits-q09": {
+        "inserted": [],
+        "tokens": 0,
+        "ms": 2.015375066548586
+      },
+      "hk-exhibits-q10": {
+        "inserted": [
+          "hk-exhibits-m10"
+        ],
+        "tokens": 150,
+        "ms": 2.2031249245628715
+      },
+      "hk-exhibits-q11": {
+        "inserted": [],
+        "tokens": 0,
+        "ms": 2.3963330313563347
+      },
+      "hk-exhibits-q12": {
+        "inserted": [],
+        "tokens": 0,
+        "ms": 2.598542021587491
+      },
+      "hk-exhibits-q13": {
+        "inserted": [],
+        "tokens": 0,
+        "ms": 2.296334016136825
+      },
+      "hk-exhibits-q14": {
+        "inserted": [],
+        "tokens": 0,
+        "ms": 2.2867920342832804
+      },
+      "hk-exhibits-q15": {
+        "inserted": [],
+        "tokens": 0,
+        "ms": 3.125874907709658
+      },
+      "hk-exhibits-q16": {
+        "inserted": [
+          "hk-exhibits-m18",
+          "hk-exhibits-m17",
+          "hk-exhibits-m16"
+        ],
+        "tokens": 310,
+        "ms": 2.358207944780588
+      },
+      "hk-exhibits-q17": {
+        "inserted": [
+          "hk-exhibits-m18",
+          "hk-exhibits-m17",
+          "hk-exhibits-m16"
+        ],
+        "tokens": 310,
+        "ms": 2.2204999113455415
+      },
+      "hk-exhibits-q18": {
+        "inserted": [
+          "hk-exhibits-m18",
+          "hk-exhibits-m17",
+          "hk-exhibits-m16"
+        ],
+        "tokens": 310,
+        "ms": 2.3681249003857374
+      },
+      "hk-exhibits-q19": {
+        "inserted": [
+          "hk-exhibits-m20",
+          "hk-exhibits-m19"
+        ],
+        "tokens": 243,
+        "ms": 3.0623750062659383
+      },
+      "hk-exhibits-q20": {
+        "inserted": [
+          "hk-exhibits-m20",
+          "hk-exhibits-m19"
+        ],
+        "tokens": 243,
+        "ms": 2.227207995019853
+      },
+      "hk-exhibits-q21": {
+        "inserted": [
+          "hk-exhibits-m21"
+        ],
+        "tokens": 161,
+        "ms": 2.1452499786391854
+      },
+      "hk-exhibits-q22": {
+        "inserted": [],
+        "tokens": 0,
+        "ms": 2.3479160154238343
+      },
+      "hk-exhibits-q23": {
+        "inserted": [
+          "hk-exhibits-m23"
+        ],
+        "tokens": 166,
+        "ms": 2.240333938971162
+      },
+      "hk-exhibits-q24": {
+        "inserted": [
+          "hk-exhibits-m24"
+        ],
+        "tokens": 159,
+        "ms": 2.4877500254660845
+      },
+      "hk-exhibits-q25": {
+        "inserted": [],
+        "tokens": 0,
+        "ms": 2.109333057887852
+      },
+      "hk-exhibits-q26": {
+        "inserted": [],
+        "tokens": 0,
+        "ms": 2.1914999233558774
+      },
+      "hk-exhibits-q27": {
+        "inserted": [],
+        "tokens": 0,
+        "ms": 2.4591670371592045
+      },
+      "hk-exhibits-q28": {
+        "inserted": [],
+        "tokens": 0,
+        "ms": 2.4334590416401625
+      },
+      "hk-exhibits-q29": {
+        "inserted": [],
+        "tokens": 0,
+        "ms": 2.246999996714294
+      },
+      "hk-exhibits-q30": {
+        "inserted": [],
+        "tokens": 0,
+        "ms": 2.1603750064969063
+      },
+      "hk-radio-q01": {
+        "inserted": [
+          "hk-radio-m01"
+        ],
+        "tokens": 157,
+        "ms": 2.850749995559454
+      },
+      "hk-radio-q02": {
+        "inserted": [
+          "hk-radio-m02"
+        ],
+        "tokens": 173,
+        "ms": 2.3492079926654696
+      },
+      "hk-radio-q03": {
+        "inserted": [
+          "hk-radio-m03"
+        ],
+        "tokens": 169,
+        "ms": 2.4545829510316253
+      },
+      "hk-radio-q04": {
+        "inserted": [
+          "hk-radio-m04"
+        ],
+        "tokens": 171,
+        "ms": 2.2684580180794
+      },
+      "hk-radio-q05": {
+        "inserted": [
+          "hk-radio-m05"
+        ],
+        "tokens": 168,
+        "ms": 2.4407500168308616
+      },
+      "hk-radio-q06": {
+        "inserted": [
+          "hk-radio-m06"
+        ],
+        "tokens": 157,
+        "ms": 2.1780419629067183
+      },
+      "hk-radio-q07": {
+        "inserted": [],
+        "tokens": 0,
+        "ms": 1.9733329536393285
+      },
+      "hk-radio-q08": {
+        "inserted": [],
+        "tokens": 0,
+        "ms": 2.2987080737948418
+      },
+      "hk-radio-q09": {
+        "inserted": [
+          "hk-radio-m09"
+        ],
+        "tokens": 170,
+        "ms": 2.2511250572279096
+      },
+      "hk-radio-q10": {
+        "inserted": [
+          "hk-radio-m10"
+        ],
+        "tokens": 169,
+        "ms": 2.315332996658981
+      },
+      "hk-radio-q11": {
+        "inserted": [],
+        "tokens": 0,
+        "ms": 2.543000038713217
+      },
+      "hk-radio-q12": {
+        "inserted": [],
+        "tokens": 0,
+        "ms": 1.9485410302877426
+      },
+      "hk-radio-q13": {
+        "inserted": [],
+        "tokens": 0,
+        "ms": 1.9449590472504497
+      },
+      "hk-radio-q14": {
+        "inserted": [],
+        "tokens": 0,
+        "ms": 2.3659170838072896
+      },
+      "hk-radio-q15": {
+        "inserted": [],
+        "tokens": 0,
+        "ms": 2.2457089507952332
+      },
+      "hk-radio-q16": {
+        "inserted": [
+          "hk-radio-m17",
+          "hk-radio-m16",
+          "hk-radio-m18"
+        ],
+        "tokens": 325,
+        "ms": 2.2728750482201576
+      },
+      "hk-radio-q17": {
+        "inserted": [],
+        "tokens": 0,
+        "ms": 2.1357500227168202
+      },
+      "hk-radio-q18": {
+        "inserted": [
+          "hk-radio-m17",
+          "hk-radio-m16",
+          "hk-radio-m18"
+        ],
+        "tokens": 325,
+        "ms": 2.2356249392032623
+      },
+      "hk-radio-q19": {
+        "inserted": [
+          "hk-radio-m19"
+        ],
+        "tokens": 180,
+        "ms": 2.3649579379707575
+      },
+      "hk-radio-q20": {
+        "inserted": [],
+        "tokens": 0,
+        "ms": 2.3715830175206065
+      },
+      "hk-radio-q21": {
+        "inserted": [
+          "hk-radio-m21"
+        ],
+        "tokens": 170,
+        "ms": 2.212833031080663
+      },
+      "hk-radio-q22": {
+        "inserted": [],
+        "tokens": 0,
+        "ms": 2.038082922808826
+      },
+      "hk-radio-q23": {
+        "inserted": [],
+        "tokens": 0,
+        "ms": 2.364333951845765
+      },
+      "hk-radio-q24": {
+        "inserted": [
+          "hk-radio-m25"
+        ],
+        "tokens": 169,
+        "ms": 2.2541250800713897
+      },
+      "hk-radio-q25": {
+        "inserted": [],
+        "tokens": 0,
+        "ms": 2.413832931779325
+      },
+      "hk-radio-q26": {
+        "inserted": [],
+        "tokens": 0,
+        "ms": 2.0179999992251396
+      },
+      "hk-radio-q27": {
+        "inserted": [],
+        "tokens": 0,
+        "ms": 2.1907499758526683
+      },
+      "hk-radio-q28": {
+        "inserted": [],
+        "tokens": 0,
+        "ms": 2.184916054829955
+      },
+      "hk-radio-q29": {
+        "inserted": [],
+        "tokens": 0,
+        "ms": 2.1165000507608056
+      },
+      "hk-radio-q30": {
+        "inserted": [],
+        "tokens": 0,
+        "ms": 2.1075840340927243
+      },
+      "hk-theater-q01": {
+        "inserted": [
+          "hk-theater-m01"
+        ],
+        "tokens": 164,
+        "ms": 2.493249950930476
+      },
+      "hk-theater-q02": {
+        "inserted": [
+          "hk-theater-m02"
+        ],
+        "tokens": 171,
+        "ms": 2.600374980829656
+      },
+      "hk-theater-q03": {
+        "inserted": [
+          "hk-theater-m03"
+        ],
+        "tokens": 159,
+        "ms": 2.988999942317605
+      },
+      "hk-theater-q04": {
+        "inserted": [
+          "hk-theater-m04"
+        ],
+        "tokens": 165,
+        "ms": 2.3540830006822944
+      },
+      "hk-theater-q05": {
+        "inserted": [
+          "hk-theater-m05"
+        ],
+        "tokens": 167,
+        "ms": 2.595375059172511
+      },
+      "hk-theater-q06": {
+        "inserted": [
+          "hk-theater-m06"
+        ],
+        "tokens": 163,
+        "ms": 2.368499990552664
+      },
+      "hk-theater-q07": {
+        "inserted": [],
+        "tokens": 0,
+        "ms": 2.4032910587266088
+      },
+      "hk-theater-q08": {
+        "inserted": [],
+        "tokens": 0,
+        "ms": 2.830666024237871
+      },
+      "hk-theater-q09": {
+        "inserted": [],
+        "tokens": 0,
+        "ms": 2.5125419488176703
+      },
+      "hk-theater-q10": {
+        "inserted": [],
+        "tokens": 0,
+        "ms": 2.5617090286687016
+      },
+      "hk-theater-q11": {
+        "inserted": [],
+        "tokens": 0,
+        "ms": 2.436041017062962
+      },
+      "hk-theater-q12": {
+        "inserted": [],
+        "tokens": 0,
+        "ms": 2.5619169464334846
+      },
+      "hk-theater-q13": {
+        "inserted": [],
+        "tokens": 0,
+        "ms": 2.6240419829264283
+      },
+      "hk-theater-q14": {
+        "inserted": [],
+        "tokens": 0,
+        "ms": 2.2387499921023846
+      },
+      "hk-theater-q15": {
+        "inserted": [],
+        "tokens": 0,
+        "ms": 2.4117500288411975
+      },
+      "hk-theater-q16": {
+        "inserted": [],
+        "tokens": 0,
+        "ms": 2.149041974917054
+      },
+      "hk-theater-q17": {
+        "inserted": [],
+        "tokens": 0,
+        "ms": 2.206292003393173
+      },
+      "hk-theater-q18": {
+        "inserted": [],
+        "tokens": 0,
+        "ms": 2.1467909682542086
+      },
+      "hk-theater-q19": {
+        "inserted": [],
+        "tokens": 0,
+        "ms": 2.1650419803336263
+      },
+      "hk-theater-q20": {
+        "inserted": [],
+        "tokens": 0,
+        "ms": 1.9920830382034183
+      },
+      "hk-theater-q21": {
+        "inserted": [],
+        "tokens": 0,
+        "ms": 2.27462500333786
+      },
+      "hk-theater-q22": {
+        "inserted": [
+          "hk-theater-m08",
+          "hk-theater-m22"
+        ],
+        "tokens": 221,
+        "ms": 2.1517500281333923
+      },
+      "hk-theater-q23": {
+        "inserted": [
+          "hk-theater-m23",
+          "hk-theater-m13"
+        ],
+        "tokens": 235,
+        "ms": 2.1949169458821416
+      },
+      "hk-theater-q24": {
+        "inserted": [],
+        "tokens": 0,
+        "ms": 2.216957975178957
+      },
+      "hk-theater-q25": {
+        "inserted": [],
+        "tokens": 0,
+        "ms": 2.8477919986471534
+      },
+      "hk-theater-q26": {
+        "inserted": [],
+        "tokens": 0,
+        "ms": 2.5219160597771406
+      },
+      "hk-theater-q27": {
+        "inserted": [],
+        "tokens": 0,
+        "ms": 2.290208009071648
+      },
+      "hk-theater-q28": {
+        "inserted": [],
+        "tokens": 0,
+        "ms": 2.183542004786432
+      },
+      "hk-theater-q29": {
+        "inserted": [],
+        "tokens": 0,
+        "ms": 2.098041935823858
+      },
+      "hk-theater-q30": {
+        "inserted": [],
+        "tokens": 0,
+        "ms": 2.175375004298985
+      },
+      "hk-weaving-q01": {
+        "inserted": [
+          "hk-weaving-m01"
+        ],
+        "tokens": 168,
+        "ms": 2.481709001585841
+      },
+      "hk-weaving-q02": {
+        "inserted": [
+          "hk-weaving-m02"
+        ],
+        "tokens": 159,
+        "ms": 2.470540930517018
+      },
+      "hk-weaving-q03": {
+        "inserted": [
+          "hk-weaving-m03"
+        ],
+        "tokens": 167,
+        "ms": 2.0362919894978404
+      },
+      "hk-weaving-q04": {
+        "inserted": [
+          "hk-weaving-m04"
+        ],
+        "tokens": 162,
+        "ms": 1.9921250641345978
+      },
+      "hk-weaving-q05": {
+        "inserted": [
+          "hk-weaving-m05"
+        ],
+        "tokens": 171,
+        "ms": 2.1862080320715904
+      },
+      "hk-weaving-q06": {
+        "inserted": [],
+        "tokens": 0,
+        "ms": 2.2525829263031483
+      },
+      "hk-weaving-q07": {
+        "inserted": [
+          "hk-weaving-m07"
+        ],
+        "tokens": 170,
+        "ms": 2.263709087856114
+      },
+      "hk-weaving-q08": {
+        "inserted": [],
+        "tokens": 0,
+        "ms": 2.3492909967899323
+      },
+      "hk-weaving-q09": {
+        "inserted": [
+          "hk-weaving-m09"
+        ],
+        "tokens": 158,
+        "ms": 2.2017909213900566
+      },
+      "hk-weaving-q10": {
+        "inserted": [],
+        "tokens": 0,
+        "ms": 2.1807909943163395
+      },
+      "hk-weaving-q11": {
+        "inserted": [],
+        "tokens": 0,
+        "ms": 2.0869580330327153
+      },
+      "hk-weaving-q12": {
+        "inserted": [],
+        "tokens": 0,
+        "ms": 2.1887910552322865
+      },
+      "hk-weaving-q13": {
+        "inserted": [],
+        "tokens": 0,
+        "ms": 2.034249948337674
+      },
+      "hk-weaving-q14": {
+        "inserted": [],
+        "tokens": 0,
+        "ms": 2.4187919916585088
+      },
+      "hk-weaving-q15": {
+        "inserted": [],
+        "tokens": 0,
+        "ms": 2.424958045594394
+      },
+      "hk-weaving-q16": {
+        "inserted": [
+          "hk-weaving-m16",
+          "hk-weaving-m17"
+        ],
+        "tokens": 259,
+        "ms": 2.0976250525563955
+      },
+      "hk-weaving-q17": {
+        "inserted": [
+          "hk-weaving-m16",
+          "hk-weaving-m17"
+        ],
+        "tokens": 259,
+        "ms": 2.1965419873595238
+      },
+      "hk-weaving-q18": {
+        "inserted": [
+          "hk-weaving-m18",
+          "hk-weaving-m19"
+        ],
+        "tokens": 247,
+        "ms": 2.061125007458031
+      },
+      "hk-weaving-q19": {
+        "inserted": [
+          "hk-weaving-m18",
+          "hk-weaving-m19"
+        ],
+        "tokens": 247,
+        "ms": 2.3629170609638095
+      },
+      "hk-weaving-q20": {
+        "inserted": [],
+        "tokens": 0,
+        "ms": 2.238500048406422
+      },
+      "hk-weaving-q21": {
+        "inserted": [],
+        "tokens": 0,
+        "ms": 2.1045829635113478
+      },
+      "hk-weaving-q22": {
+        "inserted": [],
+        "tokens": 0,
+        "ms": 2.020041923969984
+      },
+      "hk-weaving-q23": {
+        "inserted": [
+          "hk-weaving-m23"
+        ],
+        "tokens": 179,
+        "ms": 2.0360829075798392
+      },
+      "hk-weaving-q24": {
+        "inserted": [
+          "hk-weaving-m24"
+        ],
+        "tokens": 182,
+        "ms": 2.156625036150217
+      },
+      "hk-weaving-q25": {
+        "inserted": [],
+        "tokens": 0,
+        "ms": 2.200834103859961
+      },
+      "hk-weaving-q26": {
+        "inserted": [],
+        "tokens": 0,
+        "ms": 2.1763339173048735
+      },
+      "hk-weaving-q27": {
+        "inserted": [],
+        "tokens": 0,
+        "ms": 2.1561249159276485
+      },
+      "hk-weaving-q28": {
+        "inserted": [],
+        "tokens": 0,
+        "ms": 2.2072918945923448
+      },
+      "hk-weaving-q29": {
+        "inserted": [],
+        "tokens": 0,
+        "ms": 2.28720810264349
+      },
+      "hk-weaving-q30": {
+        "inserted": [],
+        "tokens": 0,
+        "ms": 2.145958016626537
+      },
+      "hk-bikes-q01": {
+        "inserted": [
+          "hk-bikes-m01"
+        ],
+        "tokens": 168,
+        "ms": 2.8204169357195497
+      },
+      "hk-bikes-q02": {
+        "inserted": [
+          "hk-bikes-m02"
+        ],
+        "tokens": 161,
+        "ms": 2.3793330183252692
+      },
+      "hk-bikes-q03": {
+        "inserted": [
+          "hk-bikes-m03"
+        ],
+        "tokens": 165,
+        "ms": 2.4515409022569656
+      },
+      "hk-bikes-q04": {
+        "inserted": [
+          "hk-bikes-m04"
+        ],
+        "tokens": 159,
+        "ms": 2.936291042715311
+      },
+      "hk-bikes-q05": {
+        "inserted": [
+          "hk-bikes-m05"
+        ],
+        "tokens": 165,
+        "ms": 2.851082943379879
+      },
+      "hk-bikes-q06": {
+        "inserted": [],
+        "tokens": 0,
+        "ms": 2.3646249901503325
+      },
+      "hk-bikes-q07": {
+        "inserted": [],
+        "tokens": 0,
+        "ms": 3.8999589160084724
+      },
+      "hk-bikes-q08": {
+        "inserted": [
+          "hk-bikes-m08"
+        ],
+        "tokens": 168,
+        "ms": 2.9438750352710485
+      },
+      "hk-bikes-q09": {
+        "inserted": [],
+        "tokens": 0,
+        "ms": 3.3222499769181013
+      },
+      "hk-bikes-q10": {
+        "inserted": [],
+        "tokens": 0,
+        "ms": 3.2632090151309967
+      },
+      "hk-bikes-q11": {
+        "inserted": [],
+        "tokens": 0,
+        "ms": 3.232208895497024
+      },
+      "hk-bikes-q12": {
+        "inserted": [],
+        "tokens": 0,
+        "ms": 4.633457981981337
+      },
+      "hk-bikes-q13": {
+        "inserted": [],
+        "tokens": 0,
+        "ms": 5.396542022936046
+      },
+      "hk-bikes-q14": {
+        "inserted": [],
+        "tokens": 0,
+        "ms": 3.9775840705260634
+      },
+      "hk-bikes-q15": {
+        "inserted": [],
+        "tokens": 0,
+        "ms": 3.414875012822449
+      },
+      "hk-bikes-q16": {
+        "inserted": [
+          "hk-bikes-m18",
+          "hk-bikes-m16"
+        ],
+        "tokens": 226,
+        "ms": 3.5896250046789646
+      },
+      "hk-bikes-q17": {
+        "inserted": [],
+        "tokens": 0,
+        "ms": 3.635833039879799
+      },
+      "hk-bikes-q18": {
+        "inserted": [
+          "hk-bikes-m18",
+          "hk-bikes-m16"
+        ],
+        "tokens": 226,
+        "ms": 4.76266595069319
+      },
+      "hk-bikes-q19": {
+        "inserted": [
+          "hk-bikes-m19"
+        ],
+        "tokens": 172,
+        "ms": 5.701375077478588
+      },
+      "hk-bikes-q20": {
+        "inserted": [],
+        "tokens": 0,
+        "ms": 5.531125003471971
+      },
+      "hk-bikes-q21": {
+        "inserted": [],
+        "tokens": 0,
+        "ms": 3.847917076200247
+      },
+      "hk-bikes-q22": {
+        "inserted": [],
+        "tokens": 0,
+        "ms": 3.300792071968317
+      },
+      "hk-bikes-q23": {
+        "inserted": [
+          "hk-bikes-m24"
+        ],
+        "tokens": 174,
+        "ms": 3.0420839320868254
+      },
+      "hk-bikes-q24": {
+        "inserted": [
+          "hk-bikes-m25"
+        ],
+        "tokens": 168,
+        "ms": 3.864375059492886
+      },
+      "hk-bikes-q25": {
+        "inserted": [
+          "hk-bikes-m26"
+        ],
+        "tokens": 166,
+        "ms": 2.745083998888731
+      },
+      "hk-bikes-q26": {
+        "inserted": [
+          "hk-bikes-m18",
+          "hk-bikes-m16"
+        ],
+        "tokens": 226,
+        "ms": 3.0296670738607645
+      },
+      "hk-bikes-q27": {
+        "inserted": [],
+        "tokens": 0,
+        "ms": 2.451666980050504
+      },
+      "hk-bikes-q28": {
+        "inserted": [],
+        "tokens": 0,
+        "ms": 2.3436249466612935
+      },
+      "hk-bikes-q29": {
+        "inserted": [],
+        "tokens": 0,
+        "ms": 2.4702498922124505
+      },
+      "hk-bikes-q30": {
+        "inserted": [],
+        "tokens": 0,
+        "ms": 2.427165978588164
+      }
+    },
+    "hybrid": {
+      "hk-exhibits-q01": {
+        "inserted": [
+          "hk-exhibits-m01",
+          "hk-exhibits-m09",
+          "hk-exhibits-m28",
+          "hk-exhibits-m03",
+          "hk-exhibits-m25",
+          "hk-exhibits-m08",
+          "hk-exhibits-m11",
+          "hk-exhibits-m02"
+        ],
+        "tokens": 570,
+        "ms": 21.794541971758008
+      },
+      "hk-exhibits-q02": {
+        "inserted": [
+          "hk-exhibits-m02",
+          "hk-exhibits-m06",
+          "hk-exhibits-m08",
+          "hk-exhibits-m05",
+          "hk-exhibits-m21",
+          "hk-exhibits-m13",
+          "hk-exhibits-m10",
+          "hk-exhibits-m07"
+        ],
+        "tokens": 526,
+        "ms": 17.789250006899238
+      },
+      "hk-exhibits-q03": {
+        "inserted": [
+          "hk-exhibits-m03",
+          "hk-exhibits-m08",
+          "hk-exhibits-m07",
+          "hk-exhibits-m11",
+          "hk-exhibits-m05",
+          "hk-exhibits-m10",
+          "hk-exhibits-m06",
+          "hk-exhibits-m14"
+        ],
+        "tokens": 552,
+        "ms": 18.662291928194463
+      },
+      "hk-exhibits-q04": {
+        "inserted": [
+          "hk-exhibits-m04",
+          "hk-exhibits-m25",
+          "hk-exhibits-m12",
+          "hk-exhibits-m09",
+          "hk-exhibits-m28",
+          "hk-exhibits-m14",
+          "hk-exhibits-m08",
+          "hk-exhibits-m11"
+        ],
+        "tokens": 595,
+        "ms": 23.050457937642932
+      },
+      "hk-exhibits-q05": {
+        "inserted": [
+          "hk-exhibits-m05",
+          "hk-exhibits-m07",
+          "hk-exhibits-m11",
+          "hk-exhibits-m15",
+          "hk-exhibits-m09",
+          "hk-exhibits-m08",
+          "hk-exhibits-m21",
+          "hk-exhibits-m25"
+        ],
+        "tokens": 579,
+        "ms": 24.506458081305027
+      },
+      "hk-exhibits-q06": {
+        "inserted": [
+          "hk-exhibits-m06",
+          "hk-exhibits-m13",
+          "hk-exhibits-m08",
+          "hk-exhibits-m05",
+          "hk-exhibits-m10",
+          "hk-exhibits-m15",
+          "hk-exhibits-m25",
+          "hk-exhibits-m21"
+        ],
+        "tokens": 551,
+        "ms": 16.761832986958325
+      },
+      "hk-exhibits-q07": {
+        "inserted": [
+          "hk-exhibits-m07",
+          "hk-exhibits-m06",
+          "hk-exhibits-m08",
+          "hk-exhibits-m05",
+          "hk-exhibits-m02",
+          "hk-exhibits-m13",
+          "hk-exhibits-m11",
+          "hk-exhibits-m10"
+        ],
+        "tokens": 541,
+        "ms": 16.318334033712745
+      },
+      "hk-exhibits-q08": {
+        "inserted": [
+          "hk-exhibits-m25",
+          "hk-exhibits-m08",
+          "hk-exhibits-m09",
+          "hk-exhibits-m13",
+          "hk-exhibits-m27",
+          "hk-exhibits-m15",
+          "hk-exhibits-m11",
+          "hk-exhibits-m06"
+        ],
+        "tokens": 578,
+        "ms": 18.717334023676813
+      },
+      "hk-exhibits-q09": {
+        "inserted": [
+          "hk-exhibits-m08",
+          "hk-exhibits-m11",
+          "hk-exhibits-m06",
+          "hk-exhibits-m02",
+          "hk-exhibits-m04",
+          "hk-exhibits-m10",
+          "hk-exhibits-m05",
+          "hk-exhibits-m13"
+        ],
+        "tokens": 554,
+        "ms": 21.033375058323145
+      },
+      "hk-exhibits-q10": {
+        "inserted": [
+          "hk-exhibits-m10",
+          "hk-exhibits-m05",
+          "hk-exhibits-m26",
+          "hk-exhibits-m06",
+          "hk-exhibits-m11",
+          "hk-exhibits-m21",
+          "hk-exhibits-m08",
+          "hk-exhibits-m09"
+        ],
+        "tokens": 558,
+        "ms": 20.418291096575558
+      },
+      "hk-exhibits-q11": {
+        "inserted": [
+          "hk-exhibits-m22",
+          "hk-exhibits-m25",
+          "hk-exhibits-m04",
+          "hk-exhibits-m08",
+          "hk-exhibits-m11",
+          "hk-exhibits-m06",
+          "hk-exhibits-m05",
+          "hk-exhibits-m09"
+        ],
+        "tokens": 574,
+        "ms": 19.411542103625834
+      },
+      "hk-exhibits-q12": {
+        "inserted": [
+          "hk-exhibits-m07",
+          "hk-exhibits-m05",
+          "hk-exhibits-m08",
+          "hk-exhibits-m21",
+          "hk-exhibits-m09",
+          "hk-exhibits-m15",
+          "hk-exhibits-m25",
+          "hk-exhibits-m11"
+        ],
+        "tokens": 579,
+        "ms": 23.219832917675376
+      },
+      "hk-exhibits-q13": {
+        "inserted": [
+          "hk-exhibits-m27",
+          "hk-exhibits-m12",
+          "hk-exhibits-m15",
+          "hk-exhibits-m28",
+          "hk-exhibits-m08",
+          "hk-exhibits-m25",
+          "hk-exhibits-m14",
+          "hk-exhibits-m02"
+        ],
+        "tokens": 594,
+        "ms": 31.025792006403208
+      },
+      "hk-exhibits-q14": {
+        "inserted": [
+          "hk-exhibits-m24",
+          "hk-exhibits-m26",
+          "hk-exhibits-m07",
+          "hk-exhibits-m05",
+          "hk-exhibits-m21",
+          "hk-exhibits-m11",
+          "hk-exhibits-m14",
+          "hk-exhibits-m25"
+        ],
+        "tokens": 581,
+        "ms": 24.565166095271707
+      },
+      "hk-exhibits-q15": {
+        "inserted": [
+          "hk-exhibits-m07",
+          "hk-exhibits-m26",
+          "hk-exhibits-m05",
+          "hk-exhibits-m24",
+          "hk-exhibits-m11",
+          "hk-exhibits-m21",
+          "hk-exhibits-m08",
+          "hk-exhibits-m14"
+        ],
+        "tokens": 576,
+        "ms": 26.929875020869076
+      },
+      "hk-exhibits-q16": {
+        "inserted": [
+          "hk-exhibits-m18",
+          "hk-exhibits-m17",
+          "hk-exhibits-m16",
+          "hk-exhibits-m08",
+          "hk-exhibits-m07",
+          "hk-exhibits-m14",
+          "hk-exhibits-m11",
+          "hk-exhibits-m21"
+        ],
+        "tokens": 606,
+        "ms": 19.63474997319281
+      },
+      "hk-exhibits-q17": {
+        "inserted": [
+          "hk-exhibits-m18",
+          "hk-exhibits-m17",
+          "hk-exhibits-m16",
+          "hk-exhibits-m05",
+          "hk-exhibits-m11",
+          "hk-exhibits-m08",
+          "hk-exhibits-m21",
+          "hk-exhibits-m06"
+        ],
+        "tokens": 601,
+        "ms": 18.65666697267443
+      },
+      "hk-exhibits-q18": {
+        "inserted": [
+          "hk-exhibits-m18",
+          "hk-exhibits-m17",
+          "hk-exhibits-m16",
+          "hk-exhibits-m23",
+          "hk-exhibits-m25",
+          "hk-exhibits-m08",
+          "hk-exhibits-m21",
+          "hk-exhibits-m14"
+        ],
+        "tokens": 609,
+        "ms": 25.305583025328815
+      },
+      "hk-exhibits-q19": {
+        "inserted": [
+          "hk-exhibits-m20",
+          "hk-exhibits-m19",
+          "hk-exhibits-m08",
+          "hk-exhibits-m04",
+          "hk-exhibits-m11",
+          "hk-exhibits-m07",
+          "hk-exhibits-m14",
+          "hk-exhibits-m06"
+        ],
+        "tokens": 596,
+        "ms": 19.102749996818602
+      },
+      "hk-exhibits-q20": {
+        "inserted": [
+          "hk-exhibits-m20",
+          "hk-exhibits-m19",
+          "hk-exhibits-m11",
+          "hk-exhibits-m05",
+          "hk-exhibits-m06",
+          "hk-exhibits-m26",
+          "hk-exhibits-m21",
+          "hk-exhibits-m25"
+        ],
+        "tokens": 604,
+        "ms": 19.92295798845589
+      },
+      "hk-exhibits-q21": {
+        "inserted": [
+          "hk-exhibits-m21",
+          "hk-exhibits-m14",
+          "hk-exhibits-m05",
+          "hk-exhibits-m09",
+          "hk-exhibits-m11",
+          "hk-exhibits-m26",
+          "hk-exhibits-m24",
+          "hk-exhibits-m08"
+        ],
+        "tokens": 580,
+        "ms": 25.248375022783875
+      },
+      "hk-exhibits-q22": {
+        "inserted": [
+          "hk-exhibits-m22",
+          "hk-exhibits-m12",
+          "hk-exhibits-m04",
+          "hk-exhibits-m28",
+          "hk-exhibits-m08",
+          "hk-exhibits-m25",
+          "hk-exhibits-m02",
+          "hk-exhibits-m11"
+        ],
+        "tokens": 594,
+        "ms": 25.91520908754319
+      },
+      "hk-exhibits-q23": {
+        "inserted": [
+          "hk-exhibits-m23",
+          "hk-exhibits-m04",
+          "hk-exhibits-m25",
+          "hk-exhibits-m22",
+          "hk-exhibits-m12",
+          "hk-exhibits-m08",
+          "hk-exhibits-m06",
+          "hk-exhibits-m11"
+        ],
+        "tokens": 591,
+        "ms": 25.360791012644768
+      },
+      "hk-exhibits-q24": {
+        "inserted": [
+          "hk-exhibits-m24",
+          "hk-exhibits-m12",
+          "hk-exhibits-m04",
+          "hk-exhibits-m28",
+          "hk-exhibits-m08",
+          "hk-exhibits-m25",
+          "hk-exhibits-m14",
+          "hk-exhibits-m02"
+        ],
+        "tokens": 581,
+        "ms": 20.41937503963709
+      },
+      "hk-exhibits-q25": {
+        "inserted": [
+          "hk-exhibits-m06",
+          "hk-exhibits-m10",
+          "hk-exhibits-m08",
+          "hk-exhibits-m13",
+          "hk-exhibits-m25",
+          "hk-exhibits-m11",
+          "hk-exhibits-m26",
+          "hk-exhibits-m05"
+        ],
+        "tokens": 561,
+        "ms": 24.5318750385195
+      },
+      "hk-exhibits-q26": {
+        "inserted": [
+          "hk-exhibits-m23",
+          "hk-exhibits-m12",
+          "hk-exhibits-m28",
+          "hk-exhibits-m15",
+          "hk-exhibits-m25",
+          "hk-exhibits-m08",
+          "hk-exhibits-m02",
+          "hk-exhibits-m11"
+        ],
+        "tokens": 604,
+        "ms": 24.544417043216527
+      },
+      "hk-exhibits-q27": {
+        "inserted": [
+          "hk-exhibits-m15",
+          "hk-exhibits-m23",
+          "hk-exhibits-m18",
+          "hk-exhibits-m28",
+          "hk-exhibits-m25",
+          "hk-exhibits-m14",
+          "hk-exhibits-m21",
+          "hk-exhibits-m08"
+        ],
+        "tokens": 600,
+        "ms": 23.80583295598626
+      },
+      "hk-exhibits-q28": {
+        "inserted": [
+          "hk-exhibits-m22",
+          "hk-exhibits-m12",
+          "hk-exhibits-m23",
+          "hk-exhibits-m28",
+          "hk-exhibits-m08",
+          "hk-exhibits-m25",
+          "hk-exhibits-m21",
+          "hk-exhibits-m11"
+        ],
+        "tokens": 593,
+        "ms": 20.6285840831697
+      },
+      "hk-exhibits-q29": {
+        "inserted": [
+          "hk-exhibits-m18",
+          "hk-exhibits-m27",
+          "hk-exhibits-m22",
+          "hk-exhibits-m12",
+          "hk-exhibits-m08",
+          "hk-exhibits-m25",
+          "hk-exhibits-m21",
+          "hk-exhibits-m14"
+        ],
+        "tokens": 594,
+        "ms": 21.626041969284415
+      },
+      "hk-exhibits-q30": {
+        "inserted": [
+          "hk-exhibits-m22",
+          "hk-exhibits-m12",
+          "hk-exhibits-m25",
+          "hk-exhibits-m08",
+          "hk-exhibits-m23",
+          "hk-exhibits-m15",
+          "hk-exhibits-m06",
+          "hk-exhibits-m11"
+        ],
+        "tokens": 597,
+        "ms": 20.66229109186679
+      },
+      "hk-radio-q01": {
+        "inserted": [
+          "hk-radio-m01",
+          "hk-radio-m10",
+          "hk-radio-m25",
+          "hk-radio-m15",
+          "hk-radio-m23",
+          "hk-radio-m21",
+          "hk-radio-m17",
+          "hk-radio-m14"
+        ],
+        "tokens": 600,
+        "ms": 18.88541702646762
+      },
+      "hk-radio-q02": {
+        "inserted": [
+          "hk-radio-m02",
+          "hk-radio-m23",
+          "hk-radio-m10",
+          "hk-radio-m24",
+          "hk-radio-m25",
+          "hk-radio-m21",
+          "hk-radio-m14",
+          "hk-radio-m15"
+        ],
+        "tokens": 609,
+        "ms": 16.787750064395368
+      },
+      "hk-radio-q03": {
+        "inserted": [
+          "hk-radio-m03",
+          "hk-radio-m04",
+          "hk-radio-m14",
+          "hk-radio-m10",
+          "hk-radio-m09",
+          "hk-radio-m12",
+          "hk-radio-m24",
+          "hk-radio-m05"
+        ],
+        "tokens": 616,
+        "ms": 23.25804193969816
+      },
+      "hk-radio-q04": {
+        "inserted": [
+          "hk-radio-m04",
+          "hk-radio-m02",
+          "hk-radio-m26",
+          "hk-radio-m15",
+          "hk-radio-m10",
+          "hk-radio-m03",
+          "hk-radio-m20",
+          "hk-radio-m24"
+        ],
+        "tokens": 621,
+        "ms": 21.351665956899524
+      },
+      "hk-radio-q05": {
+        "inserted": [
+          "hk-radio-m05",
+          "hk-radio-m10",
+          "hk-radio-m25",
+          "hk-radio-m09",
+          "hk-radio-m17",
+          "hk-radio-m11",
+          "hk-radio-m14",
+          "hk-radio-m01"
+        ],
+        "tokens": 609,
+        "ms": 20.465124980546534
+      },
+      "hk-radio-q06": {
+        "inserted": [
+          "hk-radio-m06",
+          "hk-radio-m04",
+          "hk-radio-m15",
+          "hk-radio-m03",
+          "hk-radio-m20",
+          "hk-radio-m10",
+          "hk-radio-m24",
+          "hk-radio-m21"
+        ],
+        "tokens": 606,
+        "ms": 15.334541094489396
+      },
+      "hk-radio-q07": {
+        "inserted": [
+          "hk-radio-m07",
+          "hk-radio-m29",
+          "hk-radio-m23",
+          "hk-radio-m27",
+          "hk-radio-m25",
+          "hk-radio-m11",
+          "hk-radio-m02",
+          "hk-radio-m26"
+        ],
+        "tokens": 593,
+        "ms": 21.798291942104697
+      },
+      "hk-radio-q08": {
+        "inserted": [
+          "hk-radio-m10",
+          "hk-radio-m09",
+          "hk-radio-m14",
+          "hk-radio-m11",
+          "hk-radio-m26",
+          "hk-radio-m05",
+          "hk-radio-m25",
+          "hk-radio-m17"
+        ],
+        "tokens": 622,
+        "ms": 25.954167009331286
+      },
+      "hk-radio-q09": {
+        "inserted": [
+          "hk-radio-m09",
+          "hk-radio-m10",
+          "hk-radio-m15",
+          "hk-radio-m21",
+          "hk-radio-m20",
+          "hk-radio-m23",
+          "hk-radio-m02",
+          "hk-radio-m24"
+        ],
+        "tokens": 608,
+        "ms": 18.421791959553957
+      },
+      "hk-radio-q10": {
+        "inserted": [
+          "hk-radio-m10",
+          "hk-radio-m25",
+          "hk-radio-m14",
+          "hk-radio-m01",
+          "hk-radio-m29",
+          "hk-radio-m17",
+          "hk-radio-m12",
+          "hk-radio-m09"
+        ],
+        "tokens": 603,
+        "ms": 19.561833003535867
+      },
+      "hk-radio-q11": {
+        "inserted": [
+          "hk-radio-m25",
+          "hk-radio-m10",
+          "hk-radio-m12",
+          "hk-radio-m14",
+          "hk-radio-m21",
+          "hk-radio-m09",
+          "hk-radio-m24",
+          "hk-radio-m17"
+        ],
+        "tokens": 625,
+        "ms": 22.660708986222744
+      },
+      "hk-radio-q12": {
+        "inserted": [
+          "hk-radio-m23",
+          "hk-radio-m05",
+          "hk-radio-m24",
+          "hk-radio-m25",
+          "hk-radio-m21",
+          "hk-radio-m14",
+          "hk-radio-m11",
+          "hk-radio-m04"
+        ],
+        "tokens": 603,
+        "ms": 24.101875023916364
+      },
+      "hk-radio-q13": {
+        "inserted": [
+          "hk-radio-m10",
+          "hk-radio-m25",
+          "hk-radio-m14",
+          "hk-radio-m23",
+          "hk-radio-m13",
+          "hk-radio-m04",
+          "hk-radio-m21",
+          "hk-radio-m12"
+        ],
+        "tokens": 600,
+        "ms": 20.726999966427684
+      },
+      "hk-radio-q14": {
+        "inserted": [
+          "hk-radio-m05",
+          "hk-radio-m11",
+          "hk-radio-m14",
+          "hk-radio-m10",
+          "hk-radio-m23",
+          "hk-radio-m20",
+          "hk-radio-m21",
+          "hk-radio-m02"
+        ],
+        "tokens": 600,
+        "ms": 22.657375084236264
+      },
+      "hk-radio-q15": {
+        "inserted": [
+          "hk-radio-m25",
+          "hk-radio-m10",
+          "hk-radio-m14",
+          "hk-radio-m12",
+          "hk-radio-m21",
+          "hk-radio-m17",
+          "hk-radio-m05",
+          "hk-radio-m01"
+        ],
+        "tokens": 609,
+        "ms": 26.12799999769777
+      },
+      "hk-radio-q16": {
+        "inserted": [
+          "hk-radio-m17",
+          "hk-radio-m16",
+          "hk-radio-m18",
+          "hk-radio-m10",
+          "hk-radio-m21",
+          "hk-radio-m14",
+          "hk-radio-m02",
+          "hk-radio-m04"
+        ],
+        "tokens": 651,
+        "ms": 20.361125003546476
+      },
+      "hk-radio-q17": {
+        "inserted": [
+          "hk-radio-m10",
+          "hk-radio-m20",
+          "hk-radio-m05",
+          "hk-radio-m15",
+          "hk-radio-m13",
+          "hk-radio-m21",
+          "hk-radio-m14",
+          "hk-radio-m06"
+        ],
+        "tokens": 595,
+        "ms": 23.085166001692414
+      },
+      "hk-radio-q18": {
+        "inserted": [
+          "hk-radio-m17",
+          "hk-radio-m18",
+          "hk-radio-m16",
+          "hk-radio-m29",
+          "hk-radio-m07",
+          "hk-radio-m01",
+          "hk-radio-m02",
+          "hk-radio-m14"
+        ],
+        "tokens": 628,
+        "ms": 18.27850006520748
+      },
+      "hk-radio-q19": {
+        "inserted": [
+          "hk-radio-m19",
+          "hk-radio-m23",
+          "hk-radio-m10",
+          "hk-radio-m05",
+          "hk-radio-m02",
+          "hk-radio-m21",
+          "hk-radio-m14",
+          "hk-radio-m04"
+        ],
+        "tokens": 622,
+        "ms": 26.39133296906948
+      },
+      "hk-radio-q20": {
+        "inserted": [
+          "hk-radio-m10",
+          "hk-radio-m09",
+          "hk-radio-m14",
+          "hk-radio-m26",
+          "hk-radio-m05",
+          "hk-radio-m20",
+          "hk-radio-m17",
+          "hk-radio-m15"
+        ],
+        "tokens": 620,
+        "ms": 23.780499934218824
+      },
+      "hk-radio-q21": {
+        "inserted": [
+          "hk-radio-m21",
+          "hk-radio-m10",
+          "hk-radio-m20",
+          "hk-radio-m17",
+          "hk-radio-m25",
+          "hk-radio-m15",
+          "hk-radio-m14",
+          "hk-radio-m12"
+        ],
+        "tokens": 615,
+        "ms": 20.224958076141775
+      },
+      "hk-radio-q22": {
+        "inserted": [
+          "hk-radio-m10",
+          "hk-radio-m21",
+          "hk-radio-m11",
+          "hk-radio-m14",
+          "hk-radio-m09",
+          "hk-radio-m05",
+          "hk-radio-m25",
+          "hk-radio-m16"
+        ],
+        "tokens": 621,
+        "ms": 31.453832983970642
+      },
+      "hk-radio-q23": {
+        "inserted": [
+          "hk-radio-m23",
+          "hk-radio-m29",
+          "hk-radio-m05",
+          "hk-radio-m08",
+          "hk-radio-m11",
+          "hk-radio-m07",
+          "hk-radio-m21",
+          "hk-radio-m14"
+        ],
+        "tokens": 589,
+        "ms": 27.353291981853545
+      },
+      "hk-radio-q24": {
+        "inserted": [
+          "hk-radio-m25",
+          "hk-radio-m24",
+          "hk-radio-m14",
+          "hk-radio-m21",
+          "hk-radio-m12",
+          "hk-radio-m17",
+          "hk-radio-m23",
+          "hk-radio-m11"
+        ],
+        "tokens": 607,
+        "ms": 28.740040957927704
+      },
+      "hk-radio-q25": {
+        "inserted": [
+          "hk-radio-m08",
+          "hk-radio-m23",
+          "hk-radio-m03",
+          "hk-radio-m10",
+          "hk-radio-m11",
+          "hk-radio-m21",
+          "hk-radio-m12",
+          "hk-radio-m14"
+        ],
+        "tokens": 594,
+        "ms": 27.13479194790125
+      },
+      "hk-radio-q26": {
+        "inserted": [
+          "hk-radio-m21",
+          "hk-radio-m06",
+          "hk-radio-m20",
+          "hk-radio-m24",
+          "hk-radio-m04",
+          "hk-radio-m03",
+          "hk-radio-m28",
+          "hk-radio-m22"
+        ],
+        "tokens": 606,
+        "ms": 23.012959049083292
+      },
+      "hk-radio-q27": {
+        "inserted": [
+          "hk-radio-m28",
+          "hk-radio-m03",
+          "hk-radio-m06",
+          "hk-radio-m24",
+          "hk-radio-m20",
+          "hk-radio-m04",
+          "hk-radio-m15",
+          "hk-radio-m21"
+        ],
+        "tokens": 603,
+        "ms": 21.622790955007076
+      },
+      "hk-radio-q28": {
+        "inserted": [
+          "hk-radio-m25",
+          "hk-radio-m27",
+          "hk-radio-m02",
+          "hk-radio-m23",
+          "hk-radio-m14",
+          "hk-radio-m29",
+          "hk-radio-m21",
+          "hk-radio-m11"
+        ],
+        "tokens": 592,
+        "ms": 17.35641702543944
+      },
+      "hk-radio-q29": {
+        "inserted": [
+          "hk-radio-m23",
+          "hk-radio-m10",
+          "hk-radio-m29",
+          "hk-radio-m05",
+          "hk-radio-m04",
+          "hk-radio-m02",
+          "hk-radio-m14",
+          "hk-radio-m11"
+        ],
+        "tokens": 598,
+        "ms": 16.19533309713006
+      },
+      "hk-radio-q30": {
+        "inserted": [
+          "hk-radio-m24",
+          "hk-radio-m21",
+          "hk-radio-m03",
+          "hk-radio-m20",
+          "hk-radio-m05",
+          "hk-radio-m11",
+          "hk-radio-m06",
+          "hk-radio-m14"
+        ],
+        "tokens": 598,
+        "ms": 26.02687501348555
+      },
+      "hk-theater-q01": {
+        "inserted": [
+          "hk-theater-m01",
+          "hk-theater-m10",
+          "hk-theater-m06",
+          "hk-theater-m28",
+          "hk-theater-m02",
+          "hk-theater-m15",
+          "hk-theater-m21",
+          "hk-theater-m12"
+        ],
+        "tokens": 617,
+        "ms": 20.644667092710733
+      },
+      "hk-theater-q02": {
+        "inserted": [
+          "hk-theater-m02",
+          "hk-theater-m06",
+          "hk-theater-m15",
+          "hk-theater-m07",
+          "hk-theater-m21",
+          "hk-theater-m05",
+          "hk-theater-m01",
+          "hk-theater-m10"
+        ],
+        "tokens": 627,
+        "ms": 21.084042033180594
+      },
+      "hk-theater-q03": {
+        "inserted": [
+          "hk-theater-m03",
+          "hk-theater-m06",
+          "hk-theater-m14",
+          "hk-theater-m10",
+          "hk-theater-m28",
+          "hk-theater-m02",
+          "hk-theater-m21",
+          "hk-theater-m12"
+        ],
+        "tokens": 612,
+        "ms": 25.180625030770898
+      },
+      "hk-theater-q04": {
+        "inserted": [
+          "hk-theater-m04",
+          "hk-theater-m03",
+          "hk-theater-m25",
+          "hk-theater-m14",
+          "hk-theater-m10",
+          "hk-theater-m02",
+          "hk-theater-m21",
+          "hk-theater-m12"
+        ],
+        "tokens": 628,
+        "ms": 22.9952500667423
+      },
+      "hk-theater-q05": {
+        "inserted": [
+          "hk-theater-m05",
+          "hk-theater-m04",
+          "hk-theater-m13",
+          "hk-theater-m21",
+          "hk-theater-m06",
+          "hk-theater-m07",
+          "hk-theater-m10",
+          "hk-theater-m02"
+        ],
+        "tokens": 626,
+        "ms": 21.013124962337315
+      },
+      "hk-theater-q06": {
+        "inserted": [
+          "hk-theater-m06",
+          "hk-theater-m04",
+          "hk-theater-m05",
+          "hk-theater-m13",
+          "hk-theater-m21",
+          "hk-theater-m07",
+          "hk-theater-m10",
+          "hk-theater-m02"
+        ],
+        "tokens": 626,
+        "ms": 18.79541703965515
+      },
+      "hk-theater-q07": {
+        "inserted": [
+          "hk-theater-m07",
+          "hk-theater-m04",
+          "hk-theater-m13",
+          "hk-theater-m21",
+          "hk-theater-m05",
+          "hk-theater-m06",
+          "hk-theater-m10",
+          "hk-theater-m02"
+        ],
+        "tokens": 626,
+        "ms": 20.06866701412946
+      },
+      "hk-theater-q08": {
+        "inserted": [
+          "hk-theater-m28",
+          "hk-theater-m06",
+          "hk-theater-m03",
+          "hk-theater-m21",
+          "hk-theater-m14",
+          "hk-theater-m02",
+          "hk-theater-m10",
+          "hk-theater-m12"
+        ],
+        "tokens": 612,
+        "ms": 23.21616606786847
+      },
+      "hk-theater-q09": {
+        "inserted": [
+          "hk-theater-m28",
+          "hk-theater-m23",
+          "hk-theater-m06",
+          "hk-theater-m14",
+          "hk-theater-m10",
+          "hk-theater-m02",
+          "hk-theater-m21",
+          "hk-theater-m07"
+        ],
+        "tokens": 633,
+        "ms": 20.856583025306463
+      },
+      "hk-theater-q10": {
+        "inserted": [
+          "hk-theater-m10",
+          "hk-theater-m14",
+          "hk-theater-m03",
+          "hk-theater-m24",
+          "hk-theater-m25",
+          "hk-theater-m02",
+          "hk-theater-m21",
+          "hk-theater-m12"
+        ],
+        "tokens": 633,
+        "ms": 21.843209047801793
+      },
+      "hk-theater-q11": {
+        "inserted": [
+          "hk-theater-m06",
+          "hk-theater-m13",
+          "hk-theater-m02",
+          "hk-theater-m21",
+          "hk-theater-m15",
+          "hk-theater-m08",
+          "hk-theater-m10",
+          "hk-theater-m07"
+        ],
+        "tokens": 619,
+        "ms": 22.032457985915244
+      },
+      "hk-theater-q12": {
+        "inserted": [
+          "hk-theater-m21",
+          "hk-theater-m15",
+          "hk-theater-m02",
+          "hk-theater-m23",
+          "hk-theater-m28",
+          "hk-theater-m05",
+          "hk-theater-m07",
+          "hk-theater-m10"
+        ],
+        "tokens": 637,
+        "ms": 27.019084081985056
+      },
+      "hk-theater-q13": {
+        "inserted": [
+          "hk-theater-m06",
+          "hk-theater-m28",
+          "hk-theater-m21",
+          "hk-theater-m02",
+          "hk-theater-m15",
+          "hk-theater-m05",
+          "hk-theater-m07",
+          "hk-theater-m10"
+        ],
+        "tokens": 627,
+        "ms": 21.29037503618747
+      },
+      "hk-theater-q14": {
+        "inserted": [
+          "hk-theater-m02",
+          "hk-theater-m28",
+          "hk-theater-m23",
+          "hk-theater-m10",
+          "hk-theater-m21",
+          "hk-theater-m24",
+          "hk-theater-m14",
+          "hk-theater-m07"
+        ],
+        "tokens": 640,
+        "ms": 24.029916035942733
+      },
+      "hk-theater-q15": {
+        "inserted": [
+          "hk-theater-m06",
+          "hk-theater-m21",
+          "hk-theater-m02",
+          "hk-theater-m10",
+          "hk-theater-m28",
+          "hk-theater-m27",
+          "hk-theater-m26",
+          "hk-theater-m07"
+        ],
+        "tokens": 631,
+        "ms": 23.39579095132649
+      },
+      "hk-theater-q16": {
+        "inserted": [
+          "hk-theater-m21",
+          "hk-theater-m13",
+          "hk-theater-m07",
+          "hk-theater-m04",
+          "hk-theater-m06",
+          "hk-theater-m05",
+          "hk-theater-m02",
+          "hk-theater-m10"
+        ],
+        "tokens": 626,
+        "ms": 20.86091600358486
+      },
+      "hk-theater-q17": {
+        "inserted": [
+          "hk-theater-m04",
+          "hk-theater-m06",
+          "hk-theater-m13",
+          "hk-theater-m21",
+          "hk-theater-m05",
+          "hk-theater-m07",
+          "hk-theater-m02",
+          "hk-theater-m10"
+        ],
+        "tokens": 626,
+        "ms": 19.8725420050323
+      },
+      "hk-theater-q18": {
+        "inserted": [
+          "hk-theater-m06",
+          "hk-theater-m01",
+          "hk-theater-m28",
+          "hk-theater-m15",
+          "hk-theater-m10",
+          "hk-theater-m21",
+          "hk-theater-m12",
+          "hk-theater-m02"
+        ],
+        "tokens": 617,
+        "ms": 16.878792084753513
+      },
+      "hk-theater-q19": {
+        "inserted": [
+          "hk-theater-m08",
+          "hk-theater-m03",
+          "hk-theater-m15",
+          "hk-theater-m27",
+          "hk-theater-m02",
+          "hk-theater-m10",
+          "hk-theater-m21",
+          "hk-theater-m12"
+        ],
+        "tokens": 610,
+        "ms": 21.52229193598032
+      },
+      "hk-theater-q20": {
+        "inserted": [
+          "hk-theater-m23",
+          "hk-theater-m10",
+          "hk-theater-m02",
+          "hk-theater-m28",
+          "hk-theater-m15",
+          "hk-theater-m24",
+          "hk-theater-m21",
+          "hk-theater-m12"
+        ],
+        "tokens": 633,
+        "ms": 23.35633395705372
+      },
+      "hk-theater-q21": {
+        "inserted": [
+          "hk-theater-m25",
+          "hk-theater-m03",
+          "hk-theater-m23",
+          "hk-theater-m24",
+          "hk-theater-m02",
+          "hk-theater-m21",
+          "hk-theater-m10",
+          "hk-theater-m12"
+        ],
+        "tokens": 637,
+        "ms": 28.194334008730948
+      },
+      "hk-theater-q22": {
+        "inserted": [
+          "hk-theater-m08",
+          "hk-theater-m22",
+          "hk-theater-m06",
+          "hk-theater-m01",
+          "hk-theater-m12",
+          "hk-theater-m10",
+          "hk-theater-m21",
+          "hk-theater-m02"
+        ],
+        "tokens": 610,
+        "ms": 16.637540888041258
+      },
+      "hk-theater-q23": {
+        "inserted": [
+          "hk-theater-m13",
+          "hk-theater-m23",
+          "hk-theater-m06",
+          "hk-theater-m10",
+          "hk-theater-m15",
+          "hk-theater-m02",
+          "hk-theater-m21",
+          "hk-theater-m07"
+        ],
+        "tokens": 636,
+        "ms": 22.288416046649218
+      },
+      "hk-theater-q24": {
+        "inserted": [
+          "hk-theater-m14",
+          "hk-theater-m28",
+          "hk-theater-m25",
+          "hk-theater-m10",
+          "hk-theater-m02",
+          "hk-theater-m08",
+          "hk-theater-m21",
+          "hk-theater-m12"
+        ],
+        "tokens": 625,
+        "ms": 32.7275829622522
+      },
+      "hk-theater-q25": {
+        "inserted": [
+          "hk-theater-m05",
+          "hk-theater-m13",
+          "hk-theater-m04",
+          "hk-theater-m06",
+          "hk-theater-m21",
+          "hk-theater-m12",
+          "hk-theater-m10",
+          "hk-theater-m02"
+        ],
+        "tokens": 619,
+        "ms": 33.24070910457522
+      },
+      "hk-theater-q26": {
+        "inserted": [
+          "hk-theater-m13",
+          "hk-theater-m04",
+          "hk-theater-m21",
+          "hk-theater-m05",
+          "hk-theater-m15",
+          "hk-theater-m07",
+          "hk-theater-m02",
+          "hk-theater-m12"
+        ],
+        "tokens": 633,
+        "ms": 17.108416999690235
+      },
+      "hk-theater-q27": {
+        "inserted": [
+          "hk-theater-m08",
+          "hk-theater-m06",
+          "hk-theater-m28",
+          "hk-theater-m02",
+          "hk-theater-m21",
+          "hk-theater-m13",
+          "hk-theater-m07",
+          "hk-theater-m10"
+        ],
+        "tokens": 614,
+        "ms": 19.195250002667308
+      },
+      "hk-theater-q28": {
+        "inserted": [
+          "hk-theater-m04",
+          "hk-theater-m13",
+          "hk-theater-m15",
+          "hk-theater-m21",
+          "hk-theater-m05",
+          "hk-theater-m10",
+          "hk-theater-m07",
+          "hk-theater-m02"
+        ],
+        "tokens": 632,
+        "ms": 21.02604100946337
+      },
+      "hk-theater-q29": {
+        "inserted": [
+          "hk-theater-m10",
+          "hk-theater-m05",
+          "hk-theater-m01",
+          "hk-theater-m28",
+          "hk-theater-m03",
+          "hk-theater-m02",
+          "hk-theater-m21",
+          "hk-theater-m12"
+        ],
+        "tokens": 611,
+        "ms": 23.161291028372943
+      },
+      "hk-theater-q30": {
+        "inserted": [
+          "hk-theater-m03",
+          "hk-theater-m11",
+          "hk-theater-m27",
+          "hk-theater-m14",
+          "hk-theater-m02",
+          "hk-theater-m10",
+          "hk-theater-m12",
+          "hk-theater-m21"
+        ],
+        "tokens": 617,
+        "ms": 23.12595897819847
+      },
+      "hk-weaving-q01": {
+        "inserted": [
+          "hk-weaving-m01",
+          "hk-weaving-m23",
+          "hk-weaving-m07",
+          "hk-weaving-m26",
+          "hk-weaving-m25",
+          "hk-weaving-m18",
+          "hk-weaving-m24",
+          "hk-weaving-m13"
+        ],
+        "tokens": 668,
+        "ms": 24.0232499781996
+      },
+      "hk-weaving-q02": {
+        "inserted": [
+          "hk-weaving-m02",
+          "hk-weaving-m28",
+          "hk-weaving-m18",
+          "hk-weaving-m23",
+          "hk-weaving-m01",
+          "hk-weaving-m13",
+          "hk-weaving-m07",
+          "hk-weaving-m25"
+        ],
+        "tokens": 650,
+        "ms": 18.617249908857048
+      },
+      "hk-weaving-q03": {
+        "inserted": [
+          "hk-weaving-m03",
+          "hk-weaving-m21",
+          "hk-weaving-m24",
+          "hk-weaving-m07",
+          "hk-weaving-m12",
+          "hk-weaving-m25",
+          "hk-weaving-m23",
+          "hk-weaving-m10"
+        ],
+        "tokens": 665,
+        "ms": 17.805707990191877
+      },
+      "hk-weaving-q04": {
+        "inserted": [
+          "hk-weaving-m04",
+          "hk-weaving-m13",
+          "hk-weaving-m27",
+          "hk-weaving-m08",
+          "hk-weaving-m18",
+          "hk-weaving-m01",
+          "hk-weaving-m07",
+          "hk-weaving-m10"
+        ],
+        "tokens": 641,
+        "ms": 20.294749992899597
+      },
+      "hk-weaving-q05": {
+        "inserted": [
+          "hk-weaving-m05",
+          "hk-weaving-m10",
+          "hk-weaving-m23",
+          "hk-weaving-m22",
+          "hk-weaving-m25",
+          "hk-weaving-m26",
+          "hk-weaving-m07",
+          "hk-weaving-m21"
+        ],
+        "tokens": 659,
+        "ms": 20.097166998311877
+      },
+      "hk-weaving-q06": {
+        "inserted": [
+          "hk-weaving-m25",
+          "hk-weaving-m21",
+          "hk-weaving-m22",
+          "hk-weaving-m07",
+          "hk-weaving-m03",
+          "hk-weaving-m15",
+          "hk-weaving-m12",
+          "hk-weaving-m10"
+        ],
+        "tokens": 647,
+        "ms": 20.375207997858524
+      },
+      "hk-weaving-q07": {
+        "inserted": [
+          "hk-weaving-m07",
+          "hk-weaving-m26",
+          "hk-weaving-m23",
+          "hk-weaving-m22",
+          "hk-weaving-m10",
+          "hk-weaving-m24",
+          "hk-weaving-m01",
+          "hk-weaving-m25"
+        ],
+        "tokens": 664,
+        "ms": 26.2627910124138
+      },
+      "hk-weaving-q08": {
+        "inserted": [
+          "hk-weaving-m09",
+          "hk-weaving-m01",
+          "hk-weaving-m05",
+          "hk-weaving-m25",
+          "hk-weaving-m21",
+          "hk-weaving-m08",
+          "hk-weaving-m23",
+          "hk-weaving-m07"
+        ],
+        "tokens": 639,
+        "ms": 17.475666012614965
+      },
+      "hk-weaving-q09": {
+        "inserted": [
+          "hk-weaving-m09",
+          "hk-weaving-m01",
+          "hk-weaving-m23",
+          "hk-weaving-m24",
+          "hk-weaving-m05",
+          "hk-weaving-m25",
+          "hk-weaving-m07",
+          "hk-weaving-m13"
+        ],
+        "tokens": 655,
+        "ms": 14.832332963123918
+      },
+      "hk-weaving-q10": {
+        "inserted": [
+          "hk-weaving-m10",
+          "hk-weaving-m24",
+          "hk-weaving-m26",
+          "hk-weaving-m22",
+          "hk-weaving-m23",
+          "hk-weaving-m01",
+          "hk-weaving-m07",
+          "hk-weaving-m13"
+        ],
+        "tokens": 662,
+        "ms": 20.895375055260956
+      },
+      "hk-weaving-q11": {
+        "inserted": [
+          "hk-weaving-m01",
+          "hk-weaving-m09",
+          "hk-weaving-m27",
+          "hk-weaving-m08",
+          "hk-weaving-m07",
+          "hk-weaving-m11",
+          "hk-weaving-m25",
+          "hk-weaving-m18"
+        ],
+        "tokens": 636,
+        "ms": 22.49245799612254
+      },
+      "hk-weaving-q12": {
+        "inserted": [
+          "hk-weaving-m10",
+          "hk-weaving-m22",
+          "hk-weaving-m25",
+          "hk-weaving-m23",
+          "hk-weaving-m03",
+          "hk-weaving-m26",
+          "hk-weaving-m07",
+          "hk-weaving-m14"
+        ],
+        "tokens": 653,
+        "ms": 23.125374922528863
+      },
+      "hk-weaving-q13": {
+        "inserted": [
+          "hk-weaving-m27",
+          "hk-weaving-m09",
+          "hk-weaving-m25",
+          "hk-weaving-m28",
+          "hk-weaving-m23",
+          "hk-weaving-m07",
+          "hk-weaving-m11",
+          "hk-weaving-m01"
+        ],
+        "tokens": 634,
+        "ms": 17.6279169972986
+      },
+      "hk-weaving-q14": {
+        "inserted": [
+          "hk-weaving-m23",
+          "hk-weaving-m02",
+          "hk-weaving-m25",
+          "hk-weaving-m26",
+          "hk-weaving-m24",
+          "hk-weaving-m07",
+          "hk-weaving-m13",
+          "hk-weaving-m21"
+        ],
+        "tokens": 655,
+        "ms": 21.318082930520177
+      },
+      "hk-weaving-q15": {
+        "inserted": [
+          "hk-weaving-m13",
+          "hk-weaving-m26",
+          "hk-weaving-m23",
+          "hk-weaving-m07",
+          "hk-weaving-m25",
+          "hk-weaving-m27",
+          "hk-weaving-m02",
+          "hk-weaving-m01"
+        ],
+        "tokens": 636,
+        "ms": 19.4104170659557
+      },
+      "hk-weaving-q16": {
+        "inserted": [
+          "hk-weaving-m16",
+          "hk-weaving-m17",
+          "hk-weaving-m27",
+          "hk-weaving-m13",
+          "hk-weaving-m18",
+          "hk-weaving-m01",
+          "hk-weaving-m07",
+          "hk-weaving-m11"
+        ],
+        "tokens": 670,
+        "ms": 21.54845790937543
+      },
+      "hk-weaving-q17": {
+        "inserted": [
+          "hk-weaving-m16",
+          "hk-weaving-m17",
+          "hk-weaving-m24",
+          "hk-weaving-m22",
+          "hk-weaving-m10",
+          "hk-weaving-m25",
+          "hk-weaving-m01",
+          "hk-weaving-m07"
+        ],
+        "tokens": 685,
+        "ms": 20.829000044614077
+      },
+      "hk-weaving-q18": {
+        "inserted": [
+          "hk-weaving-m19",
+          "hk-weaving-m18",
+          "hk-weaving-m25",
+          "hk-weaving-m07",
+          "hk-weaving-m23",
+          "hk-weaving-m22",
+          "hk-weaving-m21",
+          "hk-weaving-m14"
+        ],
+        "tokens": 671,
+        "ms": 17.84954103641212
+      },
+      "hk-weaving-q19": {
+        "inserted": [
+          "hk-weaving-m18",
+          "hk-weaving-m19",
+          "hk-weaving-m08",
+          "hk-weaving-m28",
+          "hk-weaving-m13",
+          "hk-weaving-m10",
+          "hk-weaving-m25",
+          "hk-weaving-m11"
+        ],
+        "tokens": 668,
+        "ms": 20.890874904580414
+      },
+      "hk-weaving-q20": {
+        "inserted": [
+          "hk-weaving-m02",
+          "hk-weaving-m27",
+          "hk-weaving-m22",
+          "hk-weaving-m08",
+          "hk-weaving-m11",
+          "hk-weaving-m25",
+          "hk-weaving-m01",
+          "hk-weaving-m07"
+        ],
+        "tokens": 635,
+        "ms": 19.200332928448915
+      },
+      "hk-weaving-q21": {
+        "inserted": [
+          "hk-weaving-m26",
+          "hk-weaving-m07",
+          "hk-weaving-m25",
+          "hk-weaving-m23",
+          "hk-weaving-m01",
+          "hk-weaving-m02",
+          "hk-weaving-m22",
+          "hk-weaving-m21"
+        ],
+        "tokens": 639,
+        "ms": 24.271250003948808
+      },
+      "hk-weaving-q22": {
+        "inserted": [
+          "hk-weaving-m08",
+          "hk-weaving-m24",
+          "hk-weaving-m27",
+          "hk-weaving-m18",
+          "hk-weaving-m13",
+          "hk-weaving-m25",
+          "hk-weaving-m01",
+          "hk-weaving-m10"
+        ],
+        "tokens": 671,
+        "ms": 23.23808299843222
+      },
+      "hk-weaving-q23": {
+        "inserted": [
+          "hk-weaving-m23",
+          "hk-weaving-m18",
+          "hk-weaving-m08",
+          "hk-weaving-m28",
+          "hk-weaving-m13",
+          "hk-weaving-m25",
+          "hk-weaving-m07",
+          "hk-weaving-m01"
+        ],
+        "tokens": 661,
+        "ms": 25.123249972239137
+      },
+      "hk-weaving-q24": {
+        "inserted": [
+          "hk-weaving-m24",
+          "hk-weaving-m28",
+          "hk-weaving-m26",
+          "hk-weaving-m02",
+          "hk-weaving-m01",
+          "hk-weaving-m07",
+          "hk-weaving-m13",
+          "hk-weaving-m25"
+        ],
+        "tokens": 639,
+        "ms": 24.60033306851983
+      },
+      "hk-weaving-q25": {
+        "inserted": [
+          "hk-weaving-m13",
+          "hk-weaving-m02",
+          "hk-weaving-m27",
+          "hk-weaving-m25",
+          "hk-weaving-m23",
+          "hk-weaving-m07",
+          "hk-weaving-m01",
+          "hk-weaving-m09"
+        ],
+        "tokens": 629,
+        "ms": 28.765792027115822
+      },
+      "hk-weaving-q26": {
+        "inserted": [
+          "hk-weaving-m26",
+          "hk-weaving-m05",
+          "hk-weaving-m25",
+          "hk-weaving-m07",
+          "hk-weaving-m01",
+          "hk-weaving-m22",
+          "hk-weaving-m15",
+          "hk-weaving-m10"
+        ],
+        "tokens": 641,
+        "ms": 20.030708983540535
+      },
+      "hk-weaving-q27": {
+        "inserted": [
+          "hk-weaving-m12",
+          "hk-weaving-m23",
+          "hk-weaving-m03",
+          "hk-weaving-m22",
+          "hk-weaving-m10",
+          "hk-weaving-m07",
+          "hk-weaving-m25",
+          "hk-weaving-m14"
+        ],
+        "tokens": 657,
+        "ms": 24.055958027020097
+      },
+      "hk-weaving-q28": {
+        "inserted": [
+          "hk-weaving-m21",
+          "hk-weaving-m05",
+          "hk-weaving-m22",
+          "hk-weaving-m25",
+          "hk-weaving-m24",
+          "hk-weaving-m10",
+          "hk-weaving-m23",
+          "hk-weaving-m07"
+        ],
+        "tokens": 677,
+        "ms": 19.88904201425612
+      },
+      "hk-weaving-q29": {
+        "inserted": [
+          "hk-weaving-m22",
+          "hk-weaving-m10",
+          "hk-weaving-m14",
+          "hk-weaving-m03",
+          "hk-weaving-m12",
+          "hk-weaving-m24",
+          "hk-weaving-m25",
+          "hk-weaving-m01"
+        ],
+        "tokens": 659,
+        "ms": 25.69041692186147
+      },
+      "hk-weaving-q30": {
+        "inserted": [
+          "hk-weaving-m22",
+          "hk-weaving-m23",
+          "hk-weaving-m24",
+          "hk-weaving-m07",
+          "hk-weaving-m25",
+          "hk-weaving-m10",
+          "hk-weaving-m12",
+          "hk-weaving-m01"
+        ],
+        "tokens": 669,
+        "ms": 19.301249994896352
+      },
+      "hk-bikes-q01": {
+        "inserted": [
+          "hk-bikes-m01",
+          "hk-bikes-m26",
+          "hk-bikes-m12",
+          "hk-bikes-m15",
+          "hk-bikes-m07",
+          "hk-bikes-m03",
+          "hk-bikes-m11",
+          "hk-bikes-m02"
+        ],
+        "tokens": 587,
+        "ms": 21.320458967238665
+      },
+      "hk-bikes-q02": {
+        "inserted": [
+          "hk-bikes-m02",
+          "hk-bikes-m09",
+          "hk-bikes-m22",
+          "hk-bikes-m07",
+          "hk-bikes-m11",
+          "hk-bikes-m27",
+          "hk-bikes-m14",
+          "hk-bikes-m23"
+        ],
+        "tokens": 569,
+        "ms": 19.842749927192926
+      },
+      "hk-bikes-q03": {
+        "inserted": [
+          "hk-bikes-m03",
+          "hk-bikes-m26",
+          "hk-bikes-m11",
+          "hk-bikes-m10",
+          "hk-bikes-m14",
+          "hk-bikes-m15",
+          "hk-bikes-m12",
+          "hk-bikes-m07"
+        ],
+        "tokens": 582,
+        "ms": 19.45787505246699
+      },
+      "hk-bikes-q04": {
+        "inserted": [
+          "hk-bikes-m04",
+          "hk-bikes-m27",
+          "hk-bikes-m18",
+          "hk-bikes-m09",
+          "hk-bikes-m15",
+          "hk-bikes-m02",
+          "hk-bikes-m12",
+          "hk-bikes-m10"
+        ],
+        "tokens": 575,
+        "ms": 20.785250002518296
+      },
+      "hk-bikes-q05": {
+        "inserted": [
+          "hk-bikes-m05",
+          "hk-bikes-m08",
+          "hk-bikes-m28",
+          "hk-bikes-m25",
+          "hk-bikes-m12",
+          "hk-bikes-m23",
+          "hk-bikes-m07",
+          "hk-bikes-m15"
+        ],
+        "tokens": 596,
+        "ms": 25.402124971151352
+      },
+      "hk-bikes-q06": {
+        "inserted": [
+          "hk-bikes-m12",
+          "hk-bikes-m08",
+          "hk-bikes-m13",
+          "hk-bikes-m06",
+          "hk-bikes-m25",
+          "hk-bikes-m07",
+          "hk-bikes-m23",
+          "hk-bikes-m15"
+        ],
+        "tokens": 590,
+        "ms": 21.58237504772842
+      },
+      "hk-bikes-q07": {
+        "inserted": [
+          "hk-bikes-m11",
+          "hk-bikes-m26",
+          "hk-bikes-m03",
+          "hk-bikes-m10",
+          "hk-bikes-m14",
+          "hk-bikes-m07",
+          "hk-bikes-m22",
+          "hk-bikes-m02"
+        ],
+        "tokens": 576,
+        "ms": 27.03970903530717
+      },
+      "hk-bikes-q08": {
+        "inserted": [
+          "hk-bikes-m08",
+          "hk-bikes-m14",
+          "hk-bikes-m22",
+          "hk-bikes-m06",
+          "hk-bikes-m02",
+          "hk-bikes-m26",
+          "hk-bikes-m07",
+          "hk-bikes-m12"
+        ],
+        "tokens": 579,
+        "ms": 25.157292024232447
+      },
+      "hk-bikes-q09": {
+        "inserted": [
+          "hk-bikes-m09",
+          "hk-bikes-m02",
+          "hk-bikes-m14",
+          "hk-bikes-m26",
+          "hk-bikes-m06",
+          "hk-bikes-m22",
+          "hk-bikes-m15",
+          "hk-bikes-m07"
+        ],
+        "tokens": 567,
+        "ms": 26.6723339445889
+      },
+      "hk-bikes-q10": {
+        "inserted": [
+          "hk-bikes-m14",
+          "hk-bikes-m12",
+          "hk-bikes-m10",
+          "hk-bikes-m06",
+          "hk-bikes-m11",
+          "hk-bikes-m26",
+          "hk-bikes-m07",
+          "hk-bikes-m22"
+        ],
+        "tokens": 575,
+        "ms": 26.893542031757534
+      },
+      "hk-bikes-q11": {
+        "inserted": [
+          "hk-bikes-m12",
+          "hk-bikes-m11",
+          "hk-bikes-m26",
+          "hk-bikes-m03",
+          "hk-bikes-m25",
+          "hk-bikes-m07",
+          "hk-bikes-m15",
+          "hk-bikes-m02"
+        ],
+        "tokens": 588,
+        "ms": 30.867791967466474
+      },
+      "hk-bikes-q12": {
+        "inserted": [
+          "hk-bikes-m11",
+          "hk-bikes-m25",
+          "hk-bikes-m26",
+          "hk-bikes-m12",
+          "hk-bikes-m24",
+          "hk-bikes-m07",
+          "hk-bikes-m15",
+          "hk-bikes-m02"
+        ],
+        "tokens": 597,
+        "ms": 32.104667043313384
+      },
+      "hk-bikes-q13": {
+        "inserted": [
+          "hk-bikes-m11",
+          "hk-bikes-m24",
+          "hk-bikes-m10",
+          "hk-bikes-m04",
+          "hk-bikes-m03",
+          "hk-bikes-m12",
+          "hk-bikes-m07",
+          "hk-bikes-m02"
+        ],
+        "tokens": 586,
+        "ms": 33.254042034968734
+      },
+      "hk-bikes-q14": {
+        "inserted": [
+          "hk-bikes-m10",
+          "hk-bikes-m24",
+          "hk-bikes-m14",
+          "hk-bikes-m03",
+          "hk-bikes-m06",
+          "hk-bikes-m07",
+          "hk-bikes-m22",
+          "hk-bikes-m12"
+        ],
+        "tokens": 587,
+        "ms": 27.11050002835691
+      },
+      "hk-bikes-q15": {
+        "inserted": [
+          "hk-bikes-m11",
+          "hk-bikes-m26",
+          "hk-bikes-m25",
+          "hk-bikes-m04",
+          "hk-bikes-m15",
+          "hk-bikes-m07",
+          "hk-bikes-m12",
+          "hk-bikes-m10"
+        ],
+        "tokens": 585,
+        "ms": 31.9250839529559
+      },
+      "hk-bikes-q16": {
+        "inserted": [
+          "hk-bikes-m18",
+          "hk-bikes-m16",
+          "hk-bikes-m01",
+          "hk-bikes-m12",
+          "hk-bikes-m26",
+          "hk-bikes-m07",
+          "hk-bikes-m15",
+          "hk-bikes-m10"
+        ],
+        "tokens": 595,
+        "ms": 26.907917112112045
+      },
+      "hk-bikes-q17": {
+        "inserted": [
+          "hk-bikes-m01",
+          "hk-bikes-m12",
+          "hk-bikes-m14",
+          "hk-bikes-m26",
+          "hk-bikes-m18",
+          "hk-bikes-m07",
+          "hk-bikes-m10",
+          "hk-bikes-m15"
+        ],
+        "tokens": 588,
+        "ms": 32.44600002653897
+      },
+      "hk-bikes-q18": {
+        "inserted": [
+          "hk-bikes-m18",
+          "hk-bikes-m16",
+          "hk-bikes-m28",
+          "hk-bikes-m29",
+          "hk-bikes-m23",
+          "hk-bikes-m12",
+          "hk-bikes-m07",
+          "hk-bikes-m15"
+        ],
+        "tokens": 590,
+        "ms": 40.76612496282905
+      },
+      "hk-bikes-q19": {
+        "inserted": [
+          "hk-bikes-m19",
+          "hk-bikes-m11",
+          "hk-bikes-m06",
+          "hk-bikes-m26",
+          "hk-bikes-m12",
+          "hk-bikes-m10",
+          "hk-bikes-m07",
+          "hk-bikes-m23"
+        ],
+        "tokens": 584,
+        "ms": 29.13595805875957
+      },
+      "hk-bikes-q20": {
+        "inserted": [
+          "hk-bikes-m08",
+          "hk-bikes-m25",
+          "hk-bikes-m28",
+          "hk-bikes-m12",
+          "hk-bikes-m19",
+          "hk-bikes-m07",
+          "hk-bikes-m23",
+          "hk-bikes-m15"
+        ],
+        "tokens": 603,
+        "ms": 30.28025000821799
+      },
+      "hk-bikes-q21": {
+        "inserted": [
+          "hk-bikes-m12",
+          "hk-bikes-m14",
+          "hk-bikes-m26",
+          "hk-bikes-m13",
+          "hk-bikes-m06",
+          "hk-bikes-m15",
+          "hk-bikes-m10",
+          "hk-bikes-m02"
+        ],
+        "tokens": 575,
+        "ms": 31.63245797622949
+      },
+      "hk-bikes-q22": {
+        "inserted": [
+          "hk-bikes-m25",
+          "hk-bikes-m15",
+          "hk-bikes-m26",
+          "hk-bikes-m12",
+          "hk-bikes-m01",
+          "hk-bikes-m13",
+          "hk-bikes-m07",
+          "hk-bikes-m23"
+        ],
+        "tokens": 600,
+        "ms": 32.11220807861537
+      },
+      "hk-bikes-q23": {
+        "inserted": [
+          "hk-bikes-m24",
+          "hk-bikes-m10",
+          "hk-bikes-m11",
+          "hk-bikes-m03",
+          "hk-bikes-m14",
+          "hk-bikes-m12",
+          "hk-bikes-m07",
+          "hk-bikes-m15"
+        ],
+        "tokens": 590,
+        "ms": 29.76108400616795
+      },
+      "hk-bikes-q24": {
+        "inserted": [
+          "hk-bikes-m25",
+          "hk-bikes-m11",
+          "hk-bikes-m24",
+          "hk-bikes-m10",
+          "hk-bikes-m03",
+          "hk-bikes-m07",
+          "hk-bikes-m12",
+          "hk-bikes-m02"
+        ],
+        "tokens": 596,
+        "ms": 29.189875000156462
+      },
+      "hk-bikes-q25": {
+        "inserted": [
+          "hk-bikes-m26",
+          "hk-bikes-m03",
+          "hk-bikes-m07",
+          "hk-bikes-m14",
+          "hk-bikes-m11",
+          "hk-bikes-m12",
+          "hk-bikes-m10",
+          "hk-bikes-m15"
+        ],
+        "tokens": 582,
+        "ms": 28.33741600625217
+      },
+      "hk-bikes-q26": {
+        "inserted": [
+          "hk-bikes-m18",
+          "hk-bikes-m16",
+          "hk-bikes-m07",
+          "hk-bikes-m08",
+          "hk-bikes-m25",
+          "hk-bikes-m12",
+          "hk-bikes-m22",
+          "hk-bikes-m23"
+        ],
+        "tokens": 600,
+        "ms": 27.46287500485778
+      },
+      "hk-bikes-q27": {
+        "inserted": [
+          "hk-bikes-m05",
+          "hk-bikes-m29",
+          "hk-bikes-m28",
+          "hk-bikes-m19",
+          "hk-bikes-m23",
+          "hk-bikes-m07",
+          "hk-bikes-m15",
+          "hk-bikes-m12"
+        ],
+        "tokens": 595,
+        "ms": 26.076958049088717
+      },
+      "hk-bikes-q28": {
+        "inserted": [
+          "hk-bikes-m26",
+          "hk-bikes-m03",
+          "hk-bikes-m11",
+          "hk-bikes-m01",
+          "hk-bikes-m12",
+          "hk-bikes-m10",
+          "hk-bikes-m07",
+          "hk-bikes-m02"
+        ],
+        "tokens": 587,
+        "ms": 19.163249991834164
+      },
+      "hk-bikes-q29": {
+        "inserted": [
+          "hk-bikes-m08",
+          "hk-bikes-m12",
+          "hk-bikes-m25",
+          "hk-bikes-m28",
+          "hk-bikes-m19",
+          "hk-bikes-m07",
+          "hk-bikes-m23",
+          "hk-bikes-m15"
+        ],
+        "tokens": 603,
+        "ms": 19.76362499408424
+      },
+      "hk-bikes-q30": {
+        "inserted": [
+          "hk-bikes-m04",
+          "hk-bikes-m27",
+          "hk-bikes-m06",
+          "hk-bikes-m11",
+          "hk-bikes-m07",
+          "hk-bikes-m12",
+          "hk-bikes-m10",
+          "hk-bikes-m15"
+        ],
+        "tokens": 569,
+        "ms": 22.03383296728134
+      }
+    }
+  },
+  "measurement_provenance": {
+    "evaluation_date": "2026-11-27",
+    "scope": "isolated_synthetic_tenant_and_organization",
+    "selection": "Single candidate and cosine floor 0.42 fixed before observing hybrid outcomes. Production qualification was not requested.",
+    "model": {
+      "source": "Local inferedge/moss-minilm cache",
+      "release": "bootstrap-2026-08-11",
+      "release_manifest_sha256": "4932540174ffd210d5bde5c4d92c989f11c40558ba17af810f9bd173d14ae996",
+      "sha256": {
+        "config.json": "0fe04ec97c7ee38aa8d09846c3b99ff402766dac6d88cfe4ef5371cc30589946",
+        "model.ort": "25044e4079b5a7b519d30ccf90b3e233fedb47ef1c89758b5729830a98a676e2",
+        "tokenizer.json": "be50c3628f2bf5bb5e3a7f17b1f74611b2561a3a27eeab05e5aa30f411572037",
+        "tokenizer_config.json": "049d5ddb0fcd66bb9ed4c5aaeca4ffe4a78f46e4d461d1fc70c2b72e8180b4b2"
+      },
+      "weight_bytes": 90461816,
+      "input": "Unmodified BERT WordPiece tokenizer.json with special tokens, right batch padding, 512-token truncation, int64 input_ids/attention_mask/token_type_ids.",
+      "pooling": "Mask-weighted FP32 mean of last_hidden_state over all nonpadding tokens, including specials, followed by L2 normalization.",
+      "language_coverage": "Cached config and release manifest do not specify Korean training coverage."
+    },
+    "runtime": {
+      "os": "macOS 26.3.1 (25D2128)",
+      "cpu": "Apple M3 Ultra",
+      "machine": "arm64",
+      "python": "3.12.13",
+      "numpy": "2.4.4",
+      "onnxruntime": "1.26.0",
+      "tokenizers": "0.22.2",
+      "ort_provider": "CPUExecutionProvider",
+      "intra_op_threads": 1,
+      "inter_op_threads": 1,
+      "model_warmup": "One local, unscored synthetic input before binding the HTTP listener.",
+      "query_vector_cache": false,
+      "network": "HTTP over IPv4 loopback; one local server, registry, and client with no proxy, API credentials, or upstream service."
+    },
+    "provider_usage": {
+      "index": {
+        "requests": 5,
+        "input_texts": 142,
+        "wordpiece_tokens_including_special_excluding_padding": 8808,
+        "unknown_wordpiece_tokens": 433
+      },
+      "queries": {
+        "requests": 150,
+        "input_texts": 150,
+        "wordpiece_tokens_including_special_excluding_padding": 7258,
+        "unknown_wordpiece_tokens": 457
+      },
+      "query_tokenize_infer_pool_p95_ms": 18.534290953539312,
+      "query_tokenize_infer_pool_p95_method": "Nearest-rank, uncached warm provider. Retrieval p95 including HTTP, ranking, selection and rendering is reported in modes.",
+      "adapter_sha256": "e15f3d498f75a1df11df23bf98f82561760e13ce7355bd19970b11ef959861de"
+    },
+    "raw_evaluator_output_sha256": "6eca11659e0ee5046dbf5adcfaead9064da69bb6b84322ea16fa266e87443b6d"
+  }
+}

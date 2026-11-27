@@ -2,6 +2,8 @@ import type { ThreadMessageLike, useExternalMessageConverter } from '@assistant-
 import type { Message } from '@/lib/types'
 import { parseTimestamp } from '@/lib/utils/format-relative-time'
 
+export type MessageForRender = Message & { readonly terminalNoticeBoundary?: boolean }
+
 type ConvertedMessage = useExternalMessageConverter.Message
 
 /** P1-A — branch metadata is identical for user/assistant. Returns ``null``
@@ -26,7 +28,7 @@ function buildBranchMeta(message: Message): Record<string, unknown> | null {
  * - user/assistant → ThreadMessageLike (텍스트 + 도구 호출)
  * - tool → { role: 'tool', toolCallId, result } (자동으로 tool-call에 병합됨)
  */
-export const convertMessage: useExternalMessageConverter.Callback<Message> = (
+export const convertMessage: useExternalMessageConverter.Callback<MessageForRender> = (
   message,
 ): ConvertedMessage => {
   // tool 메시지 → 도구 결과 (assistant-ui가 tool-call에 자동 병합)
@@ -86,6 +88,7 @@ export const convertMessage: useExternalMessageConverter.Callback<Message> = (
   const result: ConvertedMessage = {
     role: 'assistant' as const,
     id: message.id,
+    ...(message.terminalNoticeBoundary && { convertConfig: { joinStrategy: 'none' as const } }),
     content: parts.length > 0 ? (parts as ThreadMessageLike['content']) : '',
     createdAt: new Date(message.created_at),
   }
@@ -98,11 +101,20 @@ export const convertMessage: useExternalMessageConverter.Callback<Message> = (
 
   const artifacts = message.artifacts?.length ? message.artifacts : null
 
-  if (message.feedback || assistantBranchMeta || message.usage || isStreamingMessage || artifacts) {
+  const isRecoveryNotice = message.id.startsWith('moldy-failed-')
+  if (
+    message.feedback ||
+    assistantBranchMeta ||
+    message.usage ||
+    isStreamingMessage ||
+    artifacts ||
+    isRecoveryNotice
+  ) {
     // assistant-ui treats `metadata.submittedFeedback.type` as the active
     // rating — the FeedbackPositive/Negative buttons render highlighted when
     // it matches their type. We co-locate branch info + usage in `metadata.custom`.
     const customMeta: Record<string, unknown> = { ...(assistantBranchMeta ?? {}) }
+    if (isRecoveryNotice) customMeta.terminalNotice = 'failed'
     if (isStreamingMessage) {
       customMeta.isStreamingMessage = true
     }

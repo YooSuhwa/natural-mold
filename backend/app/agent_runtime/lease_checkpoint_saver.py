@@ -10,6 +10,7 @@ sync methods and copy/delete/prune are denied with ``checkpoint_lineage_denied``
 
 from __future__ import annotations
 
+import asyncio
 import copy
 from collections.abc import AsyncIterator, Collection, Mapping, Sequence
 from typing import Any, NoReturn
@@ -37,6 +38,7 @@ class _Lineage:
 
     def __init__(self) -> None:
         self.owned: dict[str, list[str]] = {}
+        self.pending: dict[tuple[str, str], asyncio.Event] = {}
         self.seed_writes: dict[str, list[tuple[str, Sequence[tuple[str, Any]]]]] = {}
 
 
@@ -213,16 +215,27 @@ class LeaseCheckpointSaver(BaseCheckpointSaver[str]):
             self._is_seed(namespace, parent_id) or self._is_owned(namespace, parent_id)
         ):
             raise CheckpointLineageDeniedError("parent")
+        pending = self._lineage.pending
         if parent_id is None and (
-            self._lineage.owned.get(namespace) or namespace in self._seed.entries
+            self._lineage.owned.get(namespace)
+            or namespace in self._seed.entries
+            or any(ns == namespace for ns, _ in pending)
         ):
             raise CheckpointLineageDeniedError("parent")
-        stored = await self._upstream.aput(config, checkpoint, metadata, new_versions)
-        stored_id = stored.get("configurable", {}).get("checkpoint_id")
-        if not isinstance(stored_id, str):
+        checkpoint_id = checkpoint["id"]
+        key = (namespace, checkpoint_id)
+        if not isinstance(checkpoint_id, str) or key in pending:
             raise CheckpointLineageDeniedError("stored")
-        self._lineage.owned.setdefault(namespace, []).append(stored_id)
-        return stored
+        completed = pending[key] = asyncio.Event()
+        try:
+            stored = await self._upstream.aput(config, checkpoint, metadata, new_versions)
+            if self._scope(stored) != key:
+                raise CheckpointLineageDeniedError("stored")
+            self._lineage.owned.setdefault(namespace, []).append(checkpoint_id)
+            return stored
+        finally:
+            del pending[key]
+            completed.set()
 
     async def aput_writes(
         self,
@@ -232,6 +245,13 @@ class LeaseCheckpointSaver(BaseCheckpointSaver[str]):
         task_path: str = "",
     ) -> None:
         namespace, checkpoint_id = self._scope(config)
+        # LangGraph may submit the first task's writes while its input checkpoint
+        # is still committing, even with sync durability. Only the matching put
+        # on this lease can provide a waiter. A failed put never grants ownership.
+        if checkpoint_id is not None:
+            pending = self._lineage.pending.get((namespace, checkpoint_id))
+            if pending is not None:
+                await pending.wait()
         if not (
             self._is_seed(namespace, checkpoint_id) or self._is_owned(namespace, checkpoint_id)
         ):

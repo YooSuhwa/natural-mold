@@ -14,21 +14,53 @@ import {
   isArtifactPreviewOpen,
   toggleArtifactPreviewRailState,
 } from '@/lib/stores/chat-right-rail'
+import { sourceMessageIdFromThreadMessageId } from '@/lib/chat/langgraph-runtime/message-list'
 import type { ArtifactSummary } from '@/lib/types'
-import type { CompactionMarker } from '@/lib/chat/langgraph-runtime/compaction-events'
+import { isRecord } from '@/lib/chat/langgraph-runtime/usage-normalization'
 
 function useMessageArtifacts(): readonly ArtifactSummary[] {
   return useAuiState((s) => selectMessageArtifactsFromMessage(s.message))
 }
 
 export function AssistantCompactionMarker() {
-  const compaction = useAuiState(
-    (s) =>
-      (s.message?.metadata as { custom?: { compaction?: CompactionMarker } } | undefined)?.custom
-        ?.compaction ?? null,
+  const conversationId = useChatConversationId()
+  const messageId = useAuiState((s) => sourceMessageIdFromThreadMessageId(s.message?.id))
+  const metadata = useAuiState((s) => s.message?.metadata?.custom)
+  const compaction = metadata?.compaction
+  if (!isRecord(compaction)) return null
+  const historyId = compaction.historyId
+  const cutoff = compaction.cutoffIndex
+
+  const source = metadata?.compactionMessageId
+  const checkpoint = metadata?.checkpoint_id
+  const evidence =
+    conversationId &&
+    typeof source === 'string' &&
+    source.length > 0 &&
+    typeof historyId === 'string' &&
+    /^history_[a-f0-9]{24}$/.test(historyId)
+      ? {
+          conversationId,
+          messageId: source,
+          historyId,
+          cutoffIndex:
+            typeof cutoff === 'number' && Number.isSafeInteger(cutoff) ? cutoff : undefined,
+          checkpointId:
+            source === messageId &&
+            typeof checkpoint === 'string' &&
+            !checkpoint.startsWith('pending-') &&
+            /^[A-Za-z0-9_-]{1,64}$/.test(checkpoint)
+              ? checkpoint
+              : undefined,
+        }
+      : undefined
+  return (
+    <CompactionSummary
+      key={JSON.stringify([conversationId, source, evidence?.historyId, evidence?.cutoffIndex])}
+      className="mt-2"
+      evidence={evidence}
+    />
   )
-  if (!compaction) return null
-  return <CompactionSummary className="mt-2" />
 }
 
 export function AssistantArtifactCards() {

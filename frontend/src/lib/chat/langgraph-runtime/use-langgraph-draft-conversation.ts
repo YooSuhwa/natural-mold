@@ -91,9 +91,11 @@ export function useLangGraphDraftConversation({
         if (draftConversationId === null || committedConversationIds.has(draftConversationId)) {
           return
         }
-        void conversationsApi.delete(draftConversationId).catch((caught: unknown) => {
-          reportClientWarning('useLangGraphDraftConversation', 'delete draft failed', caught)
-        })
+        void conversationsApi
+          .delete(draftConversationId, { onlyIfDraft: true })
+          .catch((caught: unknown) => {
+            reportClientWarning('useLangGraphDraftConversation', 'delete draft failed', caught)
+          })
       })
     }
   }, [key])
@@ -114,9 +116,11 @@ export function useLangGraphDraftConversation({
           requestTokenRef.current !== requestToken
         ) {
           if (!committedConversationIdsRef.current.has(conversation.id)) {
-            void conversationsApi.delete(conversation.id).catch((caught: unknown) => {
-              reportClientWarning('useLangGraphDraftConversation', 'delete draft failed', caught)
-            })
+            void conversationsApi
+              .delete(conversation.id, { onlyIfDraft: true })
+              .catch((caught: unknown) => {
+                reportClientWarning('useLangGraphDraftConversation', 'delete draft failed', caught)
+              })
           }
           return
         }

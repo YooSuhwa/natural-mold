@@ -4,17 +4,21 @@ from __future__ import annotations
 
 import hashlib
 import json
+from collections.abc import Iterator, Sequence
 from dataclasses import asdict, dataclass
 from pathlib import Path
 from typing import assert_never
 from uuid import UUID
 
 from deepagents.backends import CompositeBackend
-from deepagents.backends.protocol import GlobResult, GrepResult, LsResult
+from deepagents.backends.protocol import BackendProtocol, GlobResult, GrepResult, LsResult
+from langchain_core.messages import BaseMessage, get_buffer_string
 
+from app.agent_runtime.history_archive import HistoryArchive
 from app.agent_runtime.offload_storage_backends import (
     HiddenFilesystemBackend,
     HistoryBackend,
+    RollbackHistoryBackend,
     SpillBackend,
     parts,
     safe_dir,
@@ -29,8 +33,10 @@ from app.agent_runtime.offload_storage_lifecycle import (
     gc_spill_run,
 )
 from app.agent_runtime.offload_storage_types import (
+    ARCHIVE_FILE,
     GENERAL_PURPOSE_ACTOR,  # noqa: F401 -- compatibility export
     PHYSICAL_ROOT,
+    ROLLBACK_SESSION_FILE,
     SAFE_LEGACY_NAME,
     SESSION_FILE,
     VIRTUAL_ROOT,
@@ -53,7 +59,14 @@ from app.agent_runtime.offload_storage_types import (
 class ScopedOffloadBackend(CompositeBackend):
     """Deep Agents backend exposing only exact, owner-scoped offload references."""
 
-    def __init__(self, data_dir: Path, identity: OffloadIdentity, actor_id: UUID | str) -> None:
+    def __init__(
+        self,
+        data_dir: Path,
+        identity: OffloadIdentity,
+        actor_id: UUID | str,
+        *,
+        archive_owner_id: str | None = None,
+    ) -> None:
         actor = parse_actor(actor_id)
         self._data_dir = data_dir.resolve()
         self._identity = identity
@@ -83,9 +96,17 @@ class ScopedOffloadBackend(CompositeBackend):
             self._current_run_root = safe_dir(self._spill_conversation_root, (self._run,))
             self._current_spill_root = safe_dir(self._current_run_root, (self._actor,))
         artifacts_root = f"{VIRTUAL_ROOT}/{self._owner}/{self._conversation}/{self._actor}"
+        self._archive_owner_id = archive_owner_id
+        archive_scope = OffloadMutationScope(
+            internal, token("owner", archive_owner_id or identity.owner_id), self._conversation
+        )
+        self._archive = HistoryArchive(archive_scope, self._actor)
+        self._rollback_history = RollbackHistoryBackend(archive_scope, self._actor, self._owner)
         routes = {
             f"{artifacts_root}/conversation_history/": HistoryBackend(
                 history_root,
+                archive=self._archive,
+                history_prefix=f"{artifacts_root}/conversation_history",
                 mutation_scope=self._mutation_scope,
                 virtual_mode=True,
             ),
@@ -104,7 +125,77 @@ class ScopedOffloadBackend(CompositeBackend):
 
     def for_actor(self, actor_id: UUID | str) -> ScopedOffloadBackend:
         """Build an actor sibling while retaining the trusted request scope."""
-        return ScopedOffloadBackend(self._data_dir, self._identity, actor_id)
+        return ScopedOffloadBackend(
+            self._data_dir, self._identity, actor_id, archive_owner_id=self._archive_owner_id
+        )
+
+    def _history_leaf(self, path: str) -> str:
+        prefix = f"{self.artifacts_root}/conversation_history/"
+        leaf = path.removeprefix(prefix)
+        if path == leaf or not (ARCHIVE_FILE.fullmatch(leaf) or SESSION_FILE.fullmatch(leaf)):
+            raise OffloadSecurityError(reason="history reference is outside this actor")
+        return leaf
+
+    def _get_backend_and_key(self, key: str) -> tuple[BackendProtocol, str]:
+        backend, stripped = super()._get_backend_and_key(key)
+        if isinstance(backend, HistoryBackend) and ROLLBACK_SESSION_FILE.fullmatch(
+            stripped.removeprefix("/")
+        ):
+            return self._rollback_history, stripped
+        return backend, stripped
+
+    def archive_checkpoint_to_legacy(
+        self, archive_file_path: str, session_id: str, evicted: Sequence[BaseMessage]
+    ) -> str:
+        """Resume a chunked checkpoint in an immutable-at-creation Markdown snapshot."""
+        leaf = self._history_leaf(archive_file_path)
+        filename = f"{session_id}.md"
+        if not ARCHIVE_FILE.fullmatch(leaf) or not ROLLBACK_SESSION_FILE.fullmatch(filename):
+            raise OffloadSecurityError(reason="invalid archive rollback reference")
+        prefix = f"{self.artifacts_root}/conversation_history/"
+        history = self.routes[prefix]
+        if not isinstance(history, HistoryBackend):
+            raise OffloadSecurityError(reason="durable history route is unavailable")
+
+        def markdown() -> Iterator[bytes]:
+            yield from history.archive_markdown(leaf)
+            yield b"\n## Summarized\n\n"
+            for message in evicted:
+                yield get_buffer_string([message], format="xml").encode("utf-8")
+                yield b"\n"
+            yield b"\n"
+
+        self._rollback_history.seed(filename, markdown())
+        return f"{prefix}{filename}"
+
+    def archive_compaction(
+        self,
+        checkpoint_id: str,
+        messages: Sequence[BaseMessage],
+        *,
+        previous_file_path: str | None = None,
+    ) -> str:
+        """Archive the trusted evicted batch before publishing its summary."""
+        history = self.routes[f"{self.artifacts_root}/conversation_history/"]
+        if not isinstance(history, HistoryBackend):
+            raise OffloadSecurityError(reason="durable history route is unavailable")
+
+        def read_legacy(name: str) -> bytes:
+            if ROLLBACK_SESSION_FILE.fullmatch(name):
+                return self._rollback_history.read_legacy(name)
+            return history.read_legacy(name)
+
+        leaf = self._archive.save(
+            checkpoint_id,
+            messages,
+            previous=self._history_leaf(previous_file_path) if previous_file_path else None,
+            read_legacy=read_legacy,
+        )
+        return f"{self.artifacts_root}/conversation_history/{leaf}"
+
+    def iter_archive_bytes(self, file_path: str) -> Iterator[bytes]:
+        """Read a verified immutable archive within this actor's exact namespace."""
+        return self._archive.raw_messages(self._history_leaf(file_path))
 
     def ls(self, path: str) -> LsResult:
         if path == "/":
@@ -155,7 +246,7 @@ class ScopedOffloadBackend(CompositeBackend):
         candidate = scoped if scoped != path else path
         if candidate.startswith("/conversation_history/"):
             leaf = candidate.removeprefix("/conversation_history/")
-            if SESSION_FILE.fullmatch(leaf) is None:
+            if not (SESSION_FILE.fullmatch(leaf) or ARCHIVE_FILE.fullmatch(leaf)):
                 return None
             reference = f"{self.artifacts_root}/conversation_history/{leaf}"
             return OffloadProjection(
@@ -217,7 +308,17 @@ class ScopedOffloadBackend(CompositeBackend):
         history = self.routes[f"{self.artifacts_root}/conversation_history/"]
         if not isinstance(history, HistoryBackend):
             raise OffloadSecurityError(reason="durable history route is unavailable")
-        with conversation_mutation_lock(self._mutation_scope):
+        reserved = ROLLBACK_SESSION_FILE.fullmatch(destination_name) is not None
+        lock = (
+            self._rollback_history.import_or_rollback_lock()
+            if reserved
+            else conversation_mutation_lock(self._mutation_scope)
+        )
+        with lock:
+            if reserved and self._rollback_history.published(destination_name):
+                raise OffloadSecurityError(
+                    reason="import conflicts with published rollback history"
+                )
             safe_dir(
                 self._internal_root,
                 ("history", self._owner, self._conversation),
@@ -264,6 +365,9 @@ class ScopedOffloadStorage:
 
     data_dir: Path
     identity: OffloadIdentity
+    archive_owner_id: str | None = None
 
     def for_actor(self, actor_id: UUID | str) -> ScopedOffloadBackend:
-        return ScopedOffloadBackend(self.data_dir, self.identity, actor_id)
+        return ScopedOffloadBackend(
+            self.data_dir, self.identity, actor_id, archive_owner_id=self.archive_owner_id
+        )

@@ -19,6 +19,7 @@ from typing import Any
 from app.agent_runtime.lease_bound_model import LeaseSendGuard
 from app.agent_runtime.lease_dispatch_permit import SessionFactory
 from app.agent_runtime.lease_model_factory import LeaseModelSpec
+from app.agent_runtime.prepared_child_controls import child_control_descriptor
 from app.agent_runtime.prepared_child_launch import child_launch_descriptors
 from app.agent_runtime.prepared_mcp_resources import PreparedMcpResources
 from app.agent_runtime.prepared_run_compile import PreparedCompileError
@@ -182,7 +183,14 @@ def lease_digest(
 ) -> tuple[str, frozenset[str], dict[str, str]]:
     """Return ``(digest, descriptor_ids, tool_access)`` for the lease."""
 
-    descriptor_ids = lease_descriptor_ids(censuses.values()) | child_launch_descriptors(catalog)
+    descriptor_ids = (
+        lease_descriptor_ids(censuses.values())
+        | child_launch_descriptors(catalog)
+        | frozenset(
+            child_control_descriptor(path, agent_id)
+            for path, agent_id in inputs.child_task_agents.items()
+        )
+    )
     tool_access = {k: v for c in censuses.values() for k, v in c.tool_access().items()}
     material = PreparedRunDigestMaterial(
         binding=binding,

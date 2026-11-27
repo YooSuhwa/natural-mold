@@ -227,7 +227,9 @@ function RailFrame({ state, className, onClose }: RailFrameProps) {
       ? selectedArtifact && artifactView === 'preview'
         ? selectedArtifact.display_name
         : t('artifacts.title')
-      : titleFor(state)
+      : state.mode === 'subagent' && state.subagent.conversationId
+        ? t('managedChildTitle')
+        : titleFor(state)
 
   return (
     <div data-slot="chat-right-rail-frame" className={cn('flex h-full flex-col', className)}>
@@ -404,9 +406,12 @@ function ArtifactViewerHeader({ artifact, payload, title, onClose }: ArtifactVie
           variant="ghost"
           size="icon-sm"
           className="hidden xl:inline-flex"
-          aria-label={tArtifacts('download')}
           render={
-            <a href={resolveImageUrl(artifact.download_url) ?? artifact.download_url} download />
+            <a
+              aria-label={tArtifacts('download')}
+              href={resolveImageUrl(artifact.download_url) ?? artifact.download_url}
+              download
+            />
           }
         >
           <DownloadIcon className="size-4" />
@@ -465,7 +470,8 @@ function ArtifactViewerHeader({ artifact, payload, title, onClose }: ArtifactVie
 }
 
 function titleFor(state: RightRailState): string {
-  if (state.mode === 'subagent') return state.subagent.agentName || 'Sub-agent'
+  if (state.mode === 'subagent')
+    return state.subagent.conversationId ? '' : state.subagent.agentName || 'Sub-agent'
   if (state.mode === 'tool-result') return state.toolResult.toolName
   if (state.mode === 'outline') return 'Outline'
   return ''

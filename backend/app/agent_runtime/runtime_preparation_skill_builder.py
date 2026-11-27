@@ -4,6 +4,10 @@ from __future__ import annotations
 
 from langchain_core.tools import BaseTool
 
+from app.agent_runtime.runtime.direct_stream_retry import (
+    DirectStreamRetryMiddleware,
+    direct_stream_retry_for,
+)
 from app.agent_runtime.runtime.shared_memo import memo_governed
 from app.agent_runtime.runtime_config import AgentConfig, RuntimeComponents
 from app.agent_runtime.runtime_preparation_support import RuntimePreparationBindings
@@ -43,11 +47,15 @@ async def prepare_skill_builder_components_impl(
         )
     bindings.append_temporal_tools(langchain_tools)
 
-    middleware = bindings.build_default_reliability_middleware(
-        model_candidates,
-        configured_types=set(),
-    )
-    middleware += bindings.get_provider_middleware(cfg.provider)
+    if direct_stream_retry_for(cfg):
+        middleware = bindings.get_provider_middleware(cfg.provider)
+        middleware.append(DirectStreamRetryMiddleware(fallbacks=model_candidates[1:]))
+    else:
+        middleware = bindings.build_default_reliability_middleware(
+            model_candidates,
+            configured_types=set(),
+        )
+        middleware += bindings.get_provider_middleware(cfg.provider)
 
     backend = (
         bindings.scoped_runtime_backend(cfg, run_id=run_id)

@@ -10,13 +10,14 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from starlette.concurrency import run_in_threadpool
 
-from app.authz.artifact_scope import private_artifact_predicate
+from app.authz.artifact_scope import readable_artifact_predicate
+from app.authz.attachment_scope import load_private_attachment
+from app.authz.conversation_scope import readable_conversation
 from app.authz.org_context import OrgContext
 from app.authz.resource_context_scope import authorize_context_skill
 from app.authz.scoping import private_scope_predicate
 from app.models.conversation import Conversation
 from app.models.conversation_artifact import ArtifactVersion, ConversationArtifact
-from app.models.message_attachment import MessageAttachment
 from app.models.skill import AgentSkillLink, Skill
 from app.schemas.chat_resource_context import ChatResourceReference
 from app.services.artifact_storage import ArtifactStorageBackend
@@ -64,17 +65,8 @@ async def load_file_source(
     scope: ResourceContextScope,
     reference: ChatResourceReference,
 ) -> LoadedResource:
-    attachment = await db.scalar(
-        select(MessageAttachment)
-        .join(Conversation, Conversation.id == MessageAttachment.conversation_id)
-        .where(
-            MessageAttachment.id == reference.id,
-            private_scope_predicate(MessageAttachment, scope.context),
-            private_scope_predicate(Conversation, scope.context),
-        )
-        .execution_options(autoflush=False, populate_existing=True)
-    )
-    if attachment is None:
+    attachment = await load_private_attachment(db, reference.id, scope.context)
+    if attachment is None or attachment.conversation_id is None:
         raise ResourceContextNotFoundError()
     try:
         path = upload_file_path(attachment.storage_path, attachment.tenant_id)
@@ -104,7 +96,9 @@ async def load_artifact_source(
         select(ConversationArtifact)
         .where(
             ConversationArtifact.id == reference.id,
-            private_artifact_predicate(scope.context),
+            await readable_artifact_predicate(
+                db, scope.context, ConversationArtifact.id == reference.id
+            ),
             ConversationArtifact.status == "ready",
         )
         .execution_options(populate_existing=True, autoflush=False)
@@ -179,6 +173,7 @@ async def owned_conversation(
         )
         .execution_options(autoflush=False, populate_existing=True)
     )
+    conversation = await readable_conversation(db, conversation, scope.context)
     if conversation is None:
         raise ResourceContextNotFoundError()
     return conversation

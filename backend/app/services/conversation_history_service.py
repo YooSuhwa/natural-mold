@@ -6,6 +6,8 @@ from pydantic import TypeAdapter
 from sqlalchemy import select
 from sqlalchemy.orm import selectinload
 
+from app.authz.artifact_scope import readable_artifact_predicate
+from app.authz.conversation_input_scope import lineage_input_predicate
 from app.authz.conversation_scope import require_private_conversation
 from app.authz.scoping import private_scope_predicate
 from app.models.conversation_artifact import ConversationArtifact
@@ -29,6 +31,7 @@ from app.services.conversation_history_content import (
     load_conversation_history_content,
     read_purged_history_content,
 )
+from app.services.conversation_run_service import readable_conversation_run_ids
 
 _LIFECYCLE = TypeAdapter(Literal["active", "archived", "purged"])
 
@@ -44,28 +47,40 @@ async def read_conversation_history(
         request.context,
     )
     content = await load_conversation_history_content(request, conversation)
-    runs = list(
-        await db.scalars(
-            select(ConversationRun)
-            .where(ConversationRun.conversation_id == conversation.id)
-            .options(selectinload(ConversationRun.metrics))
-            .order_by(ConversationRun.created_at.desc())
-        )
+    run_ids = await readable_conversation_run_ids(db, conversation, request.context)
+    runs_query = (
+        select(ConversationRun)
+        .where(ConversationRun.conversation_id == conversation.id)
+        .options(selectinload(ConversationRun.metrics))
+        .order_by(ConversationRun.created_at.desc())
     )
-    inputs = list(
-        await db.scalars(
-            select(ConversationRunInput)
-            .where(ConversationRunInput.conversation_id == conversation.id)
-            .order_by(ConversationRunInput.position, ConversationRunInput.created_at)
-        )
+    inputs_query = (
+        select(ConversationRunInput)
+        .where(ConversationRunInput.conversation_id == conversation.id)
+        .order_by(ConversationRunInput.position, ConversationRunInput.created_at)
     )
-    usage = list(
-        await db.scalars(
-            select(TokenUsage)
-            .where(TokenUsage.conversation_id == conversation.id)
-            .order_by(TokenUsage.created_at)
-        )
+    usage_query = (
+        select(TokenUsage)
+        .where(TokenUsage.conversation_id == conversation.id)
+        .order_by(TokenUsage.created_at)
     )
+    artifact_scope = private_scope_predicate(ConversationArtifact, request.context)
+    if run_ids is not None:
+        runs_query = runs_query.where(ConversationRun.id.in_(run_ids))
+        inputs_query = inputs_query.where(lineage_input_predicate(conversation, run_ids))
+        usage_query = usage_query.where(
+            TokenUsage.run_id.in_(run_ids),
+            TokenUsage.agent_id == conversation.agent_id,
+            TokenUsage.caller_user_id == request.context.user_id,
+            TokenUsage.org_id == request.context.org_id,
+            TokenUsage.tenant_id == request.context.tenant_id,
+        )
+        artifact_scope = await readable_artifact_predicate(
+            db, request.context, ConversationArtifact.conversation_id == conversation.id
+        )
+    runs = list(await db.scalars(runs_query))
+    inputs = list(await db.scalars(inputs_query))
+    usage = list(await db.scalars(usage_query))
     attachments = list(
         await db.scalars(
             select(MessageAttachment)
@@ -81,7 +96,7 @@ async def read_conversation_history(
             select(ConversationArtifact)
             .where(
                 ConversationArtifact.conversation_id == conversation.id,
-                private_scope_predicate(ConversationArtifact, request.context),
+                artifact_scope,
                 ConversationArtifact.status != "deleted",
             )
             .order_by(ConversationArtifact.created_at)

@@ -30,7 +30,6 @@ from typing import Any
 import anthropic
 import httpx
 from langchain_anthropic import ChatAnthropic
-from langchain_openai import ChatOpenAI
 from pydantic import PrivateAttr
 
 from app.agent_runtime.lease_bound_model import (
@@ -39,6 +38,7 @@ from app.agent_runtime.lease_bound_model import (
     LeaseSendGuard,
 )
 from app.agent_runtime.model_client_cache import _ssl_ctx
+from app.agent_runtime.openai_prompt_cache import ConversationCacheChatOpenAI
 
 
 def _new_async_transport(lib: ModuleType) -> Any:
@@ -110,7 +110,7 @@ class OwnedHttpClients:
             await self.async_client.aclose()
 
 
-class LeaseChatOpenAI(LeaseBoundChatModelMixin, ChatOpenAI):
+class LeaseChatOpenAI(LeaseBoundChatModelMixin, ConversationCacheChatOpenAI):
     """``ChatOpenAI`` bound to one lease guard and its own HTTP clients."""
 
     _lease_guard: LeaseSendGuard | None = PrivateAttr(default=None)
@@ -152,7 +152,11 @@ class LeaseChatAnthropic(LeaseBoundChatModelMixin, ChatAnthropic):
 
 
 def build_openai_family_model(
-    kwargs: dict[str, Any], *, guard: LeaseSendGuard, owned: OwnedHttpClients
+    kwargs: dict[str, Any],
+    *,
+    guard: LeaseSendGuard,
+    owned: OwnedHttpClients,
+    provider: str = "openai",
 ) -> LeaseChatOpenAI:
     try:
         model = LeaseChatOpenAI(
@@ -167,7 +171,7 @@ def build_openai_family_model(
         raise LeaseProviderTransportError(
             "an OPENAI_PROXY proxy cannot share the lease-owned transport"
         ) from exc
-    model.bind_lease_guard(guard)
+    model.bind_lease_guard(guard, provider=provider)
     _verify_openai_base_url(model, kwargs.get("base_url"))
     root = model.root_async_client
     bound = root._client if root is not None else None  # noqa: SLF001 — verify SDK binding
@@ -193,7 +197,7 @@ def build_anthropic_model(
     kwargs: dict[str, Any], *, guard: LeaseSendGuard, owned: OwnedHttpClients
 ) -> LeaseChatAnthropic:
     model = LeaseChatAnthropic(**kwargs, max_retries=0)
-    model.bind_lease_guard(guard)
+    model.bind_lease_guard(guard, provider="anthropic")
     model.bind_owned_http(owned)
     sdk = model.lease_async_sdk_client()
     if model.anthropic_api_url != kwargs.get("base_url"):

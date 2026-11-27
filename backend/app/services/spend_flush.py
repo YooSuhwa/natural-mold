@@ -56,17 +56,22 @@ def bucket_entries(entries: Sequence[SpendEntry]) -> tuple[dict[BucketKey, Bucke
     return buckets
 
 
+async def write_daily_spend(db: AsyncSession, entries: Sequence[SpendEntry]) -> None:
+    """Write a single company's aggregates inside the caller's transaction."""
+    buckets = bucket_entries(entries)
+    for (table_cls, target_col), axis_buckets in zip(AXES, buckets, strict=True):
+        await upsert_axis(db, table_cls, target_col, axis_buckets)
+
+
 async def flush_tenant(
     tenant_id: uuid.UUID,
     entries: Sequence[SpendEntry],
     session_factory: Callable[[], AsyncSession] | None = None,
 ) -> None:
-    buckets = bucket_entries(entries)
     scope = SessionTenant(tenant_id)
     async with tenant_session(scope, maker=session_factory or async_session) as db:
         try:
-            for (table_cls, target_col), axis_buckets in zip(AXES, buckets, strict=True):
-                await upsert_axis(db, table_cls, target_col, axis_buckets)
+            await write_daily_spend(db, entries)
             await db.commit()
         except Exception:  # noqa: BLE001 — rolled back, re-raised to the caller
             await db.rollback()

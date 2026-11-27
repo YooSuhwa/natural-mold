@@ -33,6 +33,7 @@ from app.config import settings
 
 if TYPE_CHECKING:
     from opensandbox import Sandbox
+    from opensandbox.config import ConnectionConfig
     from opensandbox.models.sandboxes import NetworkPolicy
 
 logger = logging.getLogger(__name__)
@@ -138,7 +139,7 @@ def trace_span(run_id: str | None, metadata: dict[str, Any]) -> Iterator[Any]:
         yield span
 
 
-def _read_tree(root: Path, limit: int) -> list[tuple[str, bytes]]:
+def read_skill_tree(root: Path, limit: int) -> list[tuple[str, bytes]]:
     """Regular files under ``root`` (no symlinks), failing before ``limit`` bytes."""
     files: list[tuple[str, bytes]] = []
     total = 0
@@ -199,7 +200,9 @@ async def run_in_sandbox(
 ) -> SkillRunResult:
     from opensandbox.exceptions import SandboxException
 
-    skill_files = await asyncio.to_thread(_read_tree, skill_dir, settings.skill_max_package_bytes)
+    skill_files = await asyncio.to_thread(
+        read_skill_tree, skill_dir, settings.skill_max_package_bytes
+    )
     outputs = await asyncio.to_thread(_read_outputs, output_dir)
     try:
         sandbox = await _create(timeout_seconds, domains)
@@ -208,7 +211,7 @@ async def run_in_sandbox(
         raise SkillSandboxError("skill sandbox is unavailable.") from exc
     try:
         await _upload(sandbox, skill_files, outputs)
-        run = await _run(sandbox, args, env, timeout_seconds)
+        run = await run_command(sandbox, args, env, timeout_seconds)
         if run.returncode is not None:
             await _download(sandbox, output_dir)
         return SkillRunResult(
@@ -222,19 +225,23 @@ async def run_in_sandbox(
         await asyncio.shield(_discard(sandbox))
 
 
-async def _create(timeout_seconds: float, domains: Sequence[str]) -> Sandbox:
-    from opensandbox import Sandbox
+def connection_config(timeout_seconds: float) -> ConnectionConfig:
     from opensandbox.config import ConnectionConfig
 
-    connection = ConnectionConfig(
+    return ConnectionConfig(
         api_key=settings.skill_sandbox_api_key or None,
         domain=settings.skill_sandbox_domain,
         use_server_proxy=settings.skill_sandbox_use_server_proxy,
         request_timeout=timedelta(seconds=timeout_seconds + 60),
     )
+
+
+async def _create(timeout_seconds: float, domains: Sequence[str]) -> Sandbox:
+    from opensandbox import Sandbox
+
     return await Sandbox.create(
         settings.skill_sandbox_image,
-        connection_config=connection,
+        connection_config=connection_config(timeout_seconds),
         network_policy=network_policy(domains),
         resource={"cpu": settings.skill_sandbox_cpu, "memory": settings.skill_sandbox_memory},
         metadata={"app": "moldy", "kind": "execute_in_skill"},
@@ -261,7 +268,7 @@ async def _upload(
         raise SkillSandboxError("skill sandbox could not prepare the workspace.")
 
 
-async def _run(
+async def run_command(
     sandbox: Sandbox, args: list[str], env: dict[str, str], timeout_seconds: float
 ) -> SkillRunResult:
     from opensandbox.models.execd import RunCommandOpts

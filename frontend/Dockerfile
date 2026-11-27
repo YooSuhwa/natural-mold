@@ -18,8 +18,10 @@ COPY backend/skill-node ./backend/skill-node
 # this via build args; the default suits local compose on localhost.
 ARG NEXT_PUBLIC_API_BASE_URL=http://localhost:8001
 ARG NEXT_PUBLIC_CHAT_RUNTIME=langgraph_v3
+ARG NEXT_PUBLIC_CHAT_STEER_ENABLED=false
 ENV NEXT_PUBLIC_API_BASE_URL=$NEXT_PUBLIC_API_BASE_URL
 ENV NEXT_PUBLIC_CHAT_RUNTIME=$NEXT_PUBLIC_CHAT_RUNTIME
+ENV NEXT_PUBLIC_CHAT_STEER_ENABLED=$NEXT_PUBLIC_CHAT_STEER_ENABLED
 
 WORKDIR /app/frontend
 RUN pnpm build

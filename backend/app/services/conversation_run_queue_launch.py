@@ -64,11 +64,16 @@ async def launch_claimed_input(input_id: uuid.UUID) -> ConversationRun | None:
         except metadata.QueueBindingInvalidError:
             await _fail_claimed_input(input_id, error_code="queue_binding_invalid")
             return None
-        except AppError:
+        except AppError as exc:
+            from app.services.conversation_goal_worker import stop_reservations_on_denial
+
+            await stop_reservations_on_denial(db, identity.conversation_id, scope, exc)
             is_active = await db.scalar(select(User.is_active).where(User.id == identity.user_id))
             error_code = (
                 "queue_user_unavailable" if is_active is not True else "queue_rehydrate_failed"
             )
+            # Terminal cleanup opens its own session and locks this conversation again.
+            await db.commit()
             await _fail_claimed_input(input_id, error_code=error_code)
             return run
         local_task = registry.get(target.run.id)
@@ -95,10 +100,15 @@ async def launch_claimed_input(input_id: uuid.UUID) -> ConversationRun | None:
                 current_user,
                 context=context,
                 checkpoint_id=queued.checkpoint_id,
+                **({"include_subagents": False} if queued.source == "goal_followup" else {}),
             )
-        except (AppError, HTTPException, ValueError):
+        except (AppError, HTTPException, ValueError) as exc:
             logger.warning("queued input rehydration failed input_id=%s", input_id, exc_info=True)
-            error_code = "queue_rehydrate_failed"
+            error_code = (
+                "independent_job_unsupported"
+                if isinstance(exc, AppError) and exc.code == "independent_job_unsupported"
+                else "queue_rehydrate_failed"
+            )
         if error_code is None:
             try:
                 input_payload = await reauthorize_resource_context_payload(
@@ -118,7 +128,7 @@ async def launch_claimed_input(input_id: uuid.UUID) -> ConversationRun | None:
         attachment_ids = [uuid.UUID(value) for value in queued.attachment_ids]
         conversation_id = queued.conversation_id
         run_id = run.id
-        source = queued.source
+        source = "chat" if queued.source in {"steer", "goal_followup"} else queued.source
 
     if error_code is not None:
         await _fail_claimed_input(input_id, error_code=error_code)

@@ -424,6 +424,8 @@ async def test_user_b_cannot_touch_user_a_conversation_surfaces(raw_client: Asyn
         f"/api/conversations/{conv_id}/runs/{run_id}",
         f"/api/conversations/{conv_id}/runs/{run_id}/stream",
         f"/api/conversations/{conv_id}/runs/{run_id}/ag-ui-stream",
+        f"/api/conversations/{conv_id}/runs/{run_id}/steers",
+        f"/api/conversations/{conv_id}/steers",
         f"/api/conversations/{conv_id}/share",
         f"/api/conversations/{conv_id}/messages",
     ]
@@ -433,6 +435,10 @@ async def test_user_b_cannot_touch_user_a_conversation_surfaces(raw_client: Asyn
         assert resp.json()["error"]["code"] == "CONVERSATION_NOT_FOUND", url
 
     post_cases = [
+        (
+            f"/api/conversations/{conv_id}/runs/{run_id}/steers",
+            {"client_request_id": str(uuid.uuid4()), "text": "inspect"},
+        ),
         (f"/api/conversations/{conv_id}/followup-suggestion", None),
         (f"/api/conversations/{conv_id}/read", None),
         (

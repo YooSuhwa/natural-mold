@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import asyncio
 import contextlib
-import dataclasses
 import logging
 import time
 import uuid
@@ -12,6 +11,8 @@ from collections.abc import AsyncGenerator, Callable
 from functools import partial
 from typing import Any
 
+from app.agent_runtime.goal_sandbox_scope import goal_sandbox_scope
+from app.agent_runtime.openai_prompt_cache import conversation_prompt_cache
 from app.agent_runtime.run_error_codes import run_error_code
 from app.agent_runtime.run_metrics import RunMetricsAccumulator
 from app.agent_runtime.run_metrics_types import TerminalRunState
@@ -32,10 +33,25 @@ from app.services.conversation_run_delivery import (
     _redact_run_error_message,
     _trace_status_for_run,
 )
-from app.services.conversation_run_task_registry import RunTaskRegistry, worker_attr
+from app.services.conversation_run_fence import (
+    RunFence,
+    RunOwnershipLost,
+    fence_for_run,
+    run_fence_scope,
+)
+from app.services.conversation_run_owned_start import prepare_owned_start
+from app.services.conversation_run_steer_rollover import settle_terminal_steers
+from app.services.conversation_run_task_registry import (
+    RunTaskRegistry,
+    _tenant_session,
+    worker_attr,
+)
 from app.services.conversation_run_terminal_delivery import OwnerTerminalDelivery
-from app.services.conversation_run_transitions import _execution_target, _transition_to_running
+from app.services.conversation_run_transitions import _execution_target
 from app.services.conversation_stream_service import StreamCtx
+from app.services.goal_sandbox_runner import run_if_eligible as run_goal_sandbox
+from app.services.partial_model_output import PARTIAL_STREAM_ERROR, capture_partial_output
+from app.services.stream_attempt_owner import stream_attempt_owner
 
 logger = logging.getLogger("app.services.conversation_run_worker")
 
@@ -55,11 +71,16 @@ async def _run_conversation(
     registry: RunTaskRegistry,
     attachment_ids: list[uuid.UUID] | None = None,
     config_transform: Callable[[AgentConfig], AgentConfig] | None = None,
+    recovery_fence: RunFence | None = None,
 ) -> None:
     from app.services import prepared_conversation_start as prepared_start
 
     metrics_started_at = time.monotonic()
-    run_metrics = RunMetricsAccumulator(started_at=metrics_started_at)
+    run_metrics = (
+        RunMetricsAccumulator(started_at=None, complete_event_capture=False)
+        if recovery_fence is not None
+        else RunMetricsAccumulator(started_at=metrics_started_at)
+    )
     final_status: TerminalRunState = "completed"
     failure: Exception | None = None
     error_code: str | None = None
@@ -70,8 +91,9 @@ async def _run_conversation(
     # 워커가 run 을 시작하지 못한 경우(소멸/이미 terminal)에는 finally 의
     # trace finalize + terminal 전이를 건너뛴다 — 다른 경로가 이미 끝낸 run 을
     # 다시 finalize 하지 않기 위함.
-    finalize_needed = False
+    finalize_needed = recovery_fence is not None
     workerless_cancel_before_start = False
+    has_goal_attempt = False
     executor_exhausted_normally = False
     terminal_delivery = OwnerTerminalDelivery(
         run_id=ctx.run_id,
@@ -79,41 +101,34 @@ async def _run_conversation(
         persist_callback=ctx.persist_cb,
         trace_sink=ctx.trace_sink,
     )
+    run_audit = partial(_record_run_audit, user=user, tenant=cfg.org_context)
     start: prepared_start.PreparedRunStart | None = None
+    # All child graph tasks inherit the claimed generation. Every exit unwinds the scope.
+    owner_context = contextlib.ExitStack()
+    fence = recovery_fence
+    owner_context.enter_context(run_fence_scope(fence))
+    run_audit = partial(_record_run_audit, user=user, tenant=cfg.org_context)
     try:
-        input_payload, attachment_inputs = await worker_attr("_prepare_turn_attachment_inputs")(
-            run_id,
-            WorkerConversationTarget(conversation_id, cfg.org_context),
-            cfg.model_id,
-            attachment_ids,
-            input_payload,
-            tag_input=moldy_source != "resume",
-        )
-        if attachment_inputs is not None:
-            cfg = dataclasses.replace(cfg, attachment_inputs=attachment_inputs)
-        pinned = await worker_attr("_prepare_turn_guardrails")(
-            run_id,
-            WorkerConversationTarget(conversation_id, cfg.org_context),
-            cfg.agent_id,
-            cfg.runtime_profile,
-            resume=moldy_source == "resume",
-        )
-        cfg = dataclasses.replace(
-            cfg,
-            guardrail_rules=pinned.rules,
-            guardrail_resolved=True,
-            tool_risk=pinned.tool_risk,
-        )
-        start = await prepared_start.start_owned_run(
-            _execution_target(run_id, conversation_id, cfg),
-            prepared_start.OwnedRunInputs(cfg, user, input_payload, executor_fn, config_transform),
+        start, cfg, input_payload = await prepare_owned_start(
+            run_id=run_id,
+            conversation_id=conversation_id,
+            cfg=cfg,
+            user=user,
+            input_payload=input_payload,
+            moldy_source=moldy_source,
+            executor_fn=executor_fn,
+            attachment_ids=attachment_ids,
+            config_transform=config_transform,
             worker_instance_id=registry.worker_instance_id,
             started_at=metrics_started_at,
-            transition=_transition_to_running,
+            recovery_fence=recovery_fence,
         )
         run, started = start.run, start.started
-        cfg = start.cfg or cfg  # prepared: locked metadata + the lease's secret set
-        run_audit = partial(_record_run_audit, user=user, tenant=cfg.org_context)
+        if started and run is not None and run.owner_generation > 0:
+            fence = fence_for_run(run)
+            owner_context.enter_context(run_fence_scope(fence))
+            ctx.broker.owner_generation = fence.generation
+            registry.bind_fence(fence)
         if run is None:
             logger.warning("conversation run vanished before worker start run_id=%s", run_id)
             finalize_needed = False
@@ -139,11 +154,12 @@ async def _run_conversation(
             worker_attr("_heartbeat_until_terminal")(run_id, registry, cfg.org_context),
             name=f"conversation-run-heartbeat-{run_id}",
         )
-        run_metrics = start.run_metrics or await worker_attr("_prepare_run_metrics")(
-            conversation_id=conversation_id,
-            cfg=cfg,
-            started_at=metrics_started_at,
-        )
+        if recovery_fence is None:
+            run_metrics = start.run_metrics or await worker_attr("_prepare_run_metrics")(
+                conversation_id=conversation_id,
+                cfg=cfg,
+                started_at=metrics_started_at,
+            )
 
         stream_kwargs = ctx.as_stream_kwargs()
         stream_kwargs["broker"] = terminal_delivery
@@ -156,18 +172,21 @@ async def _run_conversation(
             run_id=ctx.run_id,
             output_dir=prepared_start.lease_output_dir(start),  # M1: index the lease output
         )
-        async for chunk in (start.executor or executor_fn)(
-            cfg,
-            input_payload,
-            moldy_source=moldy_source,
-            **stream_kwargs,
+        with (
+            conversation_prompt_cache(cfg.org_context, conversation_id, run_path=cfg.run_path),
+            goal_sandbox_scope(str(run_id), run_goal_sandbox),
+            stream_attempt_owner(_execution_target(run_id, conversation_id, cfg), registry),
         ):
-            compat_seq = _publish_yielded_chunk_if_needed(
-                ctx,
-                chunk,
-                compat_seq,
-                broker=terminal_delivery,
-            )
+            async for chunk in (start.executor or executor_fn)(
+                cfg,
+                input_payload,
+                moldy_source=moldy_source,
+                **stream_kwargs,
+            ):
+                if fence is None:
+                    compat_seq = _publish_yielded_chunk_if_needed(
+                        ctx, chunk, compat_seq, broker=terminal_delivery
+                    )
         executor_exhausted_normally = True
 
         if ctx.has_stream_error():
@@ -184,9 +203,13 @@ async def _run_conversation(
         elif worker_attr("has_interrupt_events")(ctx.trace_sink):
             final_status = "interrupted"
             interrupt_id = worker_attr("interrupt_id_from_events")(ctx.trace_sink)
+    except RunOwnershipLost:
+        finalize_needed = False
     except asyncio.CancelledError:
         cancel_reason = registry.cancel_reason(run_id)
-        if cancel_reason == "shutdown":
+        if cancel_reason == "ownership_lost":
+            finalize_needed = False
+        elif cancel_reason == "shutdown":
             final_status = "stale"
             error_code = "worker_shutdown"
             error_message = "Application shutdown canceled the run before completion."
@@ -240,10 +263,13 @@ async def _run_conversation(
                     run_status=effective_status,
                     tenant=ctx.tenant,
                 )
+            except RunOwnershipLost:
+                raise
             except Exception:
                 logger.exception("conversation run trace finalization failed run_id=%s", run_id)
 
         async def _finalize_run_status() -> TerminalRunState:
+            nonlocal has_goal_attempt
             try:
                 final_run, effective_status = await worker_attr("_transition")(
                     run_id,
@@ -257,11 +283,26 @@ async def _run_conversation(
                     model_name=getattr(cfg, "model_name", "unknown"),
                     tenant=cfg.org_context,
                     llm_credential_scope=getattr(cfg, "llm_credential_scope", None),
+                    **(
+                        {
+                            "partial_output": capture_partial_output(
+                                ctx.trace_sink,
+                                run_id=ctx.run_id,
+                                thread_id=str(conversation_id),
+                                secret_values=cfg.secret_values,
+                            )
+                        }
+                        if final_status == "failed" and error_code == PARTIAL_STREAM_ERROR
+                        else {}
+                    ),
                     terminal_event_for_status=(
                         lambda status: terminal_delivery.terminal_events_for_status(status)[1]
                     )
                     if executor_exhausted_normally
                     else None,
+                )
+                has_goal_attempt = final_run is not None and bool(
+                    (final_run.metadata_json or {}).get("goal_attempt_id")
                 )
                 if final_run is not None and executor_exhausted_normally:
                     live_terminal, persisted_terminal = (
@@ -276,48 +317,67 @@ async def _run_conversation(
                     moldy_source=moldy_source,
                     final_status=effective_status,
                 )
+            except RunOwnershipLost:
+                raise
             except Exception:
+                if fence is not None:
+                    raise
                 logger.exception("conversation run status finalization failed run_id=%s", run_id)
                 return final_status
             return effective_status
 
-        if finalize_needed:
-            effective_status = final_status
-            # Interrupted runs still commit before trace finalization so resume can
-            # find the parent. Other runs keep trace first; a late cancellation is
-            # reconciled inside the subsequent locked transition before queue dispatch.
-            if final_status == "interrupted":
-                effective_status = await _finalize_run_status()
-                if effective_status == "interrupted":
-                    # The approval inbox's row for each approval interrupt (17.2).
-                    await record_interrupted_run_best_effort(
-                        run_id, cfg.org_context, secret_values=cfg.secret_values
+        try:
+            if finalize_needed:
+                effective_status = final_status
+                # Interrupted runs still commit before trace finalization so resume can
+                # find the parent. Other runs keep trace first; a late cancellation is
+                # reconciled inside the subsequent locked transition before queue dispatch.
+                if fence is not None or final_status == "interrupted":
+                    effective_status = await _finalize_run_status()
+                    if effective_status == "interrupted":
+                        # The approval inbox's row for each approval interrupt (17.2).
+                        await record_interrupted_run_best_effort(
+                            run_id, cfg.org_context, secret_values=cfg.secret_values
+                        )
+
+                await _finalize_trace_for_status(effective_status)
+
+                if fence is None and final_status != "interrupted":
+                    effective_status = await _finalize_run_status()
+                if moldy_source == "resume":
+                    # A schedule or API run that waited for the inbox ends with its resume (17.3).
+                    await settle_best_effort(
+                        run_id, effective_status, cfg.org_context, cfg.secret_values
                     )
 
-            await _finalize_trace_for_status(effective_status)
+                if attachment_ids:
+                    # M1 — stamp this send's uploads with the user message id the read
+                    # path will compute. Runs AFTER branch activation so it resolves
+                    # against the SAME active_branch_checkpoint_id the read path uses
+                    # (an edit/regenerate run forks a new leaf that's activated just
+                    # above; resolving before activation would walk the stale branch
+                    # and mis-link). Best-effort: a failure leaves message_id NULL
+                    # (orphan GC reaps it later) rather than breaking run teardown.
+                    try:
+                        await worker_attr("_backfill_turn_attachments")(
+                            WorkerConversationTarget(conversation_id, cfg.org_context),
+                            attachment_ids,
+                        )
+                    except Exception:
+                        logger.exception("attachment message_id backfill failed run_id=%s", run_id)
 
-            if final_status != "interrupted":
-                effective_status = await _finalize_run_status()
-            if moldy_source == "resume":
-                # A schedule or API run that waited for the inbox ends with its resume (17.3).
-                await settle_best_effort(
-                    run_id, effective_status, cfg.org_context, cfg.secret_values
-                )
-
-            if attachment_ids:
-                # M1 — stamp this send's uploads with the user message id the read
-                # path will compute. Runs AFTER branch activation so it resolves
-                # against the SAME active_branch_checkpoint_id the read path uses
-                # (an edit/regenerate run forks a new leaf that's activated just
-                # above; resolving before activation would walk the stale branch
-                # and mis-link). Best-effort: a failure leaves message_id NULL
-                # (orphan GC reaps it later) rather than breaking run teardown.
-                try:
-                    await worker_attr("_backfill_turn_attachments")(
-                        WorkerConversationTarget(conversation_id, cfg.org_context), attachment_ids
-                    )
-                except Exception:
-                    logger.exception("attachment message_id backfill failed run_id=%s", run_id)
+        except RunOwnershipLost:
+            # The replacement owns terminal decisions, approvals, artifacts and the queue.
+            finalize_needed = False
+        except Exception:
+            # A recovery sweep can retry after a failed ownership or terminal transaction.
+            # The local worker must not schedule further work on that assumption.
+            if fence is None:
+                raise
+            finalize_needed = False
+            logger.exception("fenced chat finalization deferred run_id=%s", run_id)
+        finally:
+            owner_context.close()
 
         await prepared_start.remove_lease_run_root(start)  # after terminalization (M1)
         ctx.broker.close(error=failure)
@@ -327,4 +387,17 @@ async def _run_conversation(
                 dispatch_next_for_conversation,
             )
 
+            await settle_terminal_steers(
+                _tenant_session,
+                conversation_id=conversation_id,
+                run_id=run_id,
+                context=cfg.org_context,
+            )
+            if has_goal_attempt:
+                from app.services.conversation_goal_worker import reconcile_committed_goal
+
+                try:
+                    await reconcile_committed_goal(run_id, conversation_id, cfg.org_context)
+                except Exception:
+                    logger.exception("goal decision pending recovery run_id=%s", run_id)
             await dispatch_next_for_conversation(conversation_id)

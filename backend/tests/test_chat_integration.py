@@ -127,6 +127,8 @@ async def test_build_tools_config_includes_decrypted_credentials(
     assert entry["definition_key"] == "naver_search_blog"
     assert entry["credentials"] == {"client_id": "nv-id", "client_secret": "nv-secret"}
     assert entry["credential_id"] == str(tool_cred.id)
+    assert entry["org_id"] == str(TEST_ORG_ID)
+    assert entry["scope_user_id"] == str(TEST_USER_ID)
     assert entry["parameters"] == {"query": "moldy"}
 
 

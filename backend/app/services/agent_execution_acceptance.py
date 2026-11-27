@@ -22,6 +22,7 @@ from app.authz.execution_lock_cursor import LockClass
 from app.authz.org_context import OrgContext
 from app.authz.organization_execution_gateway import acquire_execution_proof, lock_row
 from app.authz.organization_execution_proof import ExecutionTransactionProof
+from app.config import settings
 from app.models.agent import Agent
 from app.models.agent_api import AgentApiRun
 from app.models.agent_lifecycle import ConversationRunAgent
@@ -284,6 +285,21 @@ async def accept_owned_execution(
         )
         for member in executable.snapshot.members
     )
+    child_modes: dict[uuid.UUID, str | None] = {}
+    if request.source == "chat":
+        if run.source == "resume":
+            # Preserve the original binding even if tracking, identity or links changed
+            # while the parent was interrupted. Old tasks never gain retrospective control.
+            if run.parent_run_id is not None:
+                prior = await db.execute(
+                    select(
+                        ConversationRunAgent.agent_id_snapshot,
+                        ConversationRunAgent.identity_mode_at_accept,
+                    ).where(ConversationRunAgent.run_id == run.parent_run_id)
+                )
+                child_modes = dict(prior.tuples().all())
+        elif settings.child_tasks_enabled:
+            child_modes = {agent_id: agent.identity_mode for agent_id, agent in agents.items()}
     db.add_all(
         [
             ConversationRunAgent(
@@ -292,6 +308,7 @@ async def accept_owned_execution(
                 agent_id_snapshot=item.agent_id_snapshot,
                 role=item.role,
                 path=list(item.path),
+                identity_mode_at_accept=child_modes.get(item.agent_id_snapshot),
                 **_participant_attribution(attribution, agents, item).participant_columns(),
             )
             for item in participants

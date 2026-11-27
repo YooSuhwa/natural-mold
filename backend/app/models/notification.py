@@ -55,6 +55,9 @@ NOTIFICATION_KINDS: Final = (
     "memory.consolidation_stopped",
     "workflow.notify",
     "workflow.schedule_paused",
+    "chat_goal.completed",
+    "chat_goal.blocked",
+    "chat_task.completed",
 )
 KIND_CHECK: Final = "kind IN (" + ",".join(f"'{kind}'" for kind in NOTIFICATION_KINDS) + ")"
 _TABLE = "notifications"

@@ -26,7 +26,7 @@ from app.error_codes import (
     trace_not_found,
 )
 from app.exceptions import ConflictError
-from app.models.conversation import Conversation
+from app.models.conversation import INDEPENDENT_JOB_SOURCE, Conversation
 from app.models.conversation_run import ConversationRun
 from app.models.message_event import MessageEvent
 from app.observability.langfuse import is_langfuse_enabled
@@ -75,7 +75,7 @@ async def get_conversation_run_message_links(
     db: AsyncSession = Depends(get_db),
     user: CurrentUser = Depends(get_current_user),
     context: OrgContext = Depends(get_org_context),
-    _conversation: Conversation = Depends(owned_conversation),
+    conversation: Conversation = Depends(owned_conversation),
 ) -> list[ConversationRunMessageLinkResponse]:
     return await list_run_message_links(
         db,
@@ -83,6 +83,7 @@ async def get_conversation_run_message_links(
             conversation_id=conversation_id,
             context=context,
             message_ids=message_id,
+            independent_child=conversation.source == INDEPENDENT_JOB_SOURCE,
         ),
     )
 
@@ -162,7 +163,7 @@ async def list_traces(
                 )
             )
         return responses
-    records = await trace_storage.get_traces_for_conversation(db, conversation_id)
+    records = await trace_storage.get_readable_conversation_traces(db, conversation, context)
     secrets = tuple(
         await chat_secrets.collect_conversation_secret_values(db, conversation, context)
     )
@@ -183,7 +184,7 @@ async def list_debug_traces(
     authz: AuthzService = Depends(get_authz),
 ):
     await _require_trace_config(conversation, context, authz)
-    records = await trace_storage.get_traces_for_conversation(db, conversation_id)
+    records = await trace_storage.get_readable_conversation_traces(db, conversation, context)
     secrets = tuple(
         await chat_secrets.collect_conversation_secret_values(db, conversation, context)
     )
@@ -221,7 +222,7 @@ async def get_debug_trace_detail(
     authz: AuthzService = Depends(get_authz),
 ):
     await _require_trace_config(conversation, context, authz)
-    records = await trace_storage.get_traces_for_conversation(db, conversation_id)
+    records = await trace_storage.get_readable_conversation_traces(db, conversation, context)
     record = next(
         (item for item in records if trace_id in {item.external_trace_id, item.assistant_msg_id}),
         None,

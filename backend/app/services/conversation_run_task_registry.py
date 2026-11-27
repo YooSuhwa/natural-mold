@@ -14,9 +14,11 @@ from typing import Any, Literal
 
 from sqlalchemy.exc import SQLAlchemyError
 
+from app.services.conversation_run_fence import RunFence
+
 logger = logging.getLogger("app.services.conversation_run_worker")
 
-CancelReason = Literal["stop", "steer", "shutdown"]
+CancelReason = Literal["stop", "steer", "shutdown", "ownership_lost"]
 _CANCEL_POLL_SECONDS = 0.25
 
 
@@ -50,6 +52,7 @@ class RunTaskRegistry:
         self._tasks: dict[uuid.UUID, asyncio.Task[None]] = {}
         self._cancel_reasons: dict[uuid.UUID, CancelReason] = {}
         self._finishing: set[uuid.UUID] = set()
+        self._fences: dict[uuid.UUID, RunFence] = {}
 
     def start(self, run_id: uuid.UUID, task: asyncio.Task[None]) -> None:
         existing = self._tasks.get(run_id)
@@ -78,6 +81,9 @@ class RunTaskRegistry:
             raise RunTaskRegistrationError("no current task is available for registration")
         self.start(run_id, task)
         return task
+
+    def bind_fence(self, fence: RunFence) -> None:
+        self._fences[fence.run_id] = fence
 
     def get(self, run_id: uuid.UUID) -> asyncio.Task[None] | None:
         return self._tasks.get(run_id)
@@ -110,13 +116,16 @@ class RunTaskRegistry:
 
     def discard(self, run_id: uuid.UUID) -> None:
         self._tasks.pop(run_id, None)
+        self._fences.pop(run_id, None)
         self._cancel_reasons.pop(run_id, None)
         self._finishing.discard(run_id)
 
     async def shutdown(self, timeout_seconds: float = 10.0) -> None:
         items = [(run_id, task) for run_id, task in self._tasks.items() if not task.done()]
         try:
-            await worker_attr("_persist_shutdown_intent")([run_id for run_id, _task in items])
+            await worker_attr("_persist_shutdown_intent")(
+                [self._fences.get(run_id, run_id) for run_id, _task in items]
+            )
         except SQLAlchemyError:
             logger.exception("failed to persist conversation run shutdown intent")
         for run_id, _task in items:
@@ -136,3 +145,4 @@ class RunTaskRegistry:
         self._tasks.clear()
         self._cancel_reasons.clear()
         self._finishing.clear()
+        self._fences.clear()

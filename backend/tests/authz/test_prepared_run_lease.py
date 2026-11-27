@@ -64,6 +64,7 @@ def test_digest_changes_with_any_bound_field(override: dict[str, object]) -> Non
     [
         {"run_id": uuid.UUID("60000000-0000-4000-8000-000000000099")},
         {"thread_id": "other-thread"},
+        {"independent_job": True},
         {"participant_paths": ("root",)},
     ],
 )

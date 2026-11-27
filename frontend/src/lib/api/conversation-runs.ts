@@ -6,8 +6,13 @@ export const conversationRunsApi = {
     apiFetch<ConversationRun | null>(`/api/conversations/${conversationId}/runs/active`),
   get: (conversationId: string, runId: string, signal?: AbortSignal) =>
     apiFetch<ConversationRun>(`/api/conversations/${conversationId}/runs/${runId}`, { signal }),
-  cancel: (conversationId: string, runId: string) =>
-    apiFetch<ConversationRun>(`/api/conversations/${conversationId}/runs/${runId}/cancel`, {
-      method: 'POST',
-    }),
+  cancel: (conversationId: string, runId: string, includeIndependentJobs = false) => {
+    const scope = includeIndependentJobs ? '?cancel_independent_jobs=true' : ''
+    return apiFetch<ConversationRun>(
+      `/api/conversations/${conversationId}/runs/${runId}/cancel${scope}`,
+      {
+        method: 'POST',
+      },
+    )
+  },
 }

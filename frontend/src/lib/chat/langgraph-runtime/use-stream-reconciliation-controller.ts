@@ -72,6 +72,7 @@ export function useStreamReconciliationController({
   const setReconnectState = useSetAtom(reconnectStateAtom)
   const setConversationRuntimeStatus = useSetAtom(conversationRuntimeStatusAtom)
   const lifetimeRef = useRef(lifetime)
+  const selectedBranchRef = useRef<string | null>(null)
   const onRunStartAcceptedRef = useRef(onRunStartAccepted)
   const acceptedRunIdsRef = useRef(new Set<string>())
   const claimedQueueRunFollowRef = useRef<{
@@ -82,6 +83,7 @@ export function useStreamReconciliationController({
     claimedQueueRunFollowRef.current?.abort.abort()
     claimedQueueRunFollowRef.current = null
     lifetimeRef.current = lifetime
+    selectedBranchRef.current = null
     acceptedRunIdsRef.current.clear()
     return () => {
       claimedQueueRunFollowRef.current?.abort.abort()
@@ -155,10 +157,26 @@ export function useStreamReconciliationController({
     )
   }, [conversationId])
 
+  const handleBranchSelected = useCallback((checkpointId: string) => {
+    selectedBranchRef.current = checkpointId
+    setThreadRunNoticeState((current) =>
+      current?.value?.partialOutput
+        ? { ...current, value: { ...current.value, partialOutput: null } }
+        : current,
+    )
+  }, [])
+
   const handleThreadState = useCallback(
     (state: unknown, options?: ThreadStateHydrationOptions): void => {
       if (lifetimeRef.current !== lifetime) return
       const terminalRunNotice = terminalRunNoticeFromThreadState(state)
+      if (
+        terminalRunNotice?.partialOutput !== undefined &&
+        selectedBranchRef.current !== null &&
+        !snapshotMatchesBranch(state, selectedBranchRef.current)
+      ) {
+        return
+      }
       if (
         terminalFailureIsStaleForCurrentAttempt(
           conversationId,
@@ -219,6 +237,7 @@ export function useStreamReconciliationController({
       if (runId && acceptedRunIdsRef.current.has(runId)) return
       if (runId) acceptedRunIdsRef.current.add(runId)
       if (runId && lifetimeRef.current === lifetime) {
+        selectedBranchRef.current = null
         setThreadRunNoticeState((current) => {
           if (
             current?.conversationId === conversationId &&
@@ -332,6 +351,7 @@ export function useStreamReconciliationController({
   const hydration = useStreamHydrationEffects({
     conversationId,
     activateTransportHydration,
+    onBranchSelected: handleBranchSelected,
     streamLoading: stream.isLoading,
     pendingEdit: pendingEditState,
     pendingReload: pendingReloadState,
@@ -413,4 +433,15 @@ export function useStreamReconciliationController({
     retryFailedInput,
     handleClaimedQueueRun,
   }
+}
+
+function snapshotMatchesBranch(state: unknown, checkpointId: string): boolean {
+  if (!state || typeof state !== 'object' || !('checkpoint' in state)) return false
+  const checkpoint = state.checkpoint
+  return Boolean(
+    checkpoint &&
+    typeof checkpoint === 'object' &&
+    'checkpoint_id' in checkpoint &&
+    checkpoint.checkpoint_id === checkpointId,
+  )
 }
