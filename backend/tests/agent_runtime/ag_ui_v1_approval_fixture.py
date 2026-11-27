@@ -20,7 +20,7 @@ RESUMED_RUN = "40000000-0000-4000-8000-000000000042"
 
 
 async def capture_approval_journals(
-    *, reject: bool = False
+    *, reject: bool = False, delegated: bool = False
 ) -> tuple[list[StoredProtocolEvent], list[StoredProtocolEvent]]:
     executions: list[str] = []
 
@@ -42,12 +42,44 @@ async def capture_approval_journals(
             AIMessage(id="approval-done", content="처리가 끝났습니다."),
         ]
     )
-    graph = create_deep_agent(
-        model=model,
-        tools=[create_note],
-        checkpointer=InMemorySaver(),
-        interrupt_on={"create_note": {"allowed_decisions": ["approve", "reject"]}},
-    )
+    if delegated:
+        supervisor = ScriptedModel(
+            responses=[
+                AIMessage(
+                    id="delegating-assistant",
+                    content="",
+                    tool_calls=[
+                        {
+                            "id": "approval-delegate",
+                            "name": "task",
+                            "args": {"subagent_type": "writer", "description": "문서 생성"},
+                        }
+                    ],
+                ),
+                AIMessage(id="supervisor-done", content="위임한 작업이 끝났습니다."),
+            ]
+        )
+        graph = create_deep_agent(
+            model=supervisor,
+            subagents=[
+                {
+                    "name": "writer",
+                    "description": "Create notes.",
+                    "system_prompt": "Create a note.",
+                    "model": model,
+                    "tools": [create_note],
+                    "interrupt_on": {"create_note": {"allowed_decisions": ["approve", "reject"]}},
+                }
+            ],
+            checkpointer=InMemorySaver(),
+        )
+    else:
+        graph = create_deep_agent(
+            model=model,
+            tools=[create_note],
+            checkpointer=InMemorySaver(),
+            interrupt_on={"create_note": {"allowed_decisions": ["approve", "reject"]}},
+        )
     config = {"configurable": {"thread_id": THREAD}}
 
     async def capture(run_id: str, payload: Command | dict[str, Any]) -> list[StoredProtocolEvent]:
@@ -66,9 +98,10 @@ async def capture_approval_journals(
         FIRST_RUN, {"messages": [{"role": "user", "id": "approval-user", "content": "문서 생성"}]}
     )
     assert not executions
-    (pending,) = [
+    # A child interrupt is also forwarded to the root namespace with the same ID.
+    (pending,) = {
         event["data"]["interrupt_id"] for event in first if event["method"] == "input.requested"
-    ]
+    }
     decision = {"type": "reject", "message": "취소"} if reject else {"type": "approve"}
     resumed = await capture(RESUMED_RUN, Command(resume={pending: {"decisions": [decision]}}))
     assert executions == ([] if reject else ["승인 문서"])
