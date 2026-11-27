@@ -307,3 +307,34 @@ async def test_parallel_child_approvals_follow_each_issuance_regardless_of_slot_
         first_id: (str(case.task.id), public_tool_call_id(PUBLIC, None, ISSUER, CALL)),
         second_id: (str(sibling.id), second_issuer),
     }
+
+
+async def test_disappearing_nested_task_cannot_transfer_its_approval_to_its_parent(
+    db: AsyncSession,
+    pending_child: ChildSnapshot,
+) -> None:
+    case = pending_child
+    nested_ns = (*NATIVE, "tools:child-approval")
+    nested = ConversationChildTask(
+        run_id=case.run.id,
+        current_run_id=case.run.id,
+        child_agent_id=case.task.child_agent_id,
+        tool_call_id="nested-approval",
+        role="review",
+        checkpoint_ns="|".join(nested_ns),
+        checkpoint_id="nested-pending",
+        status="awaiting_approval",
+    )
+    db.add(nested)
+    await db.commit()
+    case.visibility = await load_child_visibility(db, case.conversation, case.context, case.run.id)
+    assert case.visibility.namespaces == {NATIVE, nested_ns}
+    case.pending = replace(case.pending, interrupts=(_interrupt(nested_ns),))
+
+    await db.delete(nested)
+    await db.commit()
+    fresh = await load_child_visibility(db, case.conversation, case.context, case.run.id)
+    assert fresh.namespaces == {NATIVE}
+
+    assert await case.restore(db) == {}
+    assert case.merged.subagents == []
