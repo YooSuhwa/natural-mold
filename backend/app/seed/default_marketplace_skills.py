@@ -49,14 +49,19 @@ IMAGE_SKILL_EXECUTION_PROFILE: dict[str, Any] = {
     "timeout_seconds": 420,
 }
 
+_DEEP_RESEARCH_VERSION = "0.2.0"
+_DEEP_RESEARCH_DESCRIPTION = (
+    "Conduct multi-step, citation-backed research with approved search providers."
+)
+
 DEEP_RESEARCH_EXECUTION_PROFILE: dict[str, Any] = {
     "support_level": "ready_python",
     "runners": ["python"],
     "requires_network": True,
-    "tool_dependencies": ["tavily_search"],
+    "tool_dependencies": ["research_search"],
     "timeout_seconds": 420,
     "notes": (
-        "Uses hosted Tavily Search through a runtime tool dependency; "
+        "Uses organization-approved search providers and preserves original source URLs; "
         "no user credential binding is required."
     ),
 }
@@ -385,21 +390,22 @@ async def _seed_deep_research_skill(
             is_listed=True,
             name="Deep Research",
             slug="deep-research",
-            description="Conduct multi-step, citation-backed web research with Tavily.",
+            description=_DEEP_RESEARCH_DESCRIPTION,
             visibility="system",
             status="published",
             moderation_status="approved",
             source_kind="system_seed",
             source_external_id="deep-research",
             categories=["research"],
-            tags=["research", "web", "citations", "tavily"],
+            tags=["research", "web", "citations"],
             locale="ko",
         )
         db.add(item)
         await db.flush()
     else:
         item.name = "Deep Research"
-        item.description = "Conduct multi-step, citation-backed web research with Tavily."
+        item.description = _DEEP_RESEARCH_DESCRIPTION
+        item.tags = ["research", "web", "citations"]
         item.is_listed = True
         item.source_kind = "system_seed"
         item.source_external_id = "deep-research"
@@ -430,23 +436,26 @@ async def _seed_deep_research_skill(
     version = MarketplaceVersion(
         id=version_id,
         item_id=item.id,
-        version_label="0.1.0",
+        version_label=_DEEP_RESEARCH_VERSION,
         version_number=version_number,
         resource_type="skill",
         payload_kind="skill_package",
         payload={
             "kind": "package",
             "name": "deep-research",
-            "version": "0.1.0",
+            "version": _DEEP_RESEARCH_VERSION,
             "model": "auto",
-            "tool_dependencies": ["tavily_search"],
+            "tool_dependencies": ["research_search"],
         },
         storage_path=ensure_relative(f"marketplace/system-skills/{version_id}"),
         content_hash=content_hash,
         size_bytes=total_bytes,
         credential_requirements=[],
         execution_profile=DEEP_RESEARCH_EXECUTION_PROFILE,
-        release_notes="Initial built-in Deep Research skill.",
+        release_notes=(
+            "Search can use an approved alternative when the primary provider is unavailable. "
+            "Update the installed skill to use research_search and report the source provider."
+        ),
         source_path="deep-research",
         created_by=None,
     )
