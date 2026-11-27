@@ -13,6 +13,8 @@ from sqlalchemy import delete, func, select, text
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
 from app.approvals import recording, service
+from app.authz.conversation_scope import lock_private_conversation
+from app.authz.notifications import _lock_key
 from app.authz.org_context import OrgContext
 from app.config import settings
 from app.database import SessionTenant, tenant_session
@@ -22,9 +24,10 @@ from app.models.conversation import Conversation
 from app.models.conversation_goal import ConversationGoal, GoalAttempt
 from app.models.conversation_run import ConversationRun
 from app.models.notification import Notification
+from app.schemas.conversation_goal import GoalActionRequest
 from app.schemas.independent_chat_job import IndependentJobCreate
 from app.services import chat_notification_outbox as outbox
-from app.services.conversation_goal_service import block_goal
+from app.services.conversation_goal_service import apply_goal_action, block_goal
 from app.services.conversation_run_state import transition_run
 from app.services.independent_jobs import accept_independent_job
 from tests.authz.i06_rls_lab import RlsLab, async_url, rls_lab
@@ -335,3 +338,134 @@ async def test_goal_approval_worker_reuses_the_read_approval_across_rollback(
         assert list(
             await reader.scalars(select(ApprovalRequest.id).where(ApprovalRequest.run_id == run_id))
         ) == [request_id]
+
+
+@pytest.fixture
+async def blocked_goal(
+    sessions: Sessions,
+    completed_run: tuple[OrgContext, UUID, UUID],
+    monkeypatch: pytest.MonkeyPatch,
+) -> tuple[OrgContext, ChatNotificationOutbox]:
+    ctx, conversation_id, run_id = completed_run
+    monkeypatch.setattr(settings, "conversation_goal_org_ids", frozenset({ctx.org_id}))
+    async with tenant_session(ctx, maker=sessions) as db:
+        conversation = await db.get(Conversation, conversation_id)
+        assert conversation is not None
+        conversation.source = "ui"
+        goal = ConversationGoal(
+            user_id=ctx.user_id,
+            tenant_id=ctx.tenant_id,
+            org_id=ctx.org_id,
+            conversation_id=conversation_id,
+            title="Review the export",
+            criteria=[],
+        )
+        db.add(goal)
+        await db.flush()
+        attempt = GoalAttempt(
+            goal_id=goal.id, goal_version=goal.version, run_id=run_id, steer_seq=0
+        )
+        db.add(attempt)
+        await block_goal(db, goal, "manual_review", attempt=attempt)
+        await db.commit()
+        notice = (
+            await db.scalars(
+                select(ChatNotificationOutbox).where(ChatNotificationOutbox.goal_id == goal.id)
+            )
+        ).one()
+        return ctx, notice
+
+
+async def _cancel_goal(db: AsyncSession, ctx: OrgContext, receipt: ChatNotificationOutbox) -> None:
+    conversation = await lock_private_conversation(db, receipt.conversation_id, ctx)
+    assert receipt.goal_revision is not None
+    await apply_goal_action(
+        db,
+        conversation,
+        GoalActionRequest(action="cancel", expected_revision=receipt.goal_revision),
+    )
+
+
+async def _wait_for_blocker(db: AsyncSession, *, blocker: int, waiter: int) -> None:
+    async with asyncio.timeout(8):
+        while not await db.scalar(  # noqa: ASYNC110 - observe the actual lock order in PostgreSQL
+            text("SELECT :blocker = ANY(pg_blocking_pids(:waiter))"),
+            {"blocker": blocker, "waiter": waiter},
+        ):
+            await asyncio.sleep(0.01)
+
+
+async def test_goal_edit_already_holds_lock_before_notice_delivery(
+    sessions: Sessions, blocked_goal: tuple[OrgContext, ChatNotificationOutbox]
+) -> None:
+    ctx, ref = blocked_goal
+    tenant = SessionTenant(ctx.tenant_id)
+    async with (
+        tenant_session(ctx, maker=sessions) as editor,
+        tenant_session(tenant, maker=sessions) as worker,
+    ):
+        await _cancel_goal(editor, ctx, ref)
+        async with asyncio.timeout(5):
+            assert await outbox.drain_chat_notification_outbox(worker, tenant_id=ctx.tenant_id) == 1
+        await worker.commit()
+        receipt = await worker.get(ChatNotificationOutbox, ref.id)
+        assert receipt is not None
+        assert (receipt.status, receipt.attempt_count, receipt.notification_id) == (
+            "pending",
+            1,
+            None,
+        )
+        await editor.commit()
+
+    async with tenant_session(tenant, maker=sessions) as restarted:
+        assert await outbox.drain_chat_notification_outbox(restarted, tenant_id=ctx.tenant_id) == 1
+        await restarted.commit()
+        receipt = await restarted.get(ChatNotificationOutbox, ref.id)
+        assert receipt is not None
+        assert (receipt.status, receipt.attempt_count, receipt.notification_id) == (
+            "suppressed",
+            2,
+            None,
+        )
+        assert not await restarted.scalar(
+            select(Notification.id).where(Notification.target_id == ref.id)
+        )
+
+
+async def test_goal_edit_waits_until_validated_notice_is_committed(
+    sessions: Sessions, blocked_goal: tuple[OrgContext, ChatNotificationOutbox]
+) -> None:
+    ctx, ref = blocked_goal
+    async with (
+        tenant_session(ctx, maker=sessions) as gate,
+        tenant_session(SessionTenant(ctx.tenant_id), maker=sessions) as worker,
+        tenant_session(ctx, maker=sessions) as editor,
+    ):
+        gate_pid = await gate.scalar(text("SELECT pg_backend_pid()"))
+        worker_pid = await worker.scalar(text("SELECT pg_backend_pid()"))
+        editor_pid = await editor.scalar(text("SELECT pg_backend_pid()"))
+        assert gate_pid is not None and worker_pid is not None and editor_pid is not None
+        # Stop the real notifier just after target validation but before its INSERT.
+        await _lock_key(gate, ctx.user_id, ref.kind, ref.id, ctx.tenant_id, ctx.org_id)
+        async with asyncio.TaskGroup() as racers:
+            delivery = racers.create_task(
+                outbox.drain_chat_notification_outbox(worker, tenant_id=ctx.tenant_id)
+            )
+            await _wait_for_blocker(gate, blocker=gate_pid, waiter=worker_pid)
+            edit = racers.create_task(_cancel_goal(editor, ctx, ref))
+            await _wait_for_blocker(gate, blocker=worker_pid, waiter=editor_pid)
+            await gate.commit()
+            assert await delivery == 1
+            await worker.commit()
+            await edit
+            await editor.commit()
+        [published] = (
+            await gate.scalars(select(Notification).where(Notification.target_id == ref.id))
+        ).all()
+        assert published.kind == "chat_goal.blocked"
+        assert (
+            await gate.scalar(
+                select(ConversationGoal.status).where(ConversationGoal.id == ref.goal_id)
+            )
+            == "canceled"
+        )
