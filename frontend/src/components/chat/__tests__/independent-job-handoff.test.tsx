@@ -1,5 +1,5 @@
 import { webcrypto } from 'node:crypto'
-import { afterEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, expect, it, vi } from 'vitest'
 import { render, screen, userEvent, waitFor } from '../../../../tests/test-utils'
 import { independentJobsApi } from '@/lib/api/independent-chat-jobs'
 import type { IndependentChatJob } from '@/lib/types/independent-chat-job'
