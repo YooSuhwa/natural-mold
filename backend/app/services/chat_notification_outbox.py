@@ -168,6 +168,10 @@ async def drain_chat_notification_outbox(
     for row in rows:
         row_id = row.id
         attempts = row.attempt_count + 1
+        created = row.created_at
+        if created.tzinfo is None:
+            created = created.replace(tzinfo=UTC)
+        queue_age = max(0, int((now - created).total_seconds()))
         # Persist the attempt in the outer transaction. On SQLite the conditional
         # claim also serializes workers (FOR UPDATE is ignored on that dialect).
         claimed = await db.scalar(
@@ -191,7 +195,12 @@ async def drain_chat_notification_outbox(
                     from app.services.chat_notification_approval import publish_goal_approval
 
                     notification = await publish_goal_approval(db, row)
-                elif await resolve_work_destination(db, row) is not None:
+                elif destination := await resolve_work_destination(db, row):
+                    link = None
+                    if destination.agent_id:
+                        link = f"/agents/{destination.agent_id}/conversations/{row.conversation_id}"
+                        if row.goal_id:
+                            link += "#conversation-goal"
                     [notification] = await notify(
                         db,
                         kind=row.kind,
@@ -199,7 +208,7 @@ async def drain_chat_notification_outbox(
                         recipients=(row.user_id,),
                         org_id=row.org_id,
                         tenant_id=tenant_id,
-                        link="/chat",
+                        link=link,
                     )
                 row.status = "delivered" if notification is not None else "suppressed"
                 row.notification_id = notification.id if notification is not None else None
@@ -218,9 +227,11 @@ async def drain_chat_notification_outbox(
                 .execution_options(synchronize_session=False)
             )
             logger.warning(
-                "chat_notice_retry id=%s attempt=%d retry_seconds=%d error_type=%s",
+                "chat_notice_retry id=%s attempt=%d queue_age_seconds=%d "
+                "retry_seconds=%d error_type=%s",
                 row_id,
                 attempts,
+                queue_age,
                 retry_delay,
                 type(error).__name__,
             )

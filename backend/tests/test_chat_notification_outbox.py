@@ -10,6 +10,7 @@ from app.config import settings
 from app.models.chat_notification_outbox import ChatNotificationOutbox
 from app.models.conversation_run import ConversationRun
 from app.models.notification import Notification
+from app.schemas.notification import ChatNotificationDestination
 from app.services import chat_notification_access
 from app.services import chat_notification_outbox as delivery
 from tests.authz.unit_scope_fixture import TEST_ORG_ID, TEST_TENANT_ID
@@ -20,9 +21,6 @@ from tests.integration._seed import seed_conversation_with_agent
 @pytest.fixture
 async def source(db: AsyncSession, monkeypatch: pytest.MonkeyPatch) -> dict[str, UUID]:
     monkeypatch.setattr(settings, "chat_work_notifications_enabled", True)
-    monkeypatch.setattr(
-        chat_notification_access, "resolve_work_destination", AsyncMock(return_value=object())
-    )
     conversation_id = await seed_conversation_with_agent()
     run = ConversationRun(
         conversation_id=conversation_id,
@@ -34,6 +32,19 @@ async def source(db: AsyncSession, monkeypatch: pytest.MonkeyPatch) -> dict[str,
     )
     db.add(run)
     await db.commit()
+    destination = ChatNotificationDestination(
+        conversation_id=conversation_id,
+        agent_id=uuid4(),
+        run_id=run.id,
+        goal_id=None,
+        job_id=None,
+        artifact_id=None,
+        version_id=None,
+        filename=None,
+    )
+    monkeypatch.setattr(
+        chat_notification_access, "resolve_work_destination", AsyncMock(return_value=destination)
+    )
     return {
         "user_id": TEST_USER_ID,
         "org_id": TEST_ORG_ID,

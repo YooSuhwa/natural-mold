@@ -36,6 +36,9 @@ async def test_completed_bell_downloads_verified_bytes_even_after_rewrite(
 ) -> None:
     result = goal_result
     notice = await result.deliver(db)
+    assert notice.link == (
+        f"/agents/{result.conversation.agent_id}/conversations/{result.conversation.id}#conversation-goal"
+    )
     result.source.write_bytes(UPDATED)
     assert await result.recorder.collect_after_tool_result(
         tool_name="edit_file", tool_call_id="next"
