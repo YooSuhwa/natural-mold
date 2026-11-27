@@ -237,16 +237,18 @@ export function useMessagesEnvelope(conversationId: string, enabled = true) {
   })
 }
 
-/** Fetch the messages envelope now, bypassing staleness, and keep the query cache in sync. */
+/** An action can need a message committed after an in-flight transcript read started. */
 export function useFetchMessagesEnvelope() {
   const qc = useQueryClient()
   return useCallback(
-    (conversationId: string) =>
-      qc.fetchQuery({
-        queryKey: conversationKeys.messages(conversationId),
-        queryFn: () => conversationsApi.messagesEnvelope(conversationId),
-        staleTime: 0,
-      }),
+    (conversationId: string) => {
+      const queryKey = conversationKeys.messages(conversationId)
+      const read = () => conversationsApi.messagesEnvelope(conversationId)
+      // fetchQuery joins an older read even at staleTime zero. Keep that read for its
+      // subscribers and use a new authorized response for this action's ID and rating.
+      if (qc.isFetching({ queryKey, exact: true })) return read()
+      return qc.fetchQuery({ queryKey, queryFn: read, staleTime: 0 })
+    },
     [qc],
   )
 }
