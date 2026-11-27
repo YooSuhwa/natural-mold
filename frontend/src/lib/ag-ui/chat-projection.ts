@@ -173,14 +173,13 @@ function restoredRoot(
   const created = link.createdAt ?? row?.created_at
   // Older journals have no timestamp. Never replace it with the time the tab reopened.
   const timestamp = created ? parseTimestamp(created).getTime() : 0
-  const checkpoints = link.siblingCheckpointIds?.length
-    ? link.siblingCheckpointIds
-    : row?.sibling_checkpoint_ids
+  const checkpoints = link.siblingCheckpointIds ?? row?.sibling_checkpoint_ids
   const checkpointId = link.checkpointId ?? row?.branch_checkpoint_id
   // The snapshot lists branch leaves. The checkpoint that introduced this
   // message may precede its leaf by several model or middleware steps.
-  const branchLeaf = link.siblingCheckpointIds?.length ? selectedCheckpoint : checkpointId
-  const branchIndex = branchLeaf && checkpoints ? checkpoints.indexOf(branchLeaf) : -1
+  const branchIndex = link.siblingCheckpointIds
+    ? link.siblingCheckpointIds.indexOf(selectedCheckpoint ?? '')
+    : (row?.branch_index ?? checkpoints?.indexOf(checkpointId ?? '') ?? -1)
   const custom = {
     ...like.metadata?.custom,
     ...(link.uiMessageId && { publicMessageId: link.uiMessageId }),
@@ -188,7 +187,9 @@ function restoredRoot(
     ...(link.parentCheckpointId && { parentCheckpointId: link.parentCheckpointId }),
     ...(checkpoints &&
       checkpoints.length > 1 &&
-      branchIndex >= 0 && {
+      Number.isInteger(branchIndex) &&
+      branchIndex >= 0 &&
+      branchIndex < checkpoints.length && {
         siblingCheckpointIds: checkpoints,
         branchIndex,
         branchTotal: checkpoints.length,
