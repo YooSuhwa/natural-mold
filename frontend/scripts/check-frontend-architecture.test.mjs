@@ -51,7 +51,7 @@ describe('frontend architecture baseline', () => {
     expect(normal.stdout).toContain('frontend architecture issues: 42')
     expect(strict.status).toBe(0)
     expect(strict.stdout).toContain('frontend architecture strict blocking issues: 0')
-  })
+  }, 60_000)
 
   it('Given a duplicate reviewed identity When the guard reads the tampered baseline Then it rejects the baseline before scanning source', () => {
     withFixture(

@@ -204,6 +204,8 @@ async def _lifespan_started(app: FastAPI) -> AsyncGenerator[None, None]:
     # Hook framework — register built-in hooks before any runtime call.
     register_default_hooks()
 
+    # Recovered work checks the same authorization service as live requests.
+    await open_authz_runtime(app)
     await sweep_stale_conversation_runs()
     from app.services.conversation_run_queue_worker import recover_conversation_queue
 
@@ -219,9 +221,6 @@ async def _lifespan_started(app: FastAPI) -> AsyncGenerator[None, None]:
     # One backend owns shared jobs at a time. Every process keeps checking the
     # PostgreSQL advisory lock so leadership fails over and DB-authored trigger
     # changes are reconciled even when they came through a non-leader worktree.
-    # The AuthzService (P3-0) is closed by shutdown_runtime_resources after the
-    # scheduler stops and background runs drain, before the database is disposed.
-    await open_authz_runtime(app)
     await close_stale_at_startup()  # H-04: free reconcile runs a dead process left live
     async with scheduler_leadership_runtime():
         yield

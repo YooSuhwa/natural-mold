@@ -7,6 +7,7 @@ import {
   type Page,
 } from '@playwright/test'
 import { test, expect } from './fixtures'
+import { approveExecuteInSkill, waitForAcceptedRunStart } from './langgraph-v3-helpers'
 
 const BACKEND_PORT = process.env.E2E_BACKEND_PORT ?? '8001'
 const API_BASE = process.env.E2E_API_BASE_URL ?? `http://localhost:${BACKEND_PORT}`
@@ -59,6 +60,7 @@ interface ArtifactRow {
 
 interface RunRow {
   id: string
+  parent_run_id: string | null
   status: string
 }
 
@@ -70,6 +72,7 @@ interface E2ESetup {
 
 interface ViewerCase {
   marker: string
+  skill: (typeof SKILL_SLUGS)[number]
   filename: string
   extension: string
   verify: (page: Page) => Promise<void>
@@ -198,16 +201,6 @@ async function sendMessage(page: Page, text: string): Promise<void> {
   await expect(composer).toBeEnabled({ timeout: UI_TIMEOUT_MS })
   await composer.fill(text)
   await composer.press('Enter')
-}
-
-async function approveExecuteInSkill(page: Page): Promise<void> {
-  await expect(page.getByText(/승인이 필요합니다|Approval Required/).last()).toBeVisible({
-    timeout: 30_000,
-  })
-  const approveButton = page.getByRole('button', { name: /승인|Approve/ }).last()
-  await expect(approveButton).toBeVisible({ timeout: UI_TIMEOUT_MS })
-  await approveButton.click()
-  await expect(approveButton).toBeHidden({ timeout: 30_000 })
 }
 
 async function waitForArtifactByName(
@@ -399,6 +392,7 @@ test.describe('Document artifact viewers', () => {
     const cases: ViewerCase[] = [
       {
         marker: 'E2E_DOCX',
+        skill: 'docx-document',
         filename: 'moldy-docx-demo.docx',
         extension: 'docx',
         verify: async (viewerPage) => {
@@ -411,6 +405,7 @@ test.describe('Document artifact viewers', () => {
       },
       {
         marker: 'E2E_XLSX',
+        skill: 'xlsx-spreadsheet',
         filename: 'moldy-xlsx-demo.xlsx',
         extension: 'xlsx',
         verify: async (viewerPage) => {
@@ -423,6 +418,7 @@ test.describe('Document artifact viewers', () => {
       },
       {
         marker: 'E2E_PPTX',
+        skill: 'pptx-presentation',
         filename: 'moldy-pptx-demo.pptx',
         extension: 'pptx',
         verify: async (viewerPage) => {
@@ -440,6 +436,7 @@ test.describe('Document artifact viewers', () => {
       },
       {
         marker: 'E2E_HWPX',
+        skill: 'patent-hwpx-generator',
         filename: 'moldy-patent-demo.hwpx',
         extension: 'hwpx',
         verify: async (viewerPage) => {
@@ -470,8 +467,15 @@ test.describe('Document artifact viewers', () => {
     await expect(page.getByText('Document Artifact Viewer E2E').first()).toBeVisible()
 
     for (const item of cases) {
-      await sendMessage(page, `${item.marker} 문서를 생성해서 artifact viewer로 확인해줘.`)
-      await approveExecuteInSkill(page)
+      const parentRunId = await waitForAcceptedRunStart(page, setup.conversationId, () =>
+        sendMessage(page, `${item.marker} 문서를 생성해서 artifact viewer로 확인해줘.`),
+      )
+      const resumedRunId = await approveExecuteInSkill(page, item.skill)
+      const resumed = await getJson<RunRow>(
+        api,
+        `${API_BASE}/api/conversations/${setup.conversationId}/runs/${resumedRunId}`,
+      )
+      expect(resumed.parent_run_id).toBe(parentRunId)
       const artifact = await waitForArtifactByName(api, setup.conversationId, item.filename)
       expect(artifact.extension).toBe(item.extension)
       await openArtifactViewer(page, item.filename)
@@ -504,7 +508,7 @@ test.describe('Document artifact viewers', () => {
         page,
         'E2E_DOCX E2E_ARTIFACT_SLOW_FINAL 문서를 생성한 뒤 최종 답변 중 취소할게.',
       )
-      await approveExecuteInSkill(page)
+      await approveExecuteInSkill(page, 'docx-document')
 
       const artifact = await waitForArtifactByName(
         cancelApi,
@@ -520,9 +524,8 @@ test.describe('Document artifact viewers', () => {
         if (response.request().method() !== 'POST') return false
         const url = response.url()
         return (
-          url.includes(
-            `/api/conversations/${cancelConversationId}/runs/${activeRun.id}/cancel`,
-          ) || url.includes(`/threads/${cancelConversationId}/runs/${activeRun.id}/cancel`)
+          url.includes(`/api/conversations/${cancelConversationId}/runs/${activeRun.id}/cancel`) ||
+          url.includes(`/threads/${cancelConversationId}/runs/${activeRun.id}/cancel`)
         )
       })
       await page.locator('[data-moldy-stop-button="true"]').click()

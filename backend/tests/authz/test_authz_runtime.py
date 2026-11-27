@@ -1,7 +1,10 @@
 """P3-0 composition root: the process AuthzService, its lifespan and ``get_authz``."""
 
 from collections.abc import AsyncIterator
-from contextlib import asynccontextmanager
+from contextlib import AbstractAsyncContextManager, asynccontextmanager
+from functools import partial
+from types import SimpleNamespace
+from unittest.mock import AsyncMock
 
 import httpx
 import pytest
@@ -10,6 +13,7 @@ from fastapi import Depends, FastAPI
 import app.authz.client as client_module
 import app.authz.runtime as runtime
 import app.authz.shadow as shadow
+import app.main as main
 from app.authz.config import AuthzSettings
 from app.authz.revocation_overlay import DbRevocationOverlay
 from app.authz.runtime import (
@@ -25,6 +29,7 @@ from app.authz.service_core import AuthzDecisions
 from app.authz.shadow_metrics import current_request
 from app.main import create_app
 from tests.authz.authz_service_testkit import AGENT, RecordingClient, user
+from tests.sqlite_test_engine import TestSession
 
 
 def recording_opener(events: list[str], client: RecordingClient):
@@ -228,3 +233,71 @@ async def test_process_open_close_stops_recorder_then_closes_client(monkeypatch)
     await close_authz_runtime()  # idempotent shutdown step
     assert events == ["open", "stop", "close"]
     assert shadow._recorder is None
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("fail_open", [False, True], ids=["ready", "authorization-unavailable"])
+async def test_application_lifespan_publishes_authz_before_recovery_and_workers(
+    monkeypatch: pytest.MonkeyPatch,
+    fail_open: bool,
+) -> None:
+    app = create_app()
+    clients: list[str] = []
+    started: set[str] = set()
+    monkeypatch.setattr(main.settings, "authz_mode", "enforce")
+    monkeypatch.setattr(main.settings, "skill_evaluation_enabled", True)
+
+    def open_client(config: AuthzSettings) -> AbstractAsyncContextManager[RecordingClient]:
+        if fail_open:
+            raise ConnectionError("authorization startup failed")
+        return recording_opener(clients, RecordingClient())(config)
+
+    monkeypatch.setattr(main, "open_authz_runtime", partial(open_authz_runtime, opener=open_client))
+    monkeypatch.setattr("app.database.async_session", TestSession)
+    monkeypatch.setattr(main, "seed_default_marketplace_skills", AsyncMock())
+    monkeypatch.setattr(main, "bootstrap_system_credentials", AsyncMock())
+    monkeypatch.setattr(
+        "app.agent_runtime.model_factory.sync_env_fallback_from_credentials", AsyncMock()
+    )
+    monkeypatch.setattr("app.agent_runtime.checkpointer.init_checkpointer", AsyncMock())
+    monkeypatch.setattr(main, "register_default_hooks", lambda: None)
+
+    async def observe_start(name: str, **_kwargs: object) -> None:
+        service = runtime_authz()
+        assert service is app.state.authz
+        assert service.mode == "enforce"
+        started.add(name)
+
+    @asynccontextmanager
+    async def scheduler() -> AsyncIterator[None]:
+        await observe_start("scheduler")
+        yield
+
+    async def cleanup() -> list[BaseException]:
+        await close_authz_runtime()
+        return []
+
+    monkeypatch.setattr(main, "sweep_stale_conversation_runs", partial(observe_start, "sweep"))
+    monkeypatch.setattr(
+        "app.services.conversation_run_queue_worker.recover_conversation_queue",
+        partial(observe_start, "queue"),
+    )
+    monkeypatch.setattr(
+        main, "skill_evaluation_worker", SimpleNamespace(start=partial(observe_start, "worker"))
+    )
+    monkeypatch.setattr(main, "spend_queue", SimpleNamespace(start=AsyncMock()))
+    monkeypatch.setattr(main, "close_stale_at_startup", partial(observe_start, "reconcile"))
+    monkeypatch.setattr(main, "scheduler_leadership_runtime", scheduler)
+    monkeypatch.setattr(main, "shutdown_runtime_resources", cleanup)
+
+    if fail_open:
+        with pytest.raises(ConnectionError, match="authorization startup failed"):
+            async with app.router.lifespan_context(app):
+                pytest.fail("startup continued after the authorization client failed")
+        assert not started
+        return
+
+    async with app.router.lifespan_context(app):
+        assert clients == ["open"]
+        assert started == {"sweep", "queue", "worker", "reconcile", "scheduler"}
+    assert clients == ["open", "close"]

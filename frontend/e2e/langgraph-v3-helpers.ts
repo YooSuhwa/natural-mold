@@ -287,26 +287,18 @@ export async function normalizeArtifactList(page: Page, reportFile: string, note
   return { reportArtifactButton }
 }
 
-export async function approveExecuteInSkill(page: Page): Promise<string> {
-  await expect(page.getByText(/승인이 필요합니다|Approval Required/).last()).toBeVisible({
-    timeout: 30_000,
-  })
-  await expect
-    .poll(async () => page.getByTestId('approval-approve-button').count(), {
-      timeout: 10_000,
-      intervals: [250, 500, 1000],
-    })
-    .toBeGreaterThan(0)
+export async function approveExecuteInSkill(page: Page, skill?: string): Promise<string> {
+  const target = skill
+    ? page.getByTestId('approval-action-0').filter({ has: page.getByText(skill, { exact: true }) })
+    : page
+  const approve = target.locator('[data-testid="approval-approve-button"]:visible:enabled').last()
+  await expect(approve).toBeVisible({ timeout: 30_000 })
   const agUi = process.env.NEXT_PUBLIC_CHAT_RUNTIME === 'ag_ui'
   const threadId = agUi
-    ? await page
-        .locator('[data-testid="approval-approve-button"]:visible:enabled')
-        .last()
-        .evaluate(
-          (button) =>
-            button.closest<HTMLElement>('[data-chat-selection-thread]')?.dataset
-              .chatSelectionThread,
-        )
+    ? await approve.evaluate(
+        (button) =>
+          button.closest<HTMLElement>('[data-chat-selection-thread]')?.dataset.chatSelectionThread,
+      )
     : undefined
   const responsePromise = page.waitForResponse(
     (response) => {
@@ -339,21 +331,10 @@ export async function approveExecuteInSkill(page: Page): Promise<string> {
     },
     { timeout: 15_000 },
   )
-  await expect(async () => {
-    const clicked = await page.evaluate(() => {
-      const buttons = Array.from(
-        document.querySelectorAll<HTMLButtonElement>('[data-testid="approval-approve-button"]'),
-      ).filter((button) => button.offsetParent !== null && !button.disabled)
-      const button = buttons.at(-1)
-      if (!button) return false
-      button.click()
-      return true
-    })
-    expect(clicked).toBe(true)
-  }).toPass({ timeout: 10_000, intervals: [250, 500, 1000] })
+  await approve.click()
   const response = await Promise.race([
     responsePromise,
-    page
+    target
       .getByText(
         /승인 응답을 전송하지 못했습니다\. 다시 시도하세요\.|Could not send the approval response\. Try again\./,
       )

@@ -37,8 +37,9 @@ from app.schemas.conversation_goal_criteria import (
     normalized_cell,
 )
 from app.services.artifact_storage import (
-    ArtifactStorageBackendUnavailableError,
+    artifact_object_key,
     get_artifact_storage_backend,
+    open_verified_object,
 )
 from app.services.artifacts.errors import ArtifactNotFoundError
 
@@ -47,12 +48,12 @@ MAX_GOAL_EVIDENCE_BYTES = 8 * 1024 * 1024
 _NO_VALUE = {"", "-", "—", "n/a", "미확인", "미상"}
 
 
-def _read_verified(path: Path, *, size: int, sha256: str) -> bytes:
+def _read_verified(path: Path, *, object_key: str, size: int, sha256: str) -> bytes:
     """Hash exactly the expected bytes, bounded even if the stored file has grown."""
     digest = hashlib.sha256()
     content = io.BytesIO()
     remaining = size
-    with path.open("rb") as source:
+    with open_verified_object(path, object_key) as source:
         while remaining:
             chunk = source.read(min(1024 * 1024, remaining))
             if not chunk:
@@ -73,22 +74,31 @@ async def _verified_content(artifact: ConversationArtifact, version: ArtifactVer
         raise ArtifactNotFoundError("evidence not available")
     try:
         storage = get_artifact_storage_backend()
-        path = await storage.local_path(object_key=version.object_key, tenant_id=artifact.tenant_id)
-        expected_directory = (
-            "conversations",
-            str(artifact.conversation_id),
-            str(artifact.id),
-            f"v{version.version_number}",
+        # local_path enforces the existing company policy for unprefixed historical objects.
+        # A fenced writer also records its attempt's UUID so a rolled-back copy is unreachable.
+        legacy = version.object_key.startswith("conversations/")
+        valid_keys = (
+            artifact_object_key(
+                conversation_id=artifact.conversation_id,
+                artifact_id=artifact.id,
+                version_number=version.version_number,
+                display_name=version.original_filename,
+                tenant_id=None if legacy else artifact.tenant_id,
+                object_version_id=version_id,
+            )
+            for version_id in (None, version.id)
         )
-        if path.parent.parts[-4:] != expected_directory:
+        if version.object_key not in valid_keys:
             raise ArtifactNotFoundError("evidence storage identity mismatch")
+        path = await storage.local_path(object_key=version.object_key, tenant_id=artifact.tenant_id)
         return await asyncio.to_thread(
             _read_verified,
             path,
+            object_key=version.object_key,
             size=version.size_bytes,
             sha256=version.sha256,
         )
-    except (OSError, ValueError, ArtifactStorageBackendUnavailableError) as exc:
+    except (OSError, ValueError, RuntimeError) as exc:
         raise ArtifactNotFoundError("evidence not available") from exc
 
 
