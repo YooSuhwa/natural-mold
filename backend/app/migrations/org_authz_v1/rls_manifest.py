@@ -40,6 +40,7 @@ DIRECT_TENANT: Final = frozenset(
         "audit_events",
         "authz_revocations",
         "builder_sessions",
+        "chat_notification_outbox",
         "conversation_artifacts",
         "conversation_goals",
         "conversation_run_steers",

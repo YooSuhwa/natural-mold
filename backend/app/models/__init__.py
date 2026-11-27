@@ -23,6 +23,7 @@ from app.models.audit_event import AuditEvent
 from app.models.authz import AuthzOutbox, AuthzRevocation, AuthzShadowDiff, ResourceGrant
 from app.models.authz_reconcile_run import AuthzReconcileRun
 from app.models.builder_session import BuilderSession
+from app.models.chat_notification_outbox import ChatNotificationOutbox
 from app.models.conversation import Conversation
 from app.models.conversation_artifact import ArtifactVersion, ConversationArtifact
 from app.models.conversation_goal import ConversationGoal, GoalAttempt, GoalTransitionIntent
@@ -200,6 +201,7 @@ __all__ = [
     "MessageEventChunk",
     "MessageFeedback",
     "Model",
+    "ChatNotificationOutbox",
     "Notification",
     "AuthzReconcileRun",
     "RefreshToken",
