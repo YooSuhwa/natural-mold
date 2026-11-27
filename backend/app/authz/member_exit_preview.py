@@ -22,7 +22,7 @@ from app.authz.service import AuthzService
 from app.authz.share_targets import SHARE_TYPES, ShareRow, share_object
 from app.authz.share_transfer_blocks import check_transferable
 from app.exceptions import AppError
-from app.models.agent import Agent
+from app.models.agent import AGENT_RUNTIME_PROFILE_STANDARD, Agent
 from app.models.agent_api import AgentApiKey, AgentDeployment
 from app.models.agent_trigger import AgentTrigger
 from app.models.authz import ResourceGrant
@@ -57,9 +57,10 @@ async def _owned(db: AsyncSession, org_id: UUID, user_id: UUID) -> list[OwnedRes
     owned: list[OwnedResource] = []
     for kind in SHARE_TYPES.values():
         model = kind.model
-        rows = await db.scalars(
-            select(model).where(model.org_id == org_id, model.user_id == user_id).order_by(model.id)
-        )
+        query = select(model).where(model.org_id == org_id, model.user_id == user_id)
+        if model is Agent:
+            query = query.where(Agent.runtime_profile == AGENT_RUNTIME_PROFILE_STANDARD)
+        rows = await db.scalars(query.order_by(model.id))
         owned += [await _owned_entry(db, kind.name, row, user_id) for row in rows]
     items = await db.scalars(  # no transfer path until I-04 (E-01): delete or unpublish
         select(MarketplaceItem)

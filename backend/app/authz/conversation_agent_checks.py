@@ -11,7 +11,7 @@ from contextvars import ContextVar
 from uuid import UUID
 
 from fastapi import Depends
-from sqlalchemy import select
+from sqlalchemy import or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.authz.org_context import OrgContext
@@ -22,7 +22,7 @@ from app.authz.scoping import private_scope_predicate
 from app.authz.service import AuthzService, Verdict
 from app.error_codes import agent_not_found
 from app.exceptions import AppError
-from app.models.agent import Agent
+from app.models.agent import AGENT_RUNTIME_PROFILE_STANDARD, Agent
 
 AGENT_MIN_VISIBLE = "can_run"
 _request_authz: ContextVar[AuthzService | None] = ContextVar("conversation_authz", default=None)
@@ -108,10 +108,14 @@ async def require_scoped_agent_permission(
     authz = _resolve(authz)
     if authz.mode == "legacy":
         return
+    owned = private_scope_predicate(Agent, context)
     row = (
         await db.execute(
-            select(Agent.org_id, private_scope_predicate(Agent, context).label("owned"))
-            .where(Agent.id == agent_id)
+            select(Agent.org_id, owned.label("owned"))
+            .where(
+                Agent.id == agent_id,
+                or_(owned, Agent.runtime_profile == AGENT_RUNTIME_PROFILE_STANDARD),
+            )
             .execution_options(autoflush=False)
         )
     ).one_or_none()
