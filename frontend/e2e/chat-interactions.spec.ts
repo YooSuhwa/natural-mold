@@ -1,5 +1,6 @@
 import { test, expect } from './fixtures'
-import type { APIRequestContext, Page } from '@playwright/test'
+import type { APIRequestContext, Page, Request } from '@playwright/test'
+import { z } from 'zod'
 import { isSeededScriptedModel } from './helpers/scripted-model'
 import { branchStage, observeBranch } from './helpers/branch-observation'
 
@@ -154,14 +155,71 @@ test.describe('Chat interactions', () => {
     request,
   }) => {
     test.setTimeout(90_000)
-    await startTurn(page, request, 'Please rate this answer')
+    const origin = new URL(API).origin
+    const isFeedbackWrite = (req: Request) => {
+      const url = new URL(req.url())
+      return (
+        url.origin === origin &&
+        url.pathname.startsWith('/api/messages/') &&
+        url.pathname.endsWith('/feedback') &&
+        ['POST', 'DELETE'].includes(req.method())
+      )
+    }
+    const writes: Request[] = []
+    page.on('request', (req) => {
+      if (isFeedbackWrite(req)) writes.push(req)
+    })
+    const conversationId = await startTurn(page, request, 'Please rate this answer')
+    const reply = page.locator('[data-moldy-message-role="assistant"]')
+    await expect(reply, 'one assistant reply in the new conversation').toHaveCount(1)
+    const positive = reply.getByRole('button', { name: '도움이 됨', exact: true })
+    await expect(positive, 'the reply offers positive feedback').toBeVisible({ timeout: 10_000 })
+    await expect(positive).toBeEnabled({ timeout: 10_000 })
+    expect(writes).toHaveLength(0)
 
-    const feedbackPost = page.waitForResponse(
-      (r) => /feedback/i.test(r.url()) && r.request().method() === 'POST',
-    )
-    await page.getByRole('button', { name: '도움이 됨' }).first().click()
-    const res = await feedbackPost
-    expect(res.ok()).toBeTruthy()
+    const [response] = await Promise.all([
+      page.waitForResponse((res) => isFeedbackWrite(res.request()), { timeout: 15_000 }),
+      positive.click({ timeout: 10_000 }),
+    ])
+    expect(response.request().method()).toBe('POST')
+    expect(response.ok(), 'the feedback write was accepted').toBe(true)
+    expect(response.request().postDataJSON()).toMatchObject({
+      conversation_id: conversationId,
+      rating: 'up',
+    })
+
+    // Resolve the authoritative ID after the first click so an extra read cannot mask a race.
+    const messages = await request.get(`${API}/api/conversations/${conversationId}/messages`)
+    expect(messages.ok()).toBe(true)
+    const saved = z
+      .object({
+        messages: z.array(
+          z.object({
+            id: z.string().uuid(),
+            role: z.string(),
+            content: z.string(),
+            feedback: z.object({ rating: z.string() }).nullable(),
+          }),
+        ),
+      })
+      .parse(await messages.json())
+    const answers = saved.messages.filter((row) => row.role === 'assistant' && row.content)
+    expect(answers).toHaveLength(1)
+    const answer = answers[0]
+    expect(new URL(response.url()).pathname).toBe(`/api/messages/${answer.id}/feedback`)
+    await expect(reply).toContainText(answer.content)
+    expect(answer.feedback).toEqual({ rating: 'up' })
+
+    const mine = await request.get(`${API}/api/conversations/${conversationId}/feedback`)
+    expect(mine.ok()).toBe(true)
+    expect(await mine.json()).toEqual([
+      expect.objectContaining({
+        message_id: answer.id,
+        conversation_id: conversationId,
+        rating: 'up',
+      }),
+    ])
+    expect(writes.map((req) => req.method())).toEqual(['POST'])
   })
 
   test('a multi-turn conversation keeps both exchanges', async ({ page, request }) => {
