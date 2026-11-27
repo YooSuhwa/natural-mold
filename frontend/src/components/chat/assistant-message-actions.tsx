@@ -241,7 +241,10 @@ export function UserMessageEditor() {
   const t = useTranslations('chat.message')
   const { canCancel, canSend, cancel } = useMessageEditComposerControls()
   return (
-    <MessageEditComposerRoot className="moldy-chat-card flex flex-col gap-2 p-2">
+    <MessageEditComposerRoot
+      canSubmit={canSend}
+      className="moldy-chat-card flex flex-col gap-2 p-2"
+    >
       <MessageEditComposerInput
         className="min-h-10 w-full resize-none bg-transparent px-2 py-1 text-sm leading-relaxed outline-hidden"
         autoFocus

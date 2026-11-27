@@ -7,6 +7,7 @@ import {
   useEffect,
   useLayoutEffect,
   useRef,
+  useState,
   type ClipboardEvent,
   type ForwardedRef,
   type KeyboardEvent,
@@ -27,7 +28,9 @@ import { requestThreadComposerFocus } from './composer-focus'
 import { useChatConversationId } from './conversation-context'
 
 type SubmitMode = 'enter' | 'ctrlEnter' | 'none'
-type MessageEditComposerRootProps = FormHTMLAttributes<HTMLFormElement>
+type MessageEditComposerRootProps = FormHTMLAttributes<HTMLFormElement> & {
+  canSubmit?: boolean
+}
 type MessageEditComposerSubmitEvent = Parameters<
   NonNullable<MessageEditComposerRootProps['onSubmit']>
 >[0]
@@ -114,6 +117,7 @@ export function useMessageBranchAction() {
 export function MessageEditComposerRoot({
   children,
   onSubmit,
+  canSubmit = true,
   ...props
 }: MessageEditComposerRootProps) {
   const aui = useAui()
@@ -126,6 +130,7 @@ export function MessageEditComposerRoot({
     if (event.defaultPrevented) return
 
     event.preventDefault()
+    if (!canSubmit) return
     const composer = aui.message.composer()
     const state = composer.getState()
     if (!state.isEditing || state.isEmpty) return
@@ -172,7 +177,13 @@ export function MessageEditComposerRoot({
 
 export function useMessageEditComposerControls() {
   const aui = useAui()
+  const actions = useContext(AgUiChatActionContext)
   const ready = useBranchActionReady()
+  const selectedLeaf = useAuiState((s) =>
+    actions ? s.message.metadata.custom.moldySelectedCheckpointId : undefined,
+  )
+  // Switching branches can retain the same user row and its still-open SDK edit composer.
+  const [openedLeaf] = useState(() => selectedLeaf)
   const setPendingBranchPickerSuppression = useSetAtom(pendingEditBranchPickerSuppressionAtom)
   const canCancel = useAuiState((state) => state.message.composer.canCancel)
   const canSend = useAuiState(
@@ -180,7 +191,8 @@ export function useMessageEditComposerControls() {
       state.message.composer.isEditing &&
       !state.message.composer.isEmpty &&
       !state.thread.isDisabled &&
-      ready,
+      ready &&
+      selectedLeaf === openedLeaf,
   )
 
   const cancel = useCallback(() => {
