@@ -205,6 +205,7 @@ export function useDurableAgUiHistory({
     }
 
     function reconcile() {
+      if (agent.documentDetached) return
       watchLegacyApproval()
       const state = session.getSnapshot()
       const native = thread.getState()
@@ -274,6 +275,20 @@ export function useDurableAgUiHistory({
       if (document.visibilityState === 'visible') requestFreshHistory()
       else schedule()
     }
+    function pageHidden() {
+      // Browser navigation does not unmount React before it discards active response readers.
+      agent.detachDocument()
+      read?.abort()
+      clearTimeout(timer)
+      clearTimeout(accessTimer)
+      timer = undefined
+      accessTimer = undefined
+    }
+    function pageShown(event: PageTransitionEvent) {
+      if (!event.persisted) return
+      agent.restoreDocument()
+      requestFreshHistory()
+    }
     refresh.current = requestFreshHistory
     if (readOnly && agent.isRunning) {
       agent.abortRun()
@@ -284,6 +299,8 @@ export function useDurableAgUiHistory({
     // A lost response can finalize HttpAgent after the last observable assistant-ui state update.
     const agentEvents = agent.subscribe({ onRunFinalized: schedule })
     window.addEventListener(MOLDY_BRANCH_SWITCHED_EVENT, branchChanged)
+    window.addEventListener('pagehide', pageHidden)
+    window.addEventListener('pageshow', pageShown)
     window.addEventListener('online', requestFreshHistory)
     window.addEventListener('focus', visible)
     document.addEventListener('visibilitychange', visible)
@@ -298,6 +315,8 @@ export function useDurableAgUiHistory({
       offThread()
       agentEvents.unsubscribe()
       window.removeEventListener(MOLDY_BRANCH_SWITCHED_EVENT, branchChanged)
+      window.removeEventListener('pagehide', pageHidden)
+      window.removeEventListener('pageshow', pageShown)
       window.removeEventListener('online', requestFreshHistory)
       window.removeEventListener('focus', visible)
       document.removeEventListener('visibilitychange', visible)
