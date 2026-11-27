@@ -155,6 +155,16 @@ async def check_targeted_approval(gate: Gate, model: ResearchModel, tid: str, ri
             and b["status"] == "completed",
             "sibling assignment changed after reauthentication",
         )
+        finishes = [frame for frame in public if frame["type"] == "SUBAGENT_FINISHED"]
+        by_subagent = {frame["subagentRunId"]: frame.get("outcome", {}) for frame in finishes}
+        require(
+            len(finishes) == 2
+            and set(by_subagent) == {sid, b["subagentRunId"]}
+            and by_subagent[sid].get("type") == "suspended"
+            and by_subagent[sid].get("interruptIds") == [iid]
+            and by_subagent[b["subagentRunId"]].get("type", "success") == "success",
+            "standard child finish events disagree with the managed tasks at the pause boundary",
+        )
         public_resume = str(uuid4())
         body = {
             "threadId": tid,
