@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from collections.abc import AsyncGenerator
 from unittest.mock import AsyncMock
+from urllib.parse import quote
 from uuid import uuid4
 
 import pytest
@@ -105,6 +106,25 @@ async def test_widget_restores_private_result_without_replaying_call_or_refreshi
     )
     for endpoint in endpoints:
         endpoint.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_widget_and_proxy_support_opaque_tool_call_ids(db: AsyncSession) -> None:
+    seeded = await _seed(db)
+    binding = await db.get(McpAppInvocationBinding, seeded.binding_id)
+    assert binding is not None
+    binding.tool_call_id = "call/route:1"
+    await db.commit()
+    encoded = quote(binding.tool_call_id, safe="")
+    url = f"/api/conversations/{seeded.conversation.id}/runs/{seeded.run.id}/mcp-apps/{encoded}"
+    app = _app_for_session(db, bypass_csrf=True)
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+        restored = await client.get(url, params={"binding_id": str(seeded.binding_id)})
+        assert restored.status_code == 200
+        assert restored.json()["mcp_app"]["binding_id"] == str(seeded.binding_id)
+        listed = await client.post(url, json={"method": "resources/list", "params": {}})
+        assert listed.status_code == 200
+        assert [item["uri"] for item in listed.json()["resources"]] == ["ui://weather/dashboard"]
 
 
 @pytest.mark.asyncio

@@ -25,7 +25,7 @@ router = APIRouter(tags=["mcp-apps"])
 
 
 @router.get(
-    "/api/conversations/{conversation_id}/runs/{run_id}/mcp-apps/{tool_call_id}",
+    "/api/conversations/{conversation_id}/runs/{run_id}/mcp-apps/{tool_call_id:path}",
     response_model_exclude_none=True,
 )
 @authz_policy(PRIVATE("conversations", param="conversation_id"))
@@ -60,7 +60,7 @@ async def read_mcp_app_widget_result(
 
 
 @router.post(
-    "/api/conversations/{conversation_id}/runs/{run_id}/mcp-apps/{tool_call_id}",
+    "/api/conversations/{conversation_id}/runs/{run_id}/mcp-apps/{tool_call_id:path}",
 )
 @authz_policy(PRIVATE("conversations", param="conversation_id"))
 async def execute_mcp_apps_command(
