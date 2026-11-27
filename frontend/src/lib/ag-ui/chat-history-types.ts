@@ -78,6 +78,7 @@ const envelope = z.object({
   physicalInterruptRunId: nullableId,
   failedPhysicalRunId: nullableId,
   latestPhysicalRunId: nullableId,
+  selectedPhysicalRunId: nullableId.optional(),
   errorCode: nullableId,
   runId: nullableId,
   runStatus: nullableId,
