@@ -224,7 +224,8 @@ export function useAgUiHitlActions({
       !!interruptId &&
       actionIndex !== undefined &&
       Number.isInteger(actionIndex) &&
-      !!byId.get(interruptId)?.action_requests[actionIndex],
+      !!byId.get(interruptId)?.action_requests[actionIndex] &&
+      getReadyBatchKey(getPending()) === readyBatchKey,
     registerDecision: async (index, decision, displayText, interruptId) => {
       currentBatch()
       const target =
