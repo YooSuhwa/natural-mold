@@ -41,7 +41,7 @@ class SnapshotRunReplay:
     legacy_users: list[Row] = field(default_factory=list)
     child_namespaces: dict[Namespace, str] = field(default_factory=dict)
     pending_namespaces: dict[str, Namespace] = field(default_factory=dict)
-    unresolved_pending_ids: set[str] = field(default_factory=set)
+    unresolved_pending_namespaces: dict[str, Namespace | None] = field(default_factory=dict)
     cursor: str | None = None
     complete: bool = False
 
@@ -91,7 +91,13 @@ class _ObservedOwners:
             if len(observed) == 1 and (ns := next(iter(observed))) in result.child_namespaces:
                 result.pending_namespaces[interrupt_id] = ns
             elif any(observed):
-                result.unresolved_pending_ids.add(interrupt_id)
+                # A root echo can accompany one child observation. Keep its origin so
+                # a fresh native task/issuer proof can resolve it after journal replay.
+                # Distinct child origins stay ambiguous even if one is currently visible.
+                children_seen = observed - {()}
+                result.unresolved_pending_namespaces[interrupt_id] = (
+                    next(iter(children_seen)) if len(children_seen) == 1 else None
+                )
 
 
 async def replay_snapshot_run(

@@ -56,7 +56,7 @@ class _RunEvidence:
     complete: bool
     child_namespaces: dict[tuple[str, ...], str]
     pending_namespaces: dict[str, tuple[str, ...]]
-    unresolved_pending_ids: set[str]
+    unresolved_pending_namespaces: dict[str, tuple[str, ...] | None]
     has_root_todos: bool
 
     @classmethod
@@ -68,7 +68,7 @@ class _RunEvidence:
             replay.complete,
             replay.child_namespaces,
             replay.pending_namespaces,
-            replay.unresolved_pending_ids,
+            replay.unresolved_pending_namespaces,
             None in replay.todos_by_owner,
         )
 
@@ -139,29 +139,34 @@ async def _current_interrupts(
                 secret_values=secret_values,
             )
         )
+    managed: dict[tuple[str, ...], str] = {}
     if replay.visibility.bindings:
         from app.services.ag_ui_snapshot_managed_children import restore_managed_children
 
-        owners.update(
-            await restore_managed_children(
-                db,
-                conversation=conversation,
-                context=context,
-                run=run,
-                public_run_id=public_run_id,
-                history=history,
-                merged=merged,
-                pending=checkpoint,
-                visibility=replay.visibility,
-                secret_values=secret_values,
-            )
+        managed = await restore_managed_children(
+            db,
+            conversation=conversation,
+            context=context,
+            run=run,
+            public_run_id=public_run_id,
+            history=history,
+            merged=merged,
+            pending=checkpoint,
+            visibility=replay.visibility,
+            secret_values=secret_values,
         )
+        owners.update(managed)
     items: list[ProtocolInterrupt] = []
     for item in checkpoint.interrupts:
         ident = item["id"]
-        if ident in replay.unresolved_pending_ids and ident not in checkpoint.legacy_bindings:
+        native = tuple(item["ns"])
+        if (
+            ident in replay.unresolved_pending_namespaces
+            and ident not in checkpoint.legacy_bindings
+            and (native not in managed or replay.unresolved_pending_namespaces[ident] != native)
+        ):
             continue
-        ns = tuple(item["ns"]) or replay.pending_namespaces.get(ident, ())
+        ns = native or replay.pending_namespaces.get(ident, ())
         items.append(
             ProtocolInterrupt(
                 id=ident,
