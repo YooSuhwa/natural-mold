@@ -117,6 +117,28 @@ describe('AG-UI ask_user checkpoint readiness', () => {
     expect(screen.getByRole('button', { name: 'HTML' })).toBeEnabled()
   })
 
+  it('shows expiry without answering a confirmed interrupt on behalf of an idle user', async () => {
+    vi.useFakeTimers()
+    const register = vi.fn<Register>().mockResolvedValue(undefined)
+    const resume = vi.fn<HiTLContextValue['onResumeDecisions']>().mockResolvedValue(undefined)
+    render(
+      question(register, true, {
+        timeout: 1,
+        context: {
+          approvalGeneration: 'checkpoint-1',
+          canRespondTo: (id, index) => id === 'confirmed-interrupt' && index === 1,
+          onResumeDecisions: resume,
+        },
+      }),
+    )
+    expect(screen.getByRole('button', { name: 'HTML' })).toBeEnabled()
+    await act(() => vi.advanceTimersByTimeAsync(3000))
+    expect(register).not.toHaveBeenCalled()
+    expect(resume).not.toHaveBeenCalled()
+    expect(screen.getByText('만료됨')).toBeVisible()
+    expect(screen.queryByText('답변 완료')).not.toBeInTheDocument()
+  })
+
   it('clears an earlier selection when the interrupt rotates inside the same tool call', async () => {
     const register = vi.fn<Register>().mockResolvedValue(undefined)
     const user = userEvent.setup()
