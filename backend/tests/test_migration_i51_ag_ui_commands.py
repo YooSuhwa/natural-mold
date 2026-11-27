@@ -18,7 +18,10 @@ from app.services.platform.tenant_data_scope import secret_columns
 def test_receipt_targets_survive_individual_deletion_and_follow_conversation() -> None:
     config = Config()
     config.set_main_option("script_location", str(Path(__file__).resolve().parents[1] / "alembic"))
-    revision = ScriptDirectory.from_config(config).get_revision("i51_ag_ui_commands")
+    revisions = ScriptDirectory.from_config(config)
+    revision = revisions.get_revision("i51_ag_ui_commands")
+    guard = revisions.get_revision("i52_ag_ui_queue_claim_guard")
+    assert guard and guard.down_revision == "i51_ag_ui_commands"
     assert revision and revision.down_revision == "i50_chat_model_attempts"
     migration = revision.module
     table = AgUiCommandReceipt.__table__
@@ -74,6 +77,9 @@ def test_receipt_targets_survive_individual_deletion_and_follow_conversation() -
             )
             db.execute(insert.values(public_run_id="queue", input_id=queued))
             db.commit()
+            guard.module.upgrade()
+            guard.module.downgrade()
+            assert db.scalar(sa.select(sa.func.count()).select_from(table)) == 2
             for invalid in (
                 {"public_run_id": "no-target"},
                 {"public_run_id": "two-targets", "run_id": spare, "input_id": queued},
