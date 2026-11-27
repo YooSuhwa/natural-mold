@@ -56,6 +56,7 @@ from app.models.guardrail_template import (
     GuardrailTemplateVersion,
 )
 from app.models.health_check_history import HealthCheckHistory
+from app.models.independent_chat_job import IndependentChatJob
 from app.models.job import Job, JobWorker
 from app.models.marketplace import (
     MarketplaceInstallation,
@@ -185,6 +186,7 @@ __all__ = [
     "GuardrailTemplate",
     "GuardrailTemplateVersion",
     "HealthCheckHistory",
+    "IndependentChatJob",
     "Job",
     "JobWorker",
     "MarketplaceInstallation",

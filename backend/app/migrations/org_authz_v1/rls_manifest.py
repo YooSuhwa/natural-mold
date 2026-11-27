@@ -58,6 +58,7 @@ DIRECT_TENANT: Final = frozenset(
         "guardrail_pseudonyms",  # conversation pseudonym maps (encrypted values)
         "guardrail_template_versions",  # published company templates (immutable)
         "guardrail_templates",  # company guardrail templates (drafts)
+        "independent_chat_jobs",
         "jobs",  # generic background jobs (app/jobs)
         "marketplace_installations",
         "marketplace_items",
