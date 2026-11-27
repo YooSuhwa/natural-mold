@@ -71,7 +71,7 @@ describe('AG-UI message activity ownership', () => {
     expect(
       messageActivityPresentation(index, assistant('model', { publicMessageId: 'row-B' })),
     ).toMatchObject({
-      compaction: { historyId, cutoffIndex: 5 },
+      compaction: { historyId, cutoffIndex: 5, activityId: events[0].messageId },
       compactionMessageId: 'model',
     })
   })

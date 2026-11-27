@@ -52,6 +52,7 @@ export function AssistantCompactionMarker() {
           conversationId,
           messageId: source,
           historyId,
+          activityId: typeof compaction.activityId === 'string' ? compaction.activityId : undefined,
           cutoffIndex:
             typeof cutoff === 'number' && Number.isSafeInteger(cutoff) ? cutoff : undefined,
           checkpointId:

@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from 'react'
 import { useInfiniteQuery } from '@tanstack/react-query'
+import { resolveAgUiCompactionCheckpoint } from '@/lib/ag-ui/compaction-checkpoint'
 import {
   readCompactionEvidence,
   resolveCompactionCheckpoint,
@@ -48,7 +49,10 @@ interface DisclosureRead {
   readonly failed?: boolean
 }
 
-export function useCompactionDisclosure(evidence?: CompactionEvidenceTarget) {
+export function useCompactionDisclosure(
+  evidence?: CompactionEvidenceTarget,
+  standardHistory = false,
+) {
   const [read, setRead] = useState<DisclosureRead | null>(null)
   const checkpoint = evidence?.checkpointId
   const conversationId = evidence?.conversationId
@@ -88,7 +92,10 @@ export function useCompactionDisclosure(evidence?: CompactionEvidenceTarget) {
     const attempt = new AbortController()
     setRead({ controller: attempt, expectedCheckpoint: checkpoint, resolvedCheckpoint: checkpoint })
     if (checkpoint) return
-    void resolveCompactionCheckpoint(evidence, attempt.signal).then(
+    const resolveCheckpoint = standardHistory
+      ? resolveAgUiCompactionCheckpoint
+      : resolveCompactionCheckpoint
+    void resolveCheckpoint(evidence, attempt.signal).then(
       (resolvedCheckpoint) => {
         setRead((current) =>
           current?.controller === attempt ? { ...current, resolvedCheckpoint } : current,

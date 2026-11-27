@@ -9,7 +9,7 @@ import type { AgUiActivitySnapshot, AgUiMessageLink } from './chat-history-types
 export interface MessageActivityPresentation {
   usage?: TokenUsageBreakdown
   fileEvents?: FileChange[]
-  compaction?: CompactionMarker
+  compaction?: CompactionMarker & { readonly activityId?: string }
   compactionMessageId?: string
 }
 
@@ -145,7 +145,11 @@ export function messageActivityPresentation(
       const historyId = text(content.history_id)
       const cutoff = content.cutoff_index
       result.compaction = {
-        ...(historyId && /^history_[a-f0-9]{24}$/.test(historyId) && { historyId }),
+        ...(historyId &&
+          /^history_[a-f0-9]{24}$/.test(historyId) && {
+            historyId,
+            activityId: activity.messageId,
+          }),
         ...(typeof cutoff === 'number' &&
           Number.isSafeInteger(cutoff) &&
           cutoff >= 0 && { cutoffIndex: cutoff }),

@@ -11,6 +11,8 @@ import {
   type CompactionEvidenceTarget,
 } from '@/lib/hooks/use-conversation-history-evidence'
 import { cn } from '@/lib/utils'
+import { useMoldyAgUiActivities } from '@/lib/ag-ui/activity-context'
+
 interface CompactionSummaryProps {
   readonly className?: string
   readonly evidence?: CompactionEvidenceTarget
@@ -57,17 +59,40 @@ export function HistoryEvidencePanel({ target }: { readonly target: CompactionEv
 }
 
 export function CompactionSummary(props: CompactionSummaryProps) {
-  const target = props.evidence
+  const scope = useMoldyAgUiActivities()
+  const target =
+    !scope || scope.conversationId === props.evidence?.conversationId ? props.evidence : undefined
   const origin =
     target &&
-    hashKey([target.conversationId, target.messageId, target.historyId, target.cutoffIndex])
-  return <CompactionDisclosure key={origin} {...props} />
+    hashKey([
+      Boolean(scope),
+      target.conversationId,
+      target.activityId,
+      target.messageId,
+      target.historyId,
+      target.cutoffIndex,
+    ])
+  return (
+    <CompactionDisclosure
+      key={origin}
+      className={props.className}
+      evidence={target}
+      standardHistory={Boolean(scope)}
+    />
+  )
 }
 
-function CompactionDisclosure({ className, evidence }: CompactionSummaryProps) {
+function CompactionDisclosure({
+  className,
+  evidence,
+  standardHistory,
+}: CompactionSummaryProps & { readonly standardHistory: boolean }) {
   const t = useTranslations('chat.compaction')
   const panelId = useId()
-  const { expanded, checkpointId, unavailable, toggle } = useCompactionDisclosure(evidence)
+  const { expanded, checkpointId, unavailable, toggle } = useCompactionDisclosure(
+    evidence,
+    standardHistory,
+  )
   return (
     <div
       className={cn('space-y-2 text-xs text-muted-foreground', className)}
