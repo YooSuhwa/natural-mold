@@ -16,7 +16,7 @@ import logging
 from uuid import UUID
 
 from app.authz import denials
-from app.authz.client import AuthzUnavailable
+from app.authz.client import AuthzUnavailable, Consistency
 from app.authz.config import AuthzSettings
 from app.authz.org_context import OrgContext
 from app.authz.principal import Principal
@@ -70,7 +70,13 @@ class AuthzService(AuthzDecisions):
         )
 
     async def filter_visible(
-        self, p: Principal, permission: str, objs: list[str], *, legacy: list[str]
+        self,
+        p: Principal,
+        permission: str,
+        objs: list[str],
+        *,
+        legacy: list[str],
+        consistency: Consistency = "MINIMIZE_LATENCY",
     ) -> list[str]:
         """Confirm an org-scoped candidate page; ``legacy`` is the existing visible subset."""
         if not objs or not all(self.enforces(obj.partition(":")[0]) for obj in objs):
@@ -79,7 +85,9 @@ class AuthzService(AuthzDecisions):
                 verdict = Verdict.ALLOW if obj in kept else Verdict.NOT_FOUND
                 self._shadow(ShadowSample(p, permission, obj, permission, p.org_id, verdict))
             return [obj for obj in objs if obj in kept]
-        answers = await self._enforced_batch(p, [(permission, obj) for obj in objs])
+        answers = await self._enforced_batch(
+            p, [(permission, obj) for obj in objs], consistency=consistency
+        )
         return [obj for obj in objs if answers[(permission, obj)]]
 
     async def my_permissions(
@@ -96,10 +104,14 @@ class AuthzService(AuthzDecisions):
         return [perm for perm in perms if answers[(perm, obj)]]
 
     async def _enforced_batch(
-        self, p: Principal, items: list[tuple[str, str]]
+        self,
+        p: Principal,
+        items: list[tuple[str, str]],
+        *,
+        consistency: Consistency = "MINIMIZE_LATENCY",
     ) -> dict[tuple[str, str], bool]:
         try:
-            return await self.batch_check(p, items)
+            return await self.batch_check(p, items, consistency=consistency)
         except AuthzUnavailable as error:
             raise denials.authz_unavailable() from error
 

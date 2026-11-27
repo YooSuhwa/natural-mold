@@ -28,6 +28,7 @@ IMAGE: Final = "postgres:16-alpine"
 QUEUE_CONCURRENCY_TARGETS: Final = (
     "tests/integration/test_conversation_queue_concurrency.py",
     "tests/integration/test_chat_steer_concurrency.py",
+    "tests/integration/test_ag_ui_v1_read_faults_postgres.py",
     "tests/integration/test_steer_recovery.py",
     (
         "tests/test_chat_steer_checkpoint.py"

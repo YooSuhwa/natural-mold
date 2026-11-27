@@ -36,19 +36,22 @@ from app.tools.keys import agent_ref
 
 
 @dataclass(frozen=True, slots=True)
-class _Target:
+class ChildTarget:
     conversation_id: UUID
     parent_id: UUID
     parent_owner: UUID
     parent_identity: str
     profile: str
+    child_id: UUID
     child_owner: UUID
     child_name: str
     child_profile: str
     epoch: int
 
 
-async def _target(db: AsyncSession, context: OrgContext, run_id: UUID, child_id: UUID) -> _Target:
+async def _target(
+    db: AsyncSession, context: OrgContext, run_id: UUID, child_id: UUID
+) -> ChildTarget:
     """Read authority metadata only. Never load a child graph, model or credential here."""
     child = aliased(Agent)
     root_pin = aliased(ConversationRunAgent)
@@ -63,6 +66,7 @@ async def _target(db: AsyncSession, context: OrgContext, run_id: UUID, child_id:
                 Agent.user_id,
                 Agent.identity_mode,
                 Agent.runtime_profile,
+                child.id,
                 child.user_id,
                 child.name,
                 child.runtime_profile,
@@ -114,10 +118,10 @@ async def _target(db: AsyncSession, context: OrgContext, run_id: UUID, child_id:
     ).one_or_none()
     if row is None:
         raise ChildTaskStopped("revoked")
-    return _Target(*row)
+    return ChildTarget(*row)
 
 
-async def _require_delegation(target: _Target, context: OrgContext, child_id: UUID) -> None:
+async def _require_delegation(target: ChildTarget, context: OrgContext, child_id: UUID) -> None:
     """The chat caller runs the parent; its fixed or caller identity runs the child."""
     authz = current_authz()
     account = context.user_id if target.parent_identity == "per_user" else target.parent_owner
@@ -152,6 +156,61 @@ async def _require_delegation(target: _Target, context: OrgContext, child_id: UU
                 raise ChildTaskStopped("revoked")
     except AuthzUnavailable as exc:
         raise authz_unavailable() from exc
+
+
+async def _require_child_available(
+    db: AsyncSession, context: OrgContext, target: ChildTarget, child_agent_id: UUID
+) -> None:
+    policy = await resolve_tool_risk(db, context.tenant_id, target.profile)
+    if policy and policy.switched_off(agent_ref(child_agent_id, target.child_name)):
+        raise ChildTaskStopped("revoked")
+    await refuse_run(db, tenant_id=context.tenant_id, agent_id=target.parent_id)
+    await refuse_run(db, tenant_id=context.tenant_id, agent_id=child_agent_id)
+
+
+async def child_history_target(
+    db: AsyncSession,
+    context: OrgContext,
+    run_id: UUID,
+    child_agent_id: UUID,
+    *,
+    conversation_id: UUID,
+    epoch: int,
+) -> ChildTarget | None:
+    """Obtain a live remote decision without entering the execution or dispatch paths."""
+    try:
+        target = await _target(db, context, run_id, child_agent_id)
+        if target.epoch != epoch or target.conversation_id != conversation_id:
+            return None
+        await _require_delegation(target, context, child_agent_id)
+        return target
+    except ChildTaskStopped:
+        return None
+    except AppError as exc:
+        if exc.status in {403, 404, 503}:
+            return None
+        raise
+
+
+async def child_history_target_is_current(
+    db: AsyncSession,
+    context: OrgContext,
+    target: ChildTarget,
+    run_ids: tuple[UUID, ...],
+) -> bool:
+    """After all remote decisions, recheck local policy and each admission's identities."""
+    try:
+        await _require_child_available(db, context, target, target.child_id)
+        for run_id in run_ids:
+            if target != await _target(db, context, run_id, target.child_id):
+                return False
+    except ChildTaskStopped:
+        return False
+    except AppError as exc:
+        if exc.status in {403, 404, 409, 503}:
+            return False
+        raise
+    return True
 
 
 def _require_status(run: ConversationRun, require_active: bool) -> None:
@@ -208,11 +267,7 @@ async def authorize_child_target(
             or target != await _target(db, context, run_id, child_agent_id)
         ):
             raise ChildTaskStopped("revoked")
-        policy = await resolve_tool_risk(db, context.tenant_id, target.profile)
-        if policy and policy.switched_off(agent_ref(child_agent_id, target.child_name)):
-            raise ChildTaskStopped("revoked")
-        await refuse_run(db, tenant_id=context.tenant_id, agent_id=target.parent_id)
-        await refuse_run(db, tenant_id=context.tenant_id, agent_id=child_agent_id)
+        await _require_child_available(db, context, target, child_agent_id)
     except DispatchDeniedError:
         raise ChildTaskStopped("revoked") from None
     except AppError as exc:
