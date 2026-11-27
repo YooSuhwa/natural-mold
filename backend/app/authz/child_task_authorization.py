@@ -48,13 +48,33 @@ class _Target:
     epoch: int
 
 
-async def _target(db: AsyncSession, context: OrgContext, run_id: UUID, child_id: UUID) -> _Target:
+async def _target(
+    db: AsyncSession,
+    context: OrgContext,
+    run_id: UUID,
+    child_id: UUID,
+    *,
+    legacy_attribution: bool = False,
+) -> _Target:
     """Read authority metadata only. Never load a child graph, model or credential here."""
     child = aliased(Agent)
     root_pin = aliased(ConversationRunAgent)
     child_pin = ConversationRunAgent
     root_account = case((Agent.identity_mode == "per_user", context.user_id), else_=Agent.user_id)
     child_account = case((child.identity_mode == "per_user", context.user_id), else_=child.user_id)
+    # Pre-F04 admissions persisted the actual accounts on every participant, but
+    # lacked an identity-mode column. Only the legacy resume proof may use them.
+    root_mode = root_pin.identity_mode_at_accept == Agent.identity_mode
+    child_mode = child_pin.identity_mode_at_accept == child.identity_mode
+    if legacy_attribution:
+        root_mode = (
+            root_pin.identity_mode_at_accept.is_(None)
+            & (root_pin.invoker_type == "user")
+            & (ConversationRun.invoker_type == "user")
+        )
+        child_mode = child_pin.identity_mode_at_accept.is_(None) & (
+            child_pin.invoker_type == "subagent"
+        )
     row = (
         await db.execute(
             select(
@@ -98,14 +118,14 @@ async def _target(db: AsyncSession, context: OrgContext, run_id: UUID, child_id:
                 root_pin.role == "root",
                 root_pin.agent_id == Agent.id,
                 root_pin.agent_id_snapshot == Agent.id,
-                root_pin.identity_mode_at_accept == Agent.identity_mode,
+                root_mode,
                 root_pin.resource_owner_user_id == Agent.user_id,
                 root_pin.credential_subject_user_id == root_account,
                 root_pin.on_behalf_of_user_id == root_account,
                 child_pin.role == "subagent",
                 child_pin.agent_id == child_id,
                 child_pin.agent_id_snapshot == child_id,
-                child_pin.identity_mode_at_accept == child.identity_mode,
+                child_mode,
                 child_pin.resource_owner_user_id == child.user_id,
                 child_pin.credential_subject_user_id == child_account,
                 child_pin.on_behalf_of_user_id == child_account,
@@ -152,6 +172,16 @@ async def _require_delegation(target: _Target, context: OrgContext, child_id: UU
                 raise ChildTaskStopped("revoked")
     except AuthzUnavailable as exc:
         raise authz_unavailable() from exc
+
+
+async def _require_child_available(
+    db: AsyncSession, context: OrgContext, target: _Target, child_agent_id: UUID
+) -> None:
+    policy = await resolve_tool_risk(db, context.tenant_id, target.profile)
+    if policy and policy.switched_off(agent_ref(child_agent_id, target.child_name)):
+        raise ChildTaskStopped("revoked")
+    await refuse_run(db, tenant_id=context.tenant_id, agent_id=target.parent_id)
+    await refuse_run(db, tenant_id=context.tenant_id, agent_id=child_agent_id)
 
 
 def _require_status(run: ConversationRun, require_active: bool) -> None:
@@ -208,11 +238,7 @@ async def authorize_child_target(
             or target != await _target(db, context, run_id, child_agent_id)
         ):
             raise ChildTaskStopped("revoked")
-        policy = await resolve_tool_risk(db, context.tenant_id, target.profile)
-        if policy and policy.switched_off(agent_ref(child_agent_id, target.child_name)):
-            raise ChildTaskStopped("revoked")
-        await refuse_run(db, tenant_id=context.tenant_id, agent_id=target.parent_id)
-        await refuse_run(db, tenant_id=context.tenant_id, agent_id=child_agent_id)
+        await _require_child_available(db, context, target, child_agent_id)
     except DispatchDeniedError:
         raise ChildTaskStopped("revoked") from None
     except AppError as exc:
