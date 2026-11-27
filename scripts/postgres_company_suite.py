@@ -60,6 +60,7 @@ COMPANY_ADMINISTRATION_MODULES: Final[tuple[str, ...]] = (
     "tests/integration/test_memory_recall_postgres.py",
     "tests/test_goal_sandbox_postgres.py",
     "tests/integration/test_chat_notification_outbox.py",
+    "tests/integration/test_approval_recording_order.py",
     "tests/integration/test_prepared_recall_rls_postgres.py",
     "tests/integration/test_independent_notification_files.py",
 )
