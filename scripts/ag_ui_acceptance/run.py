@@ -1,4 +1,4 @@
-"""Run the ordinary-chat cutover gate against two actual workers in one disposable company-aware stack."""
+"""Verify ordinary-chat cutover on two workers in a disposable multi-tenant stack."""
 
 from __future__ import annotations
 
@@ -12,17 +12,17 @@ import sys
 import time
 from collections.abc import Callable
 from contextlib import ExitStack
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 from tempfile import TemporaryDirectory
 from uuid import NAMESPACE_URL, uuid5
 
 import httpx
 
-HERE = Path(__file__).resolve().parent
-HARNESS = HERE.parents[1]
-sys.path.insert(0, str(HARNESS / "scripts"))
+# Direct CLI invocation puts this directory on sys.path. Add the shared E2E lane helpers.
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
+from case_selection import resolve_case_specs
 from e2e_runner_contract import E2eDsns
 from e2e_runner_environment import assert_node22, build_lane_environment
 from evidence import collect_failure, playwright_report
@@ -32,6 +32,9 @@ from openfga import acceptance_openfga
 from processes import command, managed, ports, wait_ready
 from skill_attempts import docx_attempt_environment
 from stack_sources import digest, revision, stage, stage_probe_files
+
+HERE = Path(__file__).resolve().parent
+HARNESS = HERE.parents[1]
 
 
 def arguments() -> argparse.Namespace:
@@ -57,12 +60,12 @@ def arguments() -> argparse.Namespace:
     parser.add_argument(
         "--reference-python",
         type=Path,
-        help="Python from the optional separate environment that contains the official LangGraph adapter",
+        help="Python from a separate environment with the official LangGraph adapter",
     )
     parser.add_argument(
         "--perf-timing",
         action="store_true",
-        help="measure actual scripted emission, PG commit, streaming receipt and DOM display per token",
+        help="measure model emission, PostgreSQL commit, client receipt and DOM display per token",
     )
     parser.add_argument("--phase", choices=("smoke", "api", "browser", "full"), default="full")
     parser.add_argument("--output", type=Path, required=True, help="new local evidence directory")
@@ -90,6 +93,12 @@ def arguments() -> argparse.Namespace:
         default=[],
         help="additional e2e spec that is meaningful only on the standard client",
     )
+    parser.add_argument(
+        "--extra-case",
+        action="append",
+        default=[],
+        help="select a single normal case in both modes by e2e/file.spec.ts::exact test title",
+    )
     args = parser.parse_args()
     if args.perf_timing and args.phase not in {"browser", "full"}:
         parser.error("--perf-timing requires a browser or full gate")
@@ -111,6 +120,7 @@ def browser_gate(
     logs: Path,
     stack: ExitStack,
     extra_specs: list[str],
+    extra_cases: list[str],
     ag_ui_specs: list[str],
     probes: Path,
     record: dict,
@@ -167,6 +177,10 @@ def browser_gate(
         record["processes"][f"next-{mode}"] = proc.pid
     # Companion probes may now reuse the same authenticated, production-built frontends.
     env["MOLDY_AGUI_BROWSER_READY"] = "1"
+    extra_specs = resolve_case_specs(
+        frontend, frontend_envs["ag_ui"], logs, probes, extra_cases, extra_specs
+    )
+    record["selected_browser_cases"] = {"case_titles": extra_cases, "resolved_specs": extra_specs}
     suites = [
         ("performance-langgraph_v3", "langgraph_v3", ["e2e/chat-stream-perf.spec.ts"]),
         ("performance-ag_ui", "ag_ui", ["e2e/chat-stream-perf.spec.ts"]),
@@ -193,6 +207,7 @@ def browser_gate(
         command_failed = False
         cfg = {
             **frontend_envs[mode],
+            "MOLDY_AGUI_PLAYWRIGHT_GROUP": name,
             "MOLDY_AGUI_PLAYWRIGHT_JSON": str(logs / f"pw-{name}.json"),
         }
         try:
@@ -527,6 +542,7 @@ def execute(args: argparse.Namespace, record: dict) -> None:
                     logs,
                     stack,
                     args.extra_spec,
+                    args.extra_case,
                     args.ag_ui_spec,
                     probes,
                     record,
@@ -563,7 +579,7 @@ def main() -> int:
 
     signal.signal(signal.SIGTERM, stop)
     started = time.monotonic()
-    record = {"started_at": datetime.now(timezone.utc).isoformat(), "passed": False}
+    record = {"started_at": datetime.now(UTC).isoformat(), "passed": False}
     try:
         execute(args, record)
         record["passed"] = True
