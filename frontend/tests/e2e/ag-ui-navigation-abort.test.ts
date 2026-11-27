@@ -1,5 +1,5 @@
 import { EventEmitter } from 'node:events'
-import { describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { API_BASE } from '../../e2e/fixtures'
 
@@ -13,6 +13,16 @@ const fixture = vi.hoisted(() => ({ errors: undefined as ErrorFixture | undefine
 vi.mock('@playwright/test', () => ({
   test: { extend: (definition: { errors: ErrorFixture }) => Object.assign(fixture, definition) },
   expect,
+}))
+
+// The native reader has its own stream/EOF tests. This double records which exact
+// browser request received its complete response; the real fixture decides the verdict.
+const nativeCompletion = vi.hoisted(() => new WeakSet<object>())
+vi.mock('../../e2e/helpers/ag-ui-complete-response', () => ({
+  installCompletedAgUiResponseObserver: async () => ({
+    hasCompleted: (request: object) => nativeCompletion.has(request),
+    dispose: () => {},
+  }),
 }))
 
 const commandUrl = `${API_BASE}/api/conversations/thread-a/ag-ui/runs`
@@ -59,9 +69,9 @@ const navigation = () => ({
 async function observe(run: (page: EventEmitter, codes: () => string[]) => void) {
   if (!fixture.errors) throw new Error('Expected the real errors fixture.')
   const page = Object.assign(new EventEmitter(), { mainFrame: () => mainFrame, url: () => pageUrl })
-  await fixture.errors({ page }, async (errors) => run(page, () => errors.network), {
-    annotations: [],
-  })
+  const annotations: { type: string; description?: string }[] = []
+  await fixture.errors({ page }, async (errors) => run(page, () => errors.network), { annotations })
+  return annotations
 }
 
 describe('accepted AG-UI command across a document replacement', () => {
@@ -186,4 +196,188 @@ describe('accepted AG-UI command across a document replacement', () => {
       expect(codes()).toEqual(scenario.expected ?? ['api_request_abort'])
     })
   })
+})
+
+describe('completed AG-UI command in one document', () => {
+  beforeEach(() => {
+    vi.stubEnv('NEXT_PUBLIC_CHAT_RUNTIME', 'ag_ui')
+  })
+  afterEach(() => {
+    vi.unstubAllEnvs()
+  })
+
+  it.each(['before', 'after'] as const)(
+    'checks native completion %s the abort callback',
+    async (order) => {
+      const annotations = await observe((page, codes) => {
+        const request = fetchRun()
+        page.emit('request', request)
+        page.emit('response', responseFor(request))
+        if (order === 'before') nativeCompletion.add(request)
+        page.emit('requestfailed', request)
+        if (order === 'after') {
+          expect(codes()).toEqual(['api_request_abort'])
+          nativeCompletion.add(request)
+        }
+        expect(codes()).toEqual([])
+      })
+      expect(annotations).toEqual([])
+    },
+  )
+
+  it.each(['before', 'after'] as const)(
+    'retains only a completion proved %s a later document commit',
+    async (order) => {
+      const annotations = await observe((page, codes) => {
+        const request = fetchRun()
+        page.emit('request', request)
+        page.emit('response', responseFor(request))
+        page.emit('requestfailed', request)
+        expect(codes()).toEqual(['api_request_abort'])
+        if (order === 'before') nativeCompletion.add(request)
+        // No getter runs between completion and navigation in a real user flow.
+        page.emit('request', navigation())
+        page.emit('framenavigated', mainFrame)
+        if (order === 'after') nativeCompletion.add(request)
+        expect(codes()).toEqual(order === 'before' ? [] : ['api_request_abort'])
+      })
+      const failures = annotations.filter((item) => item.type === 'moldy.network-failure.v1')
+      expect(failures.map((item) => item.description)).toEqual(
+        order === 'before' ? [] : ['api_request_abort'],
+      )
+    },
+  )
+
+  it.each(['without-proof', 'another-request', 'late-receipt', 'unrelated-commit'] as const)(
+    'retains an early abort with %s in the getter and final annotations',
+    async (reason) => {
+      const annotations = await observe((page, codes) => {
+        const request = fetchRun()
+        page.emit('request', request)
+        if (reason !== 'late-receipt') page.emit('response', responseFor(request))
+        page.emit('requestfailed', request)
+        if (reason === 'another-request' || reason === 'unrelated-commit') {
+          if (reason === 'unrelated-commit') {
+            page.emit('request', navigation())
+            page.emit('framenavigated', mainFrame)
+          }
+          const other = fetchRun()
+          page.emit('request', other)
+          page.emit('response', responseFor(other))
+          nativeCompletion.add(other)
+        } else if (reason === 'late-receipt') {
+          page.emit('response', responseFor(request))
+          nativeCompletion.add(request)
+        }
+        expect(codes()).toEqual(['api_request_abort'])
+      })
+      expect(annotations).toContainEqual({
+        type: 'moldy.network-failure.v1',
+        description: 'api_request_abort',
+      })
+      expect(
+        annotations.filter((item) => item.type === 'moldy.api-request-failure.v1'),
+      ).toHaveLength(1)
+    },
+  )
+
+  it('keeps the abort when the client uses the LangGraph runtime', async () => {
+    vi.stubEnv('NEXT_PUBLIC_CHAT_RUNTIME', 'langgraph_v3')
+    const annotations = await observe((page, codes) => {
+      const request = fetchRun()
+      page.emit('request', request)
+      page.emit('response', responseFor(request))
+      nativeCompletion.add(request)
+      page.emit('requestfailed', request)
+      expect(codes()).toEqual(['api_request_abort'])
+    })
+    expect(annotations).toContainEqual({
+      type: 'moldy.network-failure.v1',
+      description: 'api_request_abort',
+    })
+  })
+
+  it('keeps a concurrent interrupted command when the other command finished', async () => {
+    const annotations = await observe((page, codes) => {
+      const completed = fetchRun()
+      const interrupted = {
+        ...fetchRun(),
+        postData: () => body.replace('public-id', 'second-public-id'),
+      }
+      page.emit('request', completed)
+      page.emit('request', interrupted)
+      page.emit('response', responseFor(completed))
+      const response = responseFor(interrupted)
+      page.emit('response', {
+        ...response,
+        headers: () => ({
+          ...response.headers(),
+          'x-run-id': 'second-public-id',
+          'x-moldy-run-id': 'second-physical-id',
+        }),
+      })
+      page.emit('requestfailed', interrupted)
+      nativeCompletion.add(completed)
+      page.emit('requestfailed', completed)
+      expect(codes()).toEqual(['api_request_abort'])
+    })
+    expect(annotations.filter((item) => item.type === 'moldy.network-failure.v1')).toHaveLength(1)
+    expect(annotations.filter((item) => item.type === 'moldy.api-request-failure.v1')).toHaveLength(
+      1,
+    )
+  })
+
+  it.each([
+    {
+      name: 'wrong command path',
+      request: { url: () => `${commandUrl}/other-command` },
+    },
+    {
+      name: 'snapshot GET',
+      request: {
+        url: () => `${API_BASE}/api/conversations/thread-a/ag-ui/snapshot`,
+        method: () => 'GET',
+      },
+    },
+    {
+      name: 'different thread in body',
+      request: { postData: () => body.replace('thread-a', 'thread-b') },
+    },
+    { name: 'missing public receipt', headers: { 'x-run-id': '' } },
+    { name: 'wrong public receipt', headers: { 'x-run-id': 'other-run' } },
+    {
+      name: 'queue-only receipt',
+      headers: {
+        'x-moldy-run-id': '',
+        'x-moldy-input-id': 'queued-input',
+        'x-moldy-input-status': 'pending',
+        'x-moldy-input-position': '1',
+        'x-moldy-input-revision': '1',
+      },
+    },
+    { name: 'other frame', request: { frame: () => ({}) } },
+    { name: 'HTTP error', status: 500 },
+  ])(
+    'preserves a $name failure even if a reader finished',
+    async ({ request: overrides, headers, status }) => {
+      const annotations = await observe((page, codes) => {
+        const request = { ...fetchRun(), ...overrides }
+        const response = responseFor(request)
+        page.emit('request', request)
+        page.emit('response', {
+          ...response,
+          status: () => status ?? 200,
+          headers: () => ({ ...response.headers(), ...headers }),
+        })
+        nativeCompletion.add(request)
+        page.emit('requestfailed', request)
+        expect(codes()).toContain('api_request_abort')
+        if (status) expect(codes()).toContain('api_response_failure')
+      })
+      expect(annotations).toContainEqual({
+        type: 'moldy.network-failure.v1',
+        description: 'api_request_abort',
+      })
+    },
+  )
 })

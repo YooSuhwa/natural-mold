@@ -162,6 +162,7 @@ export type DeferredDocumentAbort = {
   readonly input: RequestFailureDiagnosticInput
   readonly startNavigationGeneration: number
   readonly replacement?: DocumentReplacement
+  readonly completedInCurrentDocument?: () => boolean
 }
 
 /** Return the candidate's effective code until a later main-frame navigation
@@ -170,6 +171,11 @@ export function deferredDocumentAbortCode(
   candidate: DeferredDocumentAbort,
   currentNavigationGeneration: number,
 ): NetworkFailureCode | undefined {
+  if (candidate.completedInCurrentDocument) {
+    return candidate.completedInCurrentDocument()
+      ? undefined
+      : classifyRequestFailure(candidate.input)
+  }
   return currentNavigationGeneration > candidate.startNavigationGeneration &&
     candidate.replacement?.committed !== false
     ? undefined

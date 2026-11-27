@@ -27,6 +27,7 @@ import {
   type NetworkFailureCode,
 } from './helpers/network-failure-diagnostic'
 import { ONBOARDING_DISMISSED_FLAG, SUPER_USER_WELCOMED_FLAG } from '../src/lib/auth/session-flags'
+import { installCompletedAgUiResponseObserver } from './helpers/ag-ui-complete-response'
 import { hasAcceptedAgUiFetch } from './helpers/ag-ui-stream-acceptance'
 import { waitForAgentRunsBeforeDelete } from './helpers/agent-cleanup'
 
@@ -158,7 +159,11 @@ export const test = base.extend<{ authMock: void; failureUi: void; errors: Error
   errors: async ({ page }, use, testInfo) => {
     const persistentNetworkCodes: NetworkFailureCode[] = []
     const deferredDocumentAborts: Array<DeferredDocumentAbort & { readonly url: string }> = []
-    const acceptedAgUiRuns = new WeakSet<Request>()
+    const completedResponses =
+      process.env.NEXT_PUBLIC_CHAT_RUNTIME === 'ag_ui'
+        ? await installCompletedAgUiResponseObserver(page, API_BASE)
+        : null
+    const acceptedAgUiRuns = new WeakMap<Request, { physical: boolean }>()
     const navigations = new WeakMap<Request, DocumentReplacement>()
     const errors: ErrorCollector = {
       console: [],
@@ -191,7 +196,11 @@ export const test = base.extend<{ authMock: void; failureUi: void; errors: Error
         navigations.set(request, documentCommits.navigationRequested())
     })
     page.on('framenavigated', (frame) => {
-      if (frame === page.mainFrame()) documentCommits.frameNavigated()
+      if (frame !== page.mainFrame()) return
+      if (documentCommits.latestNavigation?.committed === false) {
+        for (const abort of deferredDocumentAborts) abort.completedInCurrentDocument?.()
+      }
+      documentCommits.frameNavigated()
     })
     page.on('console', (msg) => {
       if (msg.type() === 'error') {
@@ -207,8 +216,10 @@ export const test = base.extend<{ authMock: void; failureUi: void; errors: Error
       if (
         requestDocumentGenerations.has(request) &&
         hasAcceptedAgUiFetch(request, response, API_BASE)
-      )
-        acceptedAgUiRuns.add(request)
+      ) {
+        const physical = Boolean(new Headers(response.headers()).get('X-Moldy-Run-Id')?.trim())
+        acceptedAgUiRuns.set(request, { physical })
+      }
       const status = response.status()
       const url = response.url()
       if (status >= 400 && !isExpectedNonOkResponse(url, status)) {
@@ -242,12 +253,31 @@ export const test = base.extend<{ authMock: void; failureUi: void; errors: Error
       const errorText = req.failure()?.errorText ?? 'unknown'
       // A POST that received a matching durable receipt can outlive the page that
       // opened it. Bind this abort to the specific replacement already underway.
+      const acceptance = acceptedAgUiRuns.get(req)
+      acceptedAgUiRuns.delete(req)
       const acceptedRunReplacement =
-        acceptedAgUiRuns.delete(req) &&
+        acceptance &&
         errorText === 'net::ERR_ABORTED' &&
         nextStaticChunkProvenance.startedBeforeCurrentMainFrameNavigation
           ? documentCommits.latestNavigation
           : undefined
+      // Chromium can report an aborted fetch after the app has already read the
+      // terminal frame and EOF. Keep the failure until that exact response proves both.
+      let delivered = false
+      const completedInCurrentDocument =
+        acceptance?.physical &&
+        completedResponses &&
+        errorText === 'net::ERR_ABORTED' &&
+        nextStaticChunkProvenance.isMainFrame &&
+        !nextStaticChunkProvenance.startedBeforeCurrentMainFrameNavigation &&
+        requestStartDocumentGeneration === documentCommits.generation
+          ? () => {
+              if (requestStartDocumentGeneration === documentCommits.generation)
+                delivered = completedResponses.hasCompleted(req)
+              return delivered
+            }
+          : undefined
+      completedInCurrentDocument?.()
       const expectedStreamDetach =
         errorText.includes('net::ERR_ABORTED') &&
         /\/api\/conversations\/[^/]+\/(messages|messages\/resume|runs\/[^/]+\/stream(?:\?.*)?|langgraph\/threads\/[^/]+\/stream\/events)$/.test(
@@ -365,7 +395,8 @@ export const test = base.extend<{ authMock: void; failureUi: void; errors: Error
         !expectedNextRscPrefetchAbort &&
         !expectedApiReadNavigationAbort &&
         !apiReadAbortCandidate &&
-        !acceptedRunReplacement
+        !acceptedRunReplacement &&
+        !completedInCurrentDocument
       ) {
         recordNetworkFailure(
           persistentNetworkCodes,
@@ -392,11 +423,12 @@ export const test = base.extend<{ authMock: void; failureUi: void; errors: Error
           })
         }
       }
-      if (apiReadAbortCandidate || acceptedRunReplacement) {
+      if (apiReadAbortCandidate || acceptedRunReplacement || completedInCurrentDocument) {
         if (requestStartDocumentGeneration !== undefined) {
           deferredDocumentAborts.push({
             startNavigationGeneration: requestStartDocumentGeneration,
             replacement: acceptedRunReplacement,
+            completedInCurrentDocument,
             url,
             input: {
               errorText,
@@ -436,6 +468,8 @@ export const test = base.extend<{ authMock: void; failureUi: void; errors: Error
         })
       }
     }
+
+    completedResponses?.dispose()
 
     // Auto-verify: no JS exceptions after each test
     expect(errors.page, 'JS exceptions detected').toEqual([])
