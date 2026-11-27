@@ -2197,6 +2197,40 @@ describe('useMoldyLangGraphStream', () => {
     })
   })
 
+  it('renders recovery guidance from the public error code and omits diagnostic details', async () => {
+    const { result } = renderHook(
+      () => useMoldyLangGraphStream({ agentId: 'agent', conversationId: 'chat' }),
+      { wrapper: createQueryWrapper() },
+    )
+    const transport = mocks.createMoldyAgentTransport.mock.results.at(-1)?.value as MockTransport
+    act(() => {
+      transport.onState?.({
+        metadata: {
+          latest_run: {
+            id: 'run',
+            status: 'failed',
+            error_code: 'recovery_effect_unconfirmed',
+            error_message: 'internal diagnostic',
+          },
+        },
+      })
+    })
+    await waitFor(() => {
+      expect(result.current.threadRunNotice).toEqual({
+        id: 'run',
+        status: 'failed',
+        recoveryError: 'recovery_effect_unconfirmed',
+      })
+      const converter = mocks.useExternalMessageConverter.mock.calls.at(-1)?.[0]
+      expect(converter?.messages).toContainEqual(
+        expect.objectContaining({
+          id: 'moldy-failed-run',
+          content: 'recovery.recovery_effect_unconfirmed',
+        }),
+      )
+    })
+  })
+
   it('실패한 v3 런을 error_message가 담긴 어시스턴트 에러 알림으로 표시한다 (G2)', async () => {
     // isLoading=true인 채로 failed notice가 도착해도 isRunning이 false여야 한다
     // (threadRunNotice.status !== 'failed' 가드 회귀 방어). 가드가 없으면 isLoading이

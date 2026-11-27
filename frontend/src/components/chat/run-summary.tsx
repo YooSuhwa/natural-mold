@@ -4,6 +4,7 @@ import { useState } from 'react'
 import { useAuiState } from '@assistant-ui/react'
 import { ChevronDownIcon, Clock3Icon, ListTreeIcon, NetworkIcon, WrenchIcon } from 'lucide-react'
 import { useTranslations } from 'next-intl'
+import { RecoveredPartialResponse } from './recovered-partial-response'
 import { useChatConversationId } from '@/components/chat/conversation-context'
 import { useMessageRunSummary } from '@/lib/hooks/use-message-run-summary'
 import { cn } from '@/lib/utils'
@@ -66,6 +67,8 @@ function liveActivityText(
 
 export function RunSummaryPanel({ summary }: { readonly summary: RunSummary }) {
   const t = useTranslations('chat.activity')
+  const conversationId = useChatConversationId()
+  const tRecovery = useTranslations('chat.page.recovery')
   const [expanded, setExpanded] = useState(false)
   const elapsed = formatRunDuration(summary.elapsedMs, t)
   const toolTotal = completeTotal(summary.rootToolCalls, summary.descendantToolCalls)
@@ -117,6 +120,14 @@ export function RunSummaryPanel({ summary }: { readonly summary: RunSummary }) {
       </div>
       {expanded ? (
         <div className="border-t px-3 py-2">
+          {summary.recoveryError && (
+            <p className="mb-2 moldy-ui-caption text-foreground">
+              {tRecovery(summary.recoveryError)}
+            </p>
+          )}
+          {summary.recoveryError === 'recovery_output_started' && conversationId && (
+            <RecoveredPartialResponse conversationId={conversationId} runId={summary.runId} />
+          )}
           <dl className="mb-2 grid grid-cols-2 gap-x-4 gap-y-1 moldy-ui-caption text-muted-foreground">
             <div className="flex items-center justify-between gap-2">
               <dt>{t('rootTools')}</dt>

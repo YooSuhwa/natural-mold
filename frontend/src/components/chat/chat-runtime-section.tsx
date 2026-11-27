@@ -363,7 +363,12 @@ function LangGraphRuntimeSection({
         runtime={assistantRuntime}
         messageQueue={messageQueue}
         retryFailedInput={retryFailedInput}
-        failedRunId={threadRunNotice?.status === 'failed' ? threadRunNotice.id : undefined}
+        failedRunId={
+          threadRunNotice?.status === 'failed' &&
+          threadRunNotice.recoveryError !== 'recovery_effect_unconfirmed'
+            ? threadRunNotice.id
+            : undefined
+        }
         subagentStream={stream}
         threadProps={threadProps}
       />

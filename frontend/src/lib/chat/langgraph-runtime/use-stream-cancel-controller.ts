@@ -4,7 +4,7 @@ import { useCallback, useEffect, useRef } from 'react'
 import { useQueryClient } from '@tanstack/react-query'
 import type { UseStreamReturn } from '@langchain/react'
 import { useSetAtom } from 'jotai'
-import type { ThreadRunNotice } from './stream-thread-state-projection'
+import { terminalRunNotice, type ThreadRunNotice } from './stream-thread-state-projection'
 import { conversationRunsApi } from '@/lib/api/conversation-runs'
 import { conversationRunKeys } from '@/lib/hooks/use-conversation-runs'
 import { conversationKeys, invalidateConversationNavigators } from '@/lib/hooks/use-conversations'
@@ -62,16 +62,8 @@ export function useStreamCancelController<StateType extends object>({
   const settleRun = useCallback(
     (run: ConversationRun, expectedRunId: string, lifetime: object): void => {
       if (run.id !== expectedRunId || reconciliation.lifetimeRef.current !== lifetime) return
-      if (run.status === 'canceled') {
-        reconciliation.setThreadRunNotice({ id: run.id, status: 'canceled' })
-      } else if (run.status === 'failed') {
-        reconciliation.setThreadRunNotice({
-          id: run.id,
-          status: 'failed',
-          ...(run.error_message ? { errorMessage: run.error_message } : {}),
-        })
-      } else if (run.status === 'stale') {
-        reconciliation.setThreadRunNotice({ id: run.id, status: 'stale' })
+      if (run.status === 'canceled' || run.status === 'failed' || run.status === 'stale') {
+        reconciliation.setThreadRunNotice(terminalRunNotice(run))
       } else if (run.status === 'completed' || run.status === 'interrupted') {
         reconciliation.setThreadRunNotice(null)
       } else {

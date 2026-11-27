@@ -22,6 +22,7 @@ import type {
   ArtifactSummary,
   FileEventPayload,
 } from '@/lib/types'
+import { recoveryErrorCode } from '@/lib/chat-runs/recovery-error'
 import { isActiveRunStatus } from '@/lib/chat-runs/status'
 import {
   chatCancelInFlightAtom,
@@ -36,7 +37,7 @@ import {
   startExcludedCapabilitiesRunAtom,
 } from '@/lib/stores/chat-excluded-capabilities'
 import { EXCLUDED_CAPABILITIES_EVENT, parseExcludedCapabilities } from './excluded-capabilities'
-import { convertMessage } from './convert-message'
+import { convertMessage, type MessageForRender } from './convert-message'
 import { extractText } from './utils'
 import { streamResumeDecisions } from '@/lib/sse/stream-resume'
 import { streamEdit } from '@/lib/sse/stream-edit'
@@ -501,16 +502,41 @@ export function useChatRuntime({
     // 검색류 N개 그룹핑은 더 이상 메시지 사전변환(deep-research compaction)에
     // 의존하지 않는다 — 렌더 시점 `MessagePrimitive.GroupedParts`가 모든 표면에서
     // 일반화해 처리한다(Phase-2b). 여기서는 fetch/stream 병합만 한다.
-    const merged = mergeMessagesForRender({
+    const merged: MessageForRender[] = mergeMessagesForRender({
       messages,
       streamingMessages,
       // eslint-disable-next-line react-hooks/refs -- merge needs the last committed snapshot without triggering renders.
       previousMessages: prevMessagesRef.current,
       isRunning,
     })
+    if (
+      !isRunning &&
+      latestRun?.status === 'failed' &&
+      latestRun.conversation_id === conversationId
+    ) {
+      const reason = recoveryErrorCode(latestRun.error_code)
+      if (reason) {
+        // assistant-ui merges consecutive assistant messages unless the previous reply ends a group.
+        const boundary = merged.findLastIndex((message) => message.role === 'assistant')
+        const previousAnswer = merged[boundary]
+        if (previousAnswer) merged[boundary] = { ...previousAnswer, terminalNoticeBoundary: true }
+        return [
+          ...merged,
+          {
+            id: `moldy-failed-${latestRun.id}`,
+            role: 'assistant' as const,
+            conversation_id: latestRun.conversation_id,
+            content: tPage(`recovery.${reason}`),
+            tool_calls: null,
+            tool_call_id: null,
+            created_at: latestRun.completed_at ?? latestRun.updated_at,
+          },
+        ]
+      }
+    }
     if (!durableCanceledRun) return merged
     return appendDurableCanceledNotice(merged, tPage('canceled'), durableCanceledRun)
-  }, [isRunning, messages, streamingMessages, durableCanceledRun, tPage])
+  }, [isRunning, messages, streamingMessages, durableCanceledRun, latestRun, conversationId, tPage])
 
   const streamingUsageTotals = useMemo(
     () => sumMessageUsage(streamingMessages),

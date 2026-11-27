@@ -247,6 +247,20 @@ describe('ChatRuntimeSection failed-message recovery provider', () => {
     expect(mocks.retryFailedInput).toHaveBeenCalledExactlyOnceWith(FAILED_INPUT)
   })
 
+  it('requires the user to check an unconfirmed external action before sending another request', () => {
+    render(
+      <RetryProviderHarness
+        terminalNotice={{
+          id: FAILED_RUN.id,
+          status: 'failed',
+          recoveryError: 'recovery_effect_unconfirmed',
+        }}
+      />,
+    )
+    expect(screen.queryByRole('button', { name: '다시 시도' })).not.toBeInTheDocument()
+    expect(mocks.retryFailedInput).not.toHaveBeenCalled()
+  })
+
   it('keeps a stale failed bubble unavailable after the current terminal notice is canceled', () => {
     render(<RetryProviderHarness terminalNotice={RUNTIME_CANCELED_NOTICE} />)
 

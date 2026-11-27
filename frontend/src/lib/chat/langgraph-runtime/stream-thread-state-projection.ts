@@ -10,11 +10,13 @@ import {
 import type { LangGraphInterruptLike } from './hitl-interrupts'
 import { isTerminalNoticeStatus, type TerminalNoticeStatus } from './terminal-notice'
 import type { Message as MoldyMessage, ToolCallInfo } from '@/lib/types'
+import { recoveryErrorCode, type RecoveryErrorCode } from '@/lib/chat-runs/recovery-error'
 
 export interface ThreadRunNotice {
   readonly id: string
   readonly status: TerminalNoticeStatus
   readonly errorMessage?: string
+  readonly recoveryError?: RecoveryErrorCode
 }
 
 export interface ReloadRunCorrelation {
@@ -65,10 +67,20 @@ export function terminalRunNoticeFromThreadState(state: unknown): ThreadRunNotic
   if (!isRecord(state)) return null
   const metadata = isRecord(state.metadata) ? state.metadata : {}
   const run = isRecord(metadata.latest_run) ? metadata.latest_run : null
-  const id = run?.id
-  const status = run?.status
+  return run ? terminalRunNotice(run) : null
+}
+
+export function terminalRunNotice(run: {
+  id?: unknown
+  status?: unknown
+  error_code?: unknown
+  error_message?: unknown
+}): ThreadRunNotice | null {
+  const { id, status } = run
   if (typeof id !== 'string' || !isTerminalNoticeStatus(status)) return null
-  const rawErrorMessage = run?.error_message
+  const recoveryError = status === 'failed' ? recoveryErrorCode(run.error_code) : undefined
+  if (recoveryError) return { id, status, recoveryError }
+  const rawErrorMessage = run.error_message
   const errorMessage =
     status === 'failed' && typeof rawErrorMessage === 'string' && rawErrorMessage.trim()
       ? rawErrorMessage

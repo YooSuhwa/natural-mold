@@ -20,6 +20,7 @@ import { useStreamCommandController } from './use-stream-command-controller'
 import { useStreamInterruptView } from './use-stream-interrupt-view'
 import { useStreamReconciliationController } from './use-stream-reconciliation-controller'
 import { useStreamRuntimeMessages } from './use-stream-runtime-messages'
+import { terminalRunNotice } from './stream-thread-state-projection'
 import { useStreamVisibleMessages } from './use-stream-visible-messages'
 import { useSubmitCheckpointController } from './use-submit-checkpoint-controller'
 import {
@@ -121,13 +122,7 @@ export function useMoldyLangGraphStream({
         serverLatestRun.status === 'stale' ||
         serverLatestRun.status === 'failed')
     ) {
-      return {
-        id: serverLatestRun.id,
-        status: serverLatestRun.status,
-        ...(serverLatestRun.status === 'failed' && serverLatestRun.error_message
-          ? { errorMessage: serverLatestRun.error_message }
-          : {}),
-      }
+      return terminalRunNotice(serverLatestRun)
     }
     if (threadRunNotice) return threadRunNotice
     if (
@@ -139,21 +134,7 @@ export function useMoldyLangGraphStream({
     ) {
       return null
     }
-    if (
-      serverLatestRun.status !== 'canceled' &&
-      serverLatestRun.status !== 'canceling' &&
-      serverLatestRun.status !== 'stale' &&
-      serverLatestRun.status !== 'failed'
-    ) {
-      return null
-    }
-    return {
-      id: serverLatestRun.id,
-      status: serverLatestRun.status,
-      ...(serverLatestRun.status === 'failed' && serverLatestRun.error_message
-        ? { errorMessage: serverLatestRun.error_message }
-        : {}),
-    }
+    return terminalRunNotice(serverLatestRun)
   }, [
     cachedPendingNewSubmit,
     claimedQueueRunInFlight,
@@ -189,8 +170,9 @@ export function useMoldyLangGraphStream({
     serverInterrupts,
     messages: visible.messages,
   })
-  const terminalNoticeText =
-    durableThreadRunNotice?.status === 'stale'
+  const terminalNoticeText = durableThreadRunNotice?.recoveryError
+    ? tPage(`recovery.${durableThreadRunNotice.recoveryError}`)
+    : durableThreadRunNotice?.status === 'stale'
       ? tReconnect('stale')
       : durableThreadRunNotice?.status === 'failed'
         ? (durableThreadRunNotice.errorMessage ?? tPage('runFailed'))

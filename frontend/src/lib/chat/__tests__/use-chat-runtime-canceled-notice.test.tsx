@@ -231,6 +231,28 @@ describe('useChatRuntime durable canceled notice', () => {
     })
   })
 
+  it('retains the visible partial response and appends a scoped recovery notice', async () => {
+    const run = conversationRun('failed', { error_code: 'recovery_output_started' })
+    const { result, rerender } = renderHook(
+      ({ latestRun }: { latestRun: ConversationRun }) =>
+        useChatRuntime({
+          messages: [message({ id: 'm2', role: 'assistant', content: '부분 응답' })],
+          streamFn: emptyStream,
+          conversationId: 'conversation-1',
+          latestRun,
+        }),
+      { initialProps: { latestRun: run }, wrapper: createWrapper() },
+    )
+    await waitFor(() => {
+      expect(threadTexts(result.current.runtime)).toEqual([
+        '부분 응답',
+        'recovery.recovery_output_started',
+      ])
+    })
+    rerender({ latestRun: { ...run, conversation_id: 'different' } })
+    await waitFor(() => expect(threadTexts(result.current.runtime)).toEqual(['부분 응답']))
+  })
+
   it('latest_run이 completed면 notice를 렌더하지 않는다', async () => {
     const { result } = renderHook(
       () =>
