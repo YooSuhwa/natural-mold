@@ -173,7 +173,7 @@ async def resolve_agent_context(
         agent_owner_user_id=str(agent.user_id),
         caller_user_id=str(user.id),
         archive_owner_user_id=str(conv.user_id),
-        steer_store=CONVERSATION_STEERS,
+        steer_store=CONVERSATION_STEERS if conv.source != INDEPENDENT_JOB_SOURCE else None,
         credential_subject_user_id=str(identity.credential_subject_user_id),
         identity_mode=identity.identity_mode,
         agent_runtime_name=identity.runtime_name,

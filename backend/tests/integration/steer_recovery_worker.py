@@ -28,6 +28,7 @@ from app.config import settings
 from app.database import async_session, tenant_session
 from app.models.conversation_run import ConversationRun
 from app.services.conversation_run_steer_events import RunSteerReceiptFeed
+from app.services.conversation_run_steers import CONVERSATION_STEERS
 from app.services.trace_storage import append_events
 from app.tenancy.checkpoint_audit import run_configurable
 
@@ -87,7 +88,7 @@ def probe_graph(saver: AsyncPostgresSaver, log: Path, *, phase: str) -> Any:
     if phase == "successor":
         responses = [AIMessage(id="end-answer", content="both records found")]
 
-    middleware, _ = with_recovery_fence([RunSteerMiddleware()], [])
+    middleware, _ = with_recovery_fence([RunSteerMiddleware(CONVERSATION_STEERS)], [])
     assert any(isinstance(item, RecoveryToolMiddleware) for item in middleware)
     return create_deep_agent(
         model=ObservedModel(responses=responses),

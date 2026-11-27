@@ -256,6 +256,7 @@ async def test_child_approves_one_tool_after_parent_finished(
     await db.commit()
     user = CurrentUser(id=ctx.user_id, email="user@example.test", name="User")
     cfg = await resolve_agent_context(db, job.child_conversation_id, user, context=ctx)
+    assert cfg.steer_store is None
     await db.commit()
     await start_conversation_run(
         run_id=accepted.run_id,

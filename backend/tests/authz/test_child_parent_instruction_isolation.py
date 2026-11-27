@@ -90,7 +90,10 @@ def compile_with_steer(
             "Compare the research results",
             checkpointer=saver,
             subagents=[{**spec, "middleware": [lifecycle.middleware()]}],
-            middleware=[DelegatedTaskDispatch({role: lifecycle}), steer.RunSteerMiddleware()],
+            middleware=[
+                DelegatedTaskDispatch({role: lifecycle}),
+                steer.RunSteerMiddleware(conversation_run_steers.CONVERSATION_STEERS),
+            ],
         )
 
     admission = RecordingAdmission()
@@ -114,7 +117,9 @@ def compile_with_steer(
         "admission_factory": lambda: admission,
         "child_controls": {f"root/{role}": lifecycle},
     }
-    parent_middleware = [steer.RunSteerMiddleware(capability)]
+    parent_middleware = [
+        steer.RunSteerMiddleware(conversation_run_steers.CONVERSATION_STEERS, capability)
+    ]
     runnables, _ = prepared_run_compile.compile_children(
         **common, compile_child=create_sub_agent, parent_middleware=parent_middleware, guards=None
     )

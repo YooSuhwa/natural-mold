@@ -10,7 +10,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.chat_recovery.fence import RunOwnershipLost, claim_run_owner, run_fence_scope
 from app.models.conversation_run import ConversationRun
-from app.services.conversation_run_steers import claim_steers_for_model, confirm_applied_steers
+from app.services.conversation_run_steers import CONVERSATION_STEERS
 from tests.sqlite_test_engine import TestSession
 from tests.test_conversation_run_steers_service import _admit, _running
 
@@ -31,11 +31,11 @@ async def test_replaced_worker_cannot_claim_or_confirm_a_steer(db: AsyncSession)
     assert successor.generation == original.generation + 1
     assert successor.owner_token != original.owner_token
     with run_fence_scope(original), pytest.raises(RunOwnershipLost):
-        await claim_steers_for_model(db, conversation_id=conversation_id, run_id=run_id)
+        await CONVERSATION_STEERS.claim(db, conversation_id=conversation_id, run_id=run_id)
     await db.refresh(steer)
     assert steer.delivery_started_at is None
     with run_fence_scope(successor):
-        claims = await claim_steers_for_model(db, conversation_id=conversation_id, run_id=run_id)
+        claims = await CONVERSATION_STEERS.claim(db, conversation_id=conversation_id, run_id=run_id)
     assert [row.id for row in claims] == [steer.id]
     await db.commit()
     for invalid_fence in (
@@ -45,13 +45,13 @@ async def test_replaced_worker_cannot_claim_or_confirm_a_steer(db: AsyncSession)
         replace(successor, tenant=replace(successor.tenant, org_id=uuid4())),
     ):
         with run_fence_scope(invalid_fence), pytest.raises(RunOwnershipLost):
-            await confirm_applied_steers(
+            await CONVERSATION_STEERS.confirm(
                 db, conversation_id=conversation_id, run_id=run_id, steer_ids={steer.id}
             )
         await db.refresh(steer)
         assert steer.status == "pending" and steer.applied_at is None
     with run_fence_scope(successor):
-        await confirm_applied_steers(
+        await CONVERSATION_STEERS.confirm(
             db, conversation_id=conversation_id, run_id=run_id, steer_ids={steer.id}
         )
     await db.refresh(steer)
@@ -63,11 +63,11 @@ async def test_chat_outside_worker_recovery_can_claim_and_confirm(db: AsyncSessi
     steer = await _admit(db, run, "Use domestic suppliers")
     await db.commit()
     with run_fence_scope(None):
-        claims = await claim_steers_for_model(
+        claims = await CONVERSATION_STEERS.claim(
             db, conversation_id=run.conversation_id, run_id=run.id
         )
         assert [row.id for row in claims] == [steer.id]
-        await confirm_applied_steers(
+        await CONVERSATION_STEERS.confirm(
             db, conversation_id=run.conversation_id, run_id=run.id, steer_ids={steer.id}
         )
     await db.refresh(steer)
