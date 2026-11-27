@@ -68,6 +68,7 @@ class AgUiSnapshot(_SnapshotModel):
     active_tip_message_id: str | None = None
     run_id: str | None = None
     run_status: str | None = None
+    selected_physical_run_id: str | None = None
     latest_physical_run_id: str | None = None
     active_run_id: str | None = None
     physical_run_id: str | None = None
