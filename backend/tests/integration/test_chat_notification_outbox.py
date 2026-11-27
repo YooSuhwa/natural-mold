@@ -23,12 +23,14 @@ from app.models.chat_notification_outbox import ChatNotificationOutbox
 from app.models.conversation import Conversation
 from app.models.conversation_goal import ConversationGoal, GoalAttempt
 from app.models.conversation_run import ConversationRun
-from app.models.model import Model
 from app.models.notification import Notification
+from app.schemas.independent_chat_job import IndependentJobCreate
 from app.services import chat_notification_outbox as outbox
 from app.services.conversation_goal_service import block_goal
+from app.services.conversation_run_state import transition_run
+from app.services.independent_jobs import accept_independent_job
 from tests.authz.i06_rls_lab import RlsLab, async_url, rls_lab
-from tests.authz.unit_scope_fixture import ensure_unit_scope
+from tests.integration.test_independent_chat_job_idempotency import _accepted_parent
 
 pytestmark = pytest.mark.integration
 Sessions = async_sessionmaker[AsyncSession]
@@ -52,53 +54,40 @@ async def sessions(lab: RlsLab, monkeypatch: pytest.MonkeyPatch) -> AsyncIterato
 
 
 @pytest.fixture
-async def completed_run(lab: RlsLab) -> AsyncIterator[tuple[OrgContext, UUID, UUID]]:
+async def completed_run(
+    lab: RlsLab, monkeypatch: pytest.MonkeyPatch
+) -> AsyncIterator[tuple[OrgContext, UUID, UUID, UUID]]:
+    monkeypatch.setattr(settings, "independent_chat_jobs_enabled", True)
     engine = create_async_engine(async_url(lab.admin_url))
+    admin = async_sessionmaker(engine, expire_on_commit=False)
     try:
-        async with AsyncSession(engine, expire_on_commit=False) as db:
-            uid = uuid4()
-            ctx = await ensure_unit_scope(
-                db, CurrentUser(id=uid, email=f"{uid.hex}@fixture.test", name="Task owner")
+        ctx, parent_id, parent_run_id, target_id = await _accepted_parent(admin)
+        async with admin() as db:
+            parent = await db.get(Conversation, parent_id)
+            assert parent is not None
+            accepted = await accept_independent_job(
+                db,
+                parent,
+                parent_run_id,
+                IndependentJobCreate(
+                    request_id=uuid4(), target_id=target_id, instruction="Read the report."
+                ),
+                ctx,
             )
-            model = Model(provider="openai", model_name=uid.hex, display_name="Test model")
-            db.add(model)
-            await db.flush()
-            agent = Agent(
-                tenant_id=ctx.tenant_id,
-                org_id=ctx.org_id,
-                user_id=uid,
-                name="Task",
-                system_prompt="Test",
-                model_id=model.id,
-            )
-            db.add(agent)
-            await db.flush()
-            conversation = Conversation(
-                tenant_id=ctx.tenant_id,
-                org_id=ctx.org_id,
-                user_id=uid,
-                agent_id=agent.id,
-                agent_name_snapshot=agent.name,
-                source="independent_job",
-                last_activity_at=datetime.now(UTC),
-            )
-            db.add(conversation)
-            await db.flush()
-            run = ConversationRun(
-                tenant_id=ctx.tenant_id,
-                org_id=ctx.org_id,
-                user_id=uid,
-                conversation_id=conversation.id,
-                agent_id=agent.id,
-                status="completed",
-                source="chat",
-            )
-            db.add(run)
+            job = accepted.job
+            run = await db.get(ConversationRun, job.child_run_id)
+            assert run is not None
+            await transition_run(db, run, "running", worker_instance_id="fixture-worker")
+            await transition_run(db, run, "completed")
             await db.commit()
             try:
-                yield ctx, conversation.id, run.id
+                yield ctx, job.child_conversation_id, run.id, job.id
             finally:
-                await db.execute(delete(Conversation).where(Conversation.id == conversation.id))
+                await db.execute(
+                    delete(Conversation).where(
+                        Conversation.id.in_([parent_id, job.child_conversation_id])
+                    )
+                )
                 await db.commit()
     finally:
         await engine.dispose()
@@ -106,11 +95,10 @@ async def completed_run(lab: RlsLab) -> AsyncIterator[tuple[OrgContext, UUID, UU
 
 async def test_contending_completion_producers_store_one_company_scoped_intent(
     sessions: Sessions,
-    completed_run: tuple[OrgContext, UUID, UUID],
+    completed_run: tuple[OrgContext, UUID, UUID, UUID],
     lab: RlsLab,
 ) -> None:
-    ctx, conversation_id, run_id = completed_run
-    job_id = uuid4()
+    ctx, conversation_id, run_id, job_id = completed_run
 
     async def enqueue(db: AsyncSession) -> None:
         await outbox.enqueue_independent_completion(
@@ -154,10 +142,9 @@ async def test_contending_completion_producers_store_one_company_scoped_intent(
 
 async def test_skipped_locked_delivery_survives_worker_rollback_and_reconnect(
     sessions: Sessions,
-    completed_run: tuple[OrgContext, UUID, UUID],
+    completed_run: tuple[OrgContext, UUID, UUID, UUID],
 ) -> None:
-    ctx, conversation_id, run_id = completed_run
-    job_id = uuid4()
+    ctx, conversation_id, run_id, job_id = completed_run
     worker = SessionTenant(ctx.tenant_id)
     async with tenant_session(ctx, maker=sessions) as producer:
         await outbox.enqueue_independent_completion(

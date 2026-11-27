@@ -135,8 +135,22 @@ async def _authorized_destinations(
             Notification.kind == ref.kind,
             Notification.created_at >= now() - RETENTION,
         )
+    rows = (await db.execute(query)).tuples().all()
+    job_refs = {
+        row.source_id: (row.conversation_id, row.run_id)
+        for row, *_ in rows
+        if row.kind == "chat_task.completed"
+    }
+    visible_jobs: set[UUID] = set()
+    if job_refs:
+        from app.services.independent_job_runs import notification_jobs_visible
+
+        visible_jobs = await notification_jobs_visible(db, job_refs, ctx)
+
     found = {}
-    for row, agent, filename, digest, payload in (await db.execute(query)).tuples():
+    for row, agent, filename, digest, payload in rows:
+        if row.kind == "chat_task.completed" and row.source_id not in visible_jobs:
+            continue
         if row.kind == "chat_goal.completed" and not _references_checked_version(
             payload or {}, row.artifact_id, row.version_id, digest
         ):
