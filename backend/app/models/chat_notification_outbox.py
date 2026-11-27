@@ -29,7 +29,8 @@ class ChatNotificationOutbox(Identity, Created, RequiredOrgScope, Base):
         UniqueConstraint("user_id", "kind", "source_id", name="uq_chat_notice_recipient_source"),
         CheckConstraint(
             "(kind = 'chat_task.completed' AND goal_id IS NULL AND goal_version IS NULL "
-            "AND goal_revision IS NULL) OR (kind IN ('chat_goal.completed','chat_goal.blocked') "
+            "AND goal_revision IS NULL) OR (kind IN ('chat_goal.completed','chat_goal.blocked',"
+            "'chat_goal.approval_requested') "
             "AND goal_id IS NOT NULL AND goal_version IS NOT NULL AND goal_revision IS NOT NULL "
             "AND goal_version > 0 AND goal_revision > 0)",
             name="ck_chat_notice_source",
@@ -42,6 +43,7 @@ class ChatNotificationOutbox(Identity, Created, RequiredOrgScope, Base):
             "(status IN ('delivered','suppressed') AND finished_at IS NOT NULL)",
             name="ck_chat_notice_delivery",
         ),
+        UniqueConstraint("approval_request_id", name="uq_chat_notice_approval_request"),
         CheckConstraint("attempt_count >= 0", name="ck_chat_notice_attempts"),
         Index(
             "ix_chat_notice_pending_tenants",
@@ -71,6 +73,9 @@ class ChatNotificationOutbox(Identity, Created, RequiredOrgScope, Base):
         DateTime(timezone=True), server_default=func.now()
     )
     finished_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    approval_request_id: Mapped[UUID | None] = mapped_column(
+        ForeignKey("approval_requests.id", ondelete="SET NULL")
+    )
     notification_id: Mapped[UUID | None] = mapped_column(
         ForeignKey("notifications.id", ondelete="SET NULL")
     )

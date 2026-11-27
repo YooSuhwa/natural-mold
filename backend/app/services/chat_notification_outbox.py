@@ -36,28 +36,39 @@ class _Transition:
     goal_revision: int | None = None
 
 
-async def _enqueue(db: AsyncSession, intent: _Transition) -> None:
-    if not settings.chat_work_notifications_enabled:
+async def _enqueue(
+    db: AsyncSession, intent: _Transition, *, admitted_with_notice: bool = False
+) -> None:
+    if not settings.chat_work_notifications_enabled and not admitted_with_notice:
         return
 
     # Producers run in the transaction that owns the transition. Never persist a
     # recipient/resource pair from another scope, including when RLS is disabled.
-    source = await db.scalar(
-        select(ConversationRun.id)
-        .join(Conversation, Conversation.id == ConversationRun.conversation_id)
-        .where(
-            Conversation.id == intent.conversation_id,
-            Conversation.tenant_id == intent.tenant_id,
-            Conversation.org_id == intent.org_id,
-            Conversation.user_id == intent.user_id,
-            ConversationRun.id == intent.run_id,
-            ConversationRun.tenant_id == intent.tenant_id,
-            ConversationRun.org_id == intent.org_id,
-            ConversationRun.user_id == intent.user_id,
+    source = (
+        await db.execute(
+            select(Conversation.source, ConversationRun.status)
+            .select_from(ConversationRun)
+            .join(Conversation, Conversation.id == ConversationRun.conversation_id)
+            .where(
+                Conversation.id == intent.conversation_id,
+                Conversation.tenant_id == intent.tenant_id,
+                Conversation.org_id == intent.org_id,
+                Conversation.user_id == intent.user_id,
+                ConversationRun.id == intent.run_id,
+                ConversationRun.tenant_id == intent.tenant_id,
+                ConversationRun.org_id == intent.org_id,
+                ConversationRun.user_id == intent.user_id,
+            )
         )
-    )
+    ).one_or_none()
     if source is None:
         raise ValueError("Work notification source does not match its recipient and conversation")
+    # Jobs admitted before switch-off keep their existing completion promise.
+    if not settings.chat_work_notifications_enabled and tuple(source) != (
+        "independent_job",
+        "completed",
+    ):
+        return
     insert = pg_insert if db.get_bind().dialect.name == "postgresql" else sqlite_insert
     statement = insert(ChatNotificationOutbox).values(asdict(intent))
     await db.execute(
@@ -69,6 +80,7 @@ async def enqueue_independent_completion(
     db: AsyncSession,
     *,
     job_id: UUID,
+    admitted_with_notice: bool = False,
     tenant_id: UUID,
     org_id: UUID,
     user_id: UUID,
@@ -90,6 +102,7 @@ async def enqueue_independent_completion(
             artifact_id=artifact_id,
             version_id=version_id,
         ),
+        admitted_with_notice=admitted_with_notice,
     )
 
 
@@ -100,7 +113,7 @@ async def enqueue_goal_transition(
     goal_id: UUID,
     version: int,
     revision: int,
-    kind: Literal["completed", "blocked"],
+    kind: Literal["completed", "blocked", "approval_requested"],
     tenant_id: UUID,
     org_id: UUID,
     user_id: UUID,
@@ -173,9 +186,12 @@ async def drain_chat_notification_outbox(
         processed += 1
         try:
             async with db.begin_nested():
-                if await resolve_work_destination(db, row) is None:
-                    row.status = "suppressed"
-                else:
+                notification = None
+                if row.kind == "chat_goal.approval_requested":
+                    from app.services.chat_notification_approval import publish_goal_approval
+
+                    notification = await publish_goal_approval(db, row)
+                elif await resolve_work_destination(db, row) is not None:
                     [notification] = await notify(
                         db,
                         kind=row.kind,
@@ -185,8 +201,8 @@ async def drain_chat_notification_outbox(
                         tenant_id=tenant_id,
                         link="/chat",
                     )
-                    row.status = "delivered"
-                    row.notification_id = notification.id
+                row.status = "delivered" if notification is not None else "suppressed"
+                row.notification_id = notification.id if notification is not None else None
                 row.finished_at = now
         except Exception as error:
             # The savepoint rolled back the bell write, including failures after

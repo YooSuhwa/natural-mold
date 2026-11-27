@@ -89,6 +89,12 @@ def upgrade() -> None:
         ),
         sa.Column("finished_at", sa.DateTime(timezone=True)),
         sa.Column(
+            "approval_request_id",
+            sa.Uuid(),
+            sa.ForeignKey("approval_requests.id", ondelete="SET NULL"),
+        ),
+        sa.UniqueConstraint("approval_request_id", name="uq_chat_notice_approval_request"),
+        sa.Column(
             "notification_id", sa.Uuid(), sa.ForeignKey("notifications.id", ondelete="SET NULL")
         ),
         sa.ForeignKeyConstraint(
@@ -100,7 +106,8 @@ def upgrade() -> None:
         sa.UniqueConstraint("user_id", "kind", "source_id", name="uq_chat_notice_recipient_source"),
         sa.CheckConstraint(
             "(kind = 'chat_task.completed' AND goal_id IS NULL AND goal_version IS NULL "
-            "AND goal_revision IS NULL) OR (kind IN ('chat_goal.completed','chat_goal.blocked') "
+            "AND goal_revision IS NULL) OR (kind IN ('chat_goal.completed','chat_goal.blocked',"
+            "'chat_goal.approval_requested') "
             "AND goal_id IS NOT NULL AND goal_version IS NOT NULL AND goal_revision IS NOT NULL "
             "AND goal_version > 0 AND goal_revision > 0)",
             name="ck_chat_notice_source",
