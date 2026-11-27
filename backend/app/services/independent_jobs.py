@@ -108,7 +108,9 @@ async def _accept_authorized_job(
     if run.status not in {"running", "completed", "interrupted"}:
         raise HTTPException(409, "Parent run cannot start an independent job")
     if data.source_child_task_id is not None:
-        await _require_source_task(db, data.source_child_task_id, run.id, data.target_id)
+        from app.services.independent_job_source import require_source_task
+
+        await require_source_task(db, data.source_child_task_id, run, data.target_id, context)
     child = await chat_service.create_conversation(
         db,
         data.target_id,
@@ -196,25 +198,6 @@ async def _find_replayed_job(
         return existing[0]
 
     return None
-
-
-async def _require_source_task(
-    db: AsyncSession,
-    task_id: UUID,
-    run_id: UUID,
-    target_id: UUID,
-) -> None:
-    from app.models.conversation_child_task import ConversationChildTask
-
-    found = await db.scalar(
-        select(ConversationChildTask.id).where(
-            ConversationChildTask.id == task_id,
-            ConversationChildTask.run_id == run_id,
-            ConversationChildTask.child_agent_id == target_id,
-        )
-    )
-    if found is None:
-        raise resume_not_found()
 
 
 async def list_independent_jobs(
