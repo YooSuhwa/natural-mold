@@ -9,7 +9,9 @@ from sqlalchemy import select
 
 from app.agent_runtime.runtime_config import AgentConfig
 from app.authz.agent_execution_scope import AgentExecutionTarget, load_agent_tree_for_execution
+from app.authz.conversation_agent_checks import require_agent_run
 from app.authz.conversation_input_scope import conversation_input_parent
+from app.authz.run_decisions import fresh_run_decision_scope
 from app.authz.scoping import private_parent_scoped
 from app.exceptions import AppError
 from app.models.conversation import Conversation
@@ -35,7 +37,12 @@ def facade_attr(name: str) -> Any:
 
 
 async def launch_claimed_input(input_id: uuid.UUID) -> ConversationRun | None:
-    """Rehydrate and launch one claimed input without request-scoped state."""
+    """Reauthorize detached execution independently of its claim or HTTP request."""
+    with fresh_run_decision_scope():
+        return await _launch_claimed_input(input_id)
+
+
+async def _launch_claimed_input(input_id: uuid.UUID) -> ConversationRun | None:
     registry = facade_attr("get_run_task_registry")()
     cfg: AgentConfig | None = None
     error_code: str | None = None
@@ -58,6 +65,7 @@ async def launch_claimed_input(input_id: uuid.UUID) -> ConversationRun | None:
             target = await metadata.authorize_queue_target(db, identity, run)
             if identity.agent_id is None:
                 raise metadata.QueueBindingInvalidError
+            await require_agent_run(target.context, identity.agent_id)
             await load_agent_tree_for_execution(
                 db, AgentExecutionTarget(identity.agent_id, target.context, run=True)
             )
@@ -65,6 +73,9 @@ async def launch_claimed_input(input_id: uuid.UUID) -> ConversationRun | None:
             await _fail_claimed_input(input_id, error_code="queue_binding_invalid")
             return None
         except AppError as exc:
+            if exc.code == "authz_unavailable":
+                # Keep the committed claim for the existing recovery sweep.
+                return None
             from app.services.conversation_goal_worker import stop_reservations_on_denial
 
             await stop_reservations_on_denial(db, identity.conversation_id, scope, exc)
