@@ -5,17 +5,12 @@ from __future__ import annotations
 import base64
 import json
 from typing import Any, Final
-from uuid import UUID
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.agent_runtime.protocol_redaction import redact_protocol_data
 from app.agent_runtime.run_secrets import collect_secret_values, collect_url_userinfo
-from app.authz.org_context import OrgContext
-from app.credentials import service as credential_service
-from app.credentials.company_use import company_credential_usable
-from app.credentials.run_resolution import USABLE_STATUSES, RunCredentialResolver
-from app.credentials.run_subject import subject_for_caller
+from app.credentials.run_resolution import USABLE_STATUSES
 from app.mcp.apps import (
     normalize_resource_ui_meta,
     normalize_tool_ui_meta,
@@ -23,10 +18,10 @@ from app.mcp.apps import (
     sanitize_result_payload,
     tool_allows_visibility,
 )
+from app.mcp.apps_binding_connection import credential_for_context
 from app.mcp.apps_binding_store import require_live_agent_tree
 from app.mcp.auth import ResolvedMcpAuth, resolve_mcp_auth
 from app.mcp.invocation import call_mcp_tool_once, read_mcp_resource_once
-from app.models.credential import Credential
 from app.schemas.mcp_apps import McpAppArtifact, McpAppWidgetResult
 from app.services.mcp_apps_binding_service import (
     AuthorizedBinding,
@@ -45,7 +40,7 @@ MAX_TOOL_ARGUMENT_BYTES: Final = 64 * 1024
 
 async def read_widget_result(db: AsyncSession, context: AuthorizedBinding) -> McpAppWidgetResult:
     """Restore a verified invocation's stored result without opening or refreshing credentials."""
-    credential = await _credential_for_context(db, context)
+    credential = await credential_for_context(db, context)
     if credential is not None and credential.status not in USABLE_STATUSES:
         raise McpAppsError("mcp_app_auth_unavailable", "MCP authentication is unavailable", 403)
     binding = context.binding
@@ -174,7 +169,7 @@ async def call_bound_tool(
 
 
 async def _auth_for_context(db: AsyncSession, context: AuthorizedBinding) -> ResolvedMcpAuth:
-    credential = await _credential_for_context(db, context)
+    credential = await credential_for_context(db, context)
     auth = await resolve_mcp_auth(
         db,
         credential_id=credential.id if credential else None,
@@ -184,48 +179,6 @@ async def _auth_for_context(db: AsyncSession, context: AuthorizedBinding) -> Res
     if auth.error:
         raise McpAppsError("mcp_app_auth_unavailable", "MCP authentication is unavailable", 403)
     return auth
-
-
-async def _credential_for_context(
-    db: AsyncSession, context: AuthorizedBinding
-) -> Credential | None:
-    """Check the live shared or per-user grant without opening credential values."""
-    server = context.server
-    if server.credential_mode == "per_user":
-        subject = subject_for_caller(
-            context.org_context, context.binding.credential_subject_user_id
-        )
-        bound = await RunCredentialResolver(db, subject).bound(server, "mcp_server")
-        if bound is None:
-            raise McpAppsError(
-                "credential_binding_required", "connect your own account to this server", 409
-            )
-        return bound
-    if server.credential_id is None:
-        return None
-    credential = await credential_service.get_for_user(
-        db, server.credential_id, context.org_context
-    )
-    if credential is None:
-        credential = await _company_shared(db, server.credential_id, context.org_context)
-    if credential is None:
-        raise McpAppsError("mcp_app_auth_unavailable", "MCP authentication is unavailable", 404)
-    return credential
-
-
-async def _company_shared(
-    db: AsyncSession, credential_id: UUID, context: OrgContext
-) -> Credential | None:
-    credential = await db.get(Credential, credential_id)
-    if credential is None or not await company_credential_usable(
-        db,
-        credential,
-        user_id=context.user_id,
-        org_id=context.org_id,
-        tenant_id=context.tenant_id,
-    ):
-        return None
-    return credential
 
 
 def _resource_html(item: dict[str, Any]) -> str:

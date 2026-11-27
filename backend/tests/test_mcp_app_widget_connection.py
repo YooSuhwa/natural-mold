@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from typing import TYPE_CHECKING
+from unittest.mock import AsyncMock
 from uuid import UUID
 
 import pytest
@@ -24,6 +25,7 @@ from app.models.mcp_server import McpServer
 from app.models.mcp_tool import McpTool
 from app.models.organization import Tenant
 from app.models.user import User
+from app.services import mcp_apps_service
 from tests.authz.e07_support import credential as company_credential
 from tests.authz.f03_support import GraphFake
 
@@ -128,3 +130,37 @@ async def test_new_decision_observes_company_key_revocation_inside_long_lived_re
         assert not await pointer_visible(db, authorized)
     assert len(fake.consistencies) >= 2
     assert set(fake.consistencies) == {"HIGHER_CONSISTENCY"}
+
+
+async def test_explicit_widget_read_can_open_credential_after_pointer_only_check(
+    db: AsyncSession, authorized: AuthorizedBinding, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    token = "fixture-widget-command-token"
+    secret = await credential_service.create(
+        db,
+        CredentialCreation(definition_key="http_bearer", name="Command", data={"token": token}),
+        authorized.org_context,
+    )
+    authorized.server.credential_id = secret.id
+    await db.commit()
+    db.expunge(secret)
+    assert await pointer_visible(db, authorized)
+
+    wire = AsyncMock(
+        return_value={
+            "success": True,
+            "contents": [
+                {
+                    "uri": authorized.binding.resource_uri,
+                    "mimeType": mcp_apps_service.MCP_APP_MIME_TYPE,
+                    "text": "<p>Fixture widget</p>",
+                }
+            ],
+        }
+    )
+    monkeypatch.setattr(mcp_apps_service, "read_mcp_resource_once", wire)
+    result = await mcp_apps_service.read_bound_resource(db, authorized)
+    assert result["html"] == "<p>Fixture widget</p>"
+    wire.assert_awaited_once()
+    assert wire.await_args is not None
+    assert wire.await_args.kwargs["headers"]["Authorization"] == f"Bearer {token}"
