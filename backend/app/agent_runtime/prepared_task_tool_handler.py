@@ -33,7 +33,9 @@ from app.agent_runtime.chat_steer_middleware import RunSteerMiddleware
 from app.agent_runtime.lease_dispatch_permit import DispatchDeniedError
 from app.agent_runtime.prepared_child_launch import ChildLaunchKey, ChildLaunchReservation
 
-EXCLUDED_STATE_KEYS = frozenset({"messages", "todos", "structured_response"})
+EXCLUDED_STATE_KEYS = frozenset(
+    {"messages", "todos", "structured_response", "moldy_child_model_receipts"}
+)
 TASK_PATH_KEY = "_moldy_prepared_task_path"
 TERMINALIZED = "prepared_run_terminalized"
 
