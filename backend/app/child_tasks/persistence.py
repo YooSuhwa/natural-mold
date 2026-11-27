@@ -2,10 +2,12 @@
 
 from __future__ import annotations
 
+from typing import NamedTuple
 from uuid import UUID
 
 from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import load_only
 from sqlalchemy.sql import Select
 
 from app.authz.child_task_authorization import (
@@ -34,7 +36,16 @@ def _stopped(status: str) -> ChildTaskStopped:
     return ChildTaskStopped("child_terminal")
 
 
-def _resume_lineage(run: ConversationRun) -> Select[tuple[UUID]]:
+class _ResumeOrigin(NamedTuple):
+    id: UUID
+    conversation_id: UUID
+    agent_id: UUID | None
+    user_id: UUID
+    org_id: UUID | None
+    tenant_id: UUID | None
+
+
+def _resume_lineage(run: ConversationRun | _ResumeOrigin) -> Select[tuple[UUID]]:
     """Only original parent runs that actually paused this same private conversation."""
     if run.org_id is None or run.tenant_id is None:
         raise ChildTaskStopped("revoked")
@@ -382,16 +393,35 @@ async def settle_parent_children(db: AsyncSession, run: ConversationRun) -> None
         return
     # Parent run lock is already held. Every writer locks parent first.
     with claimed_locks(db):
+        # Queue recovery and cancellation may hold only the run ID and status.
+        # Fetch the private lineage coordinates only when this run resumes a parent.
+        result = await db.execute(
+            select(
+                ConversationRun.id,
+                ConversationRun.conversation_id,
+                ConversationRun.agent_id,
+                ConversationRun.user_id,
+                ConversationRun.org_id,
+                ConversationRun.tenant_id,
+            ).where(
+                ConversationRun.id == run.id,
+                ConversationRun.source == "resume",
+                ConversationRun.parent_run_id.is_not(None),
+            )
+        )
+        origin = result.tuples().one_or_none()
+        current = ConversationChildTask.current_run_id
+        belongs_to_run = (
+            current.in_(_resume_lineage(_ResumeOrigin(*origin))) if origin else current == run.id
+        )
         rows = list(
             await db.scalars(
                 select(ConversationChildTask)
-                .where(
-                    (
-                        ConversationChildTask.current_run_id.in_(_resume_lineage(run))
-                        if run.source == "resume" and run.parent_run_id is not None
-                        else ConversationChildTask.current_run_id == run.id
-                    ),
-                    ConversationChildTask.status.in_(_OPEN),
+                .where(belongs_to_run, ConversationChildTask.status.in_(_OPEN))
+                .options(
+                    load_only(
+                        ConversationChildTask.id, ConversationChildTask.status, raiseload=True
+                    )
                 )
                 .order_by(ConversationChildTask.id)
                 .with_for_update()

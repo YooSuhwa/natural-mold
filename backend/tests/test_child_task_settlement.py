@@ -5,14 +5,16 @@ from __future__ import annotations
 from uuid import uuid4
 
 import pytest
-from sqlalchemy import select
+from sqlalchemy import event, inspect, select
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import ORMExecuteState, load_only, noload
 
-from app.child_tasks.persistence import begin_child_task
+from app.child_tasks.persistence import begin_child_task, settle_parent_children
 from app.models.conversation_child_task import ConversationChildInstruction, ConversationChildTask
 from app.models.conversation_run import ConversationRun
 from app.services.conversation_run_creation import RunStatus
 from app.services.conversation_run_state import transition_run
+from tests.authz.execution_gateway_testkit import seed_graph
 from tests.authz.test_child_task_authorization import ChildCase, child_case  # noqa: F401
 
 
@@ -120,3 +122,85 @@ async def test_late_worker_cannot_complete_or_record_checkpoint_after_child_canc
     await db.rollback()
     saved = await db.get(ConversationChildTask, child_id)
     assert saved and saved.status == "cancelled" and saved.result is None and not saved.checkpointed
+
+
+@pytest.mark.parametrize("foreign_parent", [False, True], ids=["same-conversation", "other-tenant"])
+async def test_resume_settles_only_its_own_ancestor_with_a_projected_run(
+    db: AsyncSession,
+    child_case: ChildCase,  # noqa: F811
+    foreign_parent: bool,
+) -> None:
+    graph = child_case.graph
+    child_id = await begin_child_task(
+        db,
+        context=graph.context,
+        conversation_id=graph.conversation_ids[0],
+        run_id=child_case.run_id,
+        tool_call_id="call-before-pause",
+        child_agent_id=child_case.child_id,
+        role="Researcher",
+        checkpoint_ns="task:paused",
+    )
+    assert child_id is not None
+    parent = await db.get(ConversationRun, child_case.run_id, with_for_update=True)
+    assert parent is not None
+    await transition_run(db, parent, "interrupted", interrupt_id="pause")
+    await db.commit()
+
+    if foreign_parent:
+        # Simulate a malformed parent ID that points across a tenant boundary.
+        graph = await seed_graph(db, conversations=1)
+    resume = ConversationRun(
+        source="resume",
+        status="failed",
+        parent_run_id=child_case.run_id,
+        conversation_id=graph.conversation_ids[0],
+        agent_id=graph.agent_id,
+        user_id=graph.context.user_id,
+        org_id=graph.context.org_id,
+        tenant_id=graph.context.tenant_id,
+        input_preview="private resume input",
+    )
+    db.add(resume)
+    await db.commit()
+    run_id = resume.id
+    db.expunge_all()
+
+    locked = await db.scalar(
+        select(ConversationRun)
+        .where(ConversationRun.id == run_id)
+        .with_for_update()
+        .options(
+            load_only(ConversationRun.id, ConversationRun.status, raiseload=True),
+            noload(ConversationRun.metrics),
+        )
+    )
+    assert locked is not None
+    assert {"source", "parent_run_id", "input_preview"} <= inspect(locked).unloaded
+    selections: list[str] = []
+
+    def record_select(state: ORMExecuteState) -> None:
+        if state.is_select:
+            selections.append(str(state.statement))
+
+    event.listen(db.sync_session, "do_orm_execute", record_select)
+    try:
+        await settle_parent_children(db, locked)
+    finally:
+        event.remove(db.sync_session, "do_orm_execute", record_select)
+    assert selections
+    for private_column in (
+        "conversation_runs.input_preview",
+        "conversation_runs.metadata_json",
+        "conversation_child_tasks.brief",
+        "conversation_child_tasks.result",
+        "conversation_child_instructions.text",
+    ):
+        assert all(private_column not in sql for sql in selections)
+    assert {"input_preview", "metadata_json"} <= inspect(locked).unloaded
+    await db.commit()
+
+    status = await db.scalar(
+        select(ConversationChildTask.status).where(ConversationChildTask.id == child_id)
+    )
+    assert status == ("running" if foreign_parent else "failed")
