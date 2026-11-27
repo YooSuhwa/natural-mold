@@ -45,6 +45,7 @@ function savedChat(tip: string | null, fields: Record<string, unknown> = {}) {
 interface RequestLog {
   method: string
   url: URL
+  body: RequestInit['body']
 }
 
 function intercept(reply: (call: RequestLog) => Response | Promise<Response>) {
@@ -54,6 +55,7 @@ function intercept(reply: (call: RequestLog) => Response | Promise<Response>) {
     vi.fn<typeof fetch>(async (input, init = {}) => {
       const call = {
         method: init.method ?? 'GET',
+        body: init.body,
         url: new URL(input instanceof Request ? input.url : input.toString(), 'http://localhost'),
       }
       requests.push(call)
@@ -66,6 +68,8 @@ function intercept(reply: (call: RequestLog) => Response | Promise<Response>) {
 function mountChat() {
   const agent: MoldyAgUiAgent = new MoldyAgUiAgent({
     conversationId,
+    onAccepted: ({ publicRunId, physicalRunId }) =>
+      session.onRunAccepted({ runId: publicRunId, physicalRunId }),
     onPublicEvent: (event, context) => session.onPublicEvent(event, context),
   })
   const session = createAgUiChatSession({
@@ -82,11 +86,83 @@ function mountChat() {
     },
     { wrapper: StrictMode },
   )
-  return { ...view, onSettled }
+  return { ...view, onSettled, session }
 }
 
 function textFrame(frame: object) {
   return new TextEncoder().encode('data: ' + JSON.stringify(frame) + '\n\n')
+}
+
+function openSubmission(call: RequestLog) {
+  if (typeof call.body !== 'string') throw new Error('Expected a JSON chat command')
+  const { runId }: { runId: string } = JSON.parse(call.body)
+  let output!: ReadableStreamDefaultController<Uint8Array>
+  const body = new ReadableStream<Uint8Array>({
+    start(controller) {
+      output = controller
+      controller.enqueue(
+        textFrame({ type: 'RUN_STARTED', threadId: conversationId, runId, protocolVersion: '1.0' }),
+      )
+      controller.enqueue(
+        textFrame({ type: 'TEXT_MESSAGE_START', messageId: 'new-stream', role: 'assistant' }),
+      )
+      controller.enqueue(
+        textFrame({
+          type: 'TEXT_MESSAGE_CONTENT',
+          messageId: 'new-stream',
+          delta: '새 응답 작성 중',
+        }),
+      )
+    },
+  })
+  return {
+    response: new Response(body, {
+      headers: {
+        'Content-Type': 'text/event-stream',
+        'X-Run-Id': runId,
+        'X-Moldy-Run-Id': physicalRunId,
+      },
+    }),
+    close(terminal: boolean) {
+      if (terminal) {
+        output.enqueue(textFrame({ type: 'TEXT_MESSAGE_END', messageId: 'new-stream' }))
+        output.enqueue(
+          textFrame({
+            type: 'RUN_FINISHED',
+            runId,
+            threadId: conversationId,
+            outcome: { type: 'success' },
+          }),
+        )
+      }
+      output.close()
+    },
+    snapshot: () => {
+      const previous = savedChat('initial')
+      const newMessages = [
+        { id: 'saved-question', role: 'user', content: '새 질문' },
+        { id: 'saved-turn', role: 'assistant', content: '저장된 새 응답' },
+      ]
+      return {
+        ...previous,
+        checkpointId: 'saved-turn',
+        activeTipMessageId: 'saved-turn',
+        messages: [...previous.messages, ...newMessages],
+        messageLinks: [
+          ...previous.messageLinks,
+          ...newMessages.map(({ id }, i) => ({
+            messageId: id,
+            uiMessageId: id,
+            parentMessageId: i === 0 ? 'initial' : 'saved-question',
+            runId,
+            physicalRunId,
+            checkpointId: 'saved-turn',
+            parentCheckpointId: 'initial',
+          })),
+        ],
+      }
+    },
+  }
 }
 
 afterEach(() => {
@@ -258,6 +334,148 @@ describe('durable official chat history', () => {
     ).toEqual([publicRunId, publicRunId])
     expect(calls.every(({ method }) => method === 'GET')).toBe(true)
   })
+
+  it.each([
+    { delayedBranch: false, terminal: false, name: 'a lost terminal frame' },
+    { delayedBranch: true, terminal: true, name: 'an older branch read racing the new submission' },
+  ])('imports the accepted POST exactly once after $name', async ({ delayedBranch, terminal }) => {
+    let submitted: ReturnType<typeof openSubmission> | undefined
+    let releaseBranch: ((response: Response) => void) | undefined
+    let branchChanged = false
+    let stored = false
+    const calls = intercept((call) => {
+      if (call.method === 'POST' && call.url.pathname.endsWith('/runs')) {
+        submitted = openSubmission(call)
+        return submitted.response
+      }
+      if (!call.url.pathname.endsWith('/snapshot'))
+        throw new Error('Unexpected connection: ' + call.url.pathname)
+      if (submitted && stored) return Response.json(submitted.snapshot())
+      if (branchChanged && !releaseBranch) {
+        return new Promise<Response>((resolve) => {
+          releaseBranch = resolve
+        })
+      }
+      return Response.json(savedChat('initial'))
+    })
+    const view = mountChat()
+    const thread = view.result.current.runtime.thread
+    await waitFor(() => expect(thread.getState().messages.at(-1)?.id).toBe('initial'))
+    if (delayedBranch) {
+      branchChanged = true
+      await act(async () => dispatchMoldyBranchSwitched({ conversationId, checkpointId: 'stale' }))
+      await waitFor(() => expect(releaseBranch).toBeDefined())
+    }
+    act(() => {
+      void thread.append({ role: 'user', content: [{ type: 'text', text: '새 질문' }] })
+    })
+    const streaming = () => thread.getState().messages.at(-1)?.content
+    await waitFor(() =>
+      expect(streaming()).toContainEqual(
+        expect.objectContaining({ type: 'text', text: '새 응답 작성 중' }),
+      ),
+    )
+    if (delayedBranch) {
+      await act(async () => releaseBranch?.(Response.json(savedChat('stale'))))
+      expect(streaming()).toContainEqual(
+        expect.objectContaining({ type: 'text', text: '새 응답 작성 중' }),
+      )
+    }
+    await act(async () => {
+      stored = true
+      submitted?.close(terminal)
+    })
+    await waitFor(() =>
+      expect(thread.getState().messages.map(({ id }) => id)).toEqual([
+        'question',
+        'initial',
+        'saved-question',
+        'saved-turn',
+      ]),
+    )
+    await waitFor(() => expect(view.onSettled).toHaveBeenCalledTimes(1))
+    expect(calls.filter(({ method }) => method === 'POST')).toHaveLength(1)
+    expect(calls.filter(({ url }) => url.pathname.endsWith('/stream'))).toHaveLength(0)
+    expect(calls.at(-1)?.method).toBe('GET')
+  })
+
+  it.each([
+    { code: 'AG_UI_READ_DENIED', expectedStreams: 1 },
+    { code: 'AG_UI_SNAPSHOT_REQUIRED', expectedStreams: 2 },
+  ])(
+    'honors the replay failure $code without repeatedly reattaching',
+    async ({ code, expectedStreams }) => {
+      const hiddenChild = {
+        subagentRunId: 'delegated-child',
+        parentToolCallId: 'delegate-call',
+        name: '검토 담당',
+        status: 'running',
+      }
+      let close!: () => void
+      const snapshots = () => calls.filter(({ url }) => url.pathname.endsWith('/snapshot')).length
+      const streams = () => calls.filter(({ url }) => url.pathname.endsWith('/stream')).length
+      const calls = intercept(({ url }) => {
+        if (url.pathname.endsWith('/snapshot'))
+          return Response.json(
+            savedChat(null, {
+              activeRunId: publicRunId,
+              physicalRunId,
+              subagents: [hiddenChild],
+            }),
+          )
+        if (!url.pathname.endsWith('/stream'))
+          throw new Error('Unexpected replay path: ' + url.pathname)
+        const output = new ReadableStream<Uint8Array>({
+          start(controller) {
+            controller.enqueue(
+              textFrame({
+                type: 'RUN_STARTED',
+                threadId: conversationId,
+                runId: publicRunId,
+                protocolVersion: '1.0',
+              }),
+            )
+            close = () => {
+              controller.enqueue(
+                textFrame({
+                  type: 'RUN_ERROR',
+                  code,
+                  message: 'Reload the authorized chat snapshot.',
+                }),
+              )
+              controller.close()
+            }
+          },
+        })
+        return new Response(output, { headers: { 'Content-Type': 'text/event-stream' } })
+      })
+      const view = mountChat()
+      await waitFor(() => expect(streams()).toBe(1))
+      await waitFor(() => expect(view.session.getSnapshot().subagents).toHaveLength(1))
+      const initialReads = snapshots()
+      await act(async () => close())
+      if (code === 'AG_UI_READ_DENIED') {
+        await waitFor(() => expect(view.session.getSnapshot().readDenied).toBe(true))
+        await waitFor(() =>
+          expect(view.result.current.runtime.thread.getState().messages).toEqual([]),
+        )
+        expect(view.session.getSnapshot().subagents).toEqual([])
+        expect(view.session.getSnapshot().activeRunId).toBeNull()
+        expect(snapshots()).toBe(initialReads)
+      } else {
+        await waitFor(() => expect(streams()).toBe(2))
+        expect(snapshots()).toBeGreaterThan(initialReads)
+        await act(async () => close())
+        await waitFor(() => expect(view.session.getSnapshot().attachBlockedRunId).toBe(publicRunId))
+      }
+      // Cover the lifecycle's first reconnect delay even when the failure is delivered before React paints.
+      await act(async () => {
+        await new Promise<void>((resolve) => setTimeout(resolve, 500))
+      })
+      expect(streams()).toBe(expectedStreams)
+      expect(calls.every(({ method }) => method === 'GET')).toBe(true)
+    },
+  )
 
   it('ignores other conversations and prevents an older branch read from replacing a later selection', async () => {
     let respond: () => Response | Promise<Response> = () => Response.json(savedChat('original'))
