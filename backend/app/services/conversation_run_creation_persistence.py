@@ -11,15 +11,21 @@ from collections.abc import Callable, Sequence
 from datetime import UTC, datetime, timedelta
 from typing import Any
 
-from sqlalchemy import func, or_, select
+from sqlalchemy import ColumnElement, String, and_, cast, func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import aliased
 
 from app.agent_runtime import event_names
 from app.authz.org_context import OrgContext
 from app.config import settings
-from app.models.conversation import Conversation
-from app.models.conversation_run import RUN_ACTIVE_STATUSES, ConversationRun
+from app.models.conversation import INDEPENDENT_JOB_SOURCE, Conversation
+from app.models.conversation_run import (
+    RUN_ACTIVE_STATUSES,
+    ConversationRun,
+    ConversationRunToolReceipt,
+)
 from app.models.conversation_run_input import ConversationRunInput
+from app.models.independent_chat_job import IndependentChatJob
 from app.services import trace_storage
 from app.services.artifact_service import finalize_artifacts_for_run
 from app.services.conversation_audit_service import record_conversation_run_audit
@@ -79,6 +85,76 @@ async def finalize_run_outputs_for_status(
     )
 
 
+def _unstarted_independent_handoff() -> ColumnElement[bool]:
+    """The durable queue owns this initial claim until a worker starts it."""
+    run, job, item = ConversationRun, IndependentChatJob, ConversationRunInput
+    parent = aliased(ConversationRun)
+    accepted = (
+        select(job.id)
+        .select_from(job)
+        .join(parent, parent.id == job.parent_run_id)
+        .join(Conversation, Conversation.id == job.child_conversation_id)
+        .join(item, item.run_id == job.child_run_id)
+        .where(
+            job.child_run_id == run.id,
+            job.child_conversation_id == run.conversation_id,
+            job.child_agent_id == run.agent_id,
+            job.user_id == run.user_id,
+            job.org_id == run.org_id,
+            job.tenant_id == run.tenant_id,
+            job.cancel_requested_at.is_(None),
+            parent.conversation_id == job.parent_conversation_id,
+            parent.agent_id == job.parent_agent_id,
+            parent.user_id == job.user_id,
+            parent.org_id == job.org_id,
+            parent.tenant_id == job.tenant_id,
+            Conversation.source == INDEPENDENT_JOB_SOURCE,
+            Conversation.agent_id == job.child_agent_id,
+            Conversation.user_id == job.user_id,
+            Conversation.org_id == job.org_id,
+            Conversation.tenant_id == job.tenant_id,
+            item.conversation_id == job.child_conversation_id,
+            item.agent_id == job.child_agent_id,
+            item.user_id == job.user_id,
+            item.status == "claimed",
+            item.source == "chat",
+            item.claimed_at.is_not(None),
+            item.checkpoint_id.is_(None),
+            # The launch input's key is str(job.id). SQLite stores UUID columns as hex.
+            item.client_request_id.like("________-____-____-____-____________"),
+            func.replace(item.client_request_id, "-", "")
+            == func.replace(cast(job.id, String), "-", ""),
+        )
+        .correlate(run)
+        .exists()
+    )
+    tool_receipt = (
+        select(ConversationRunToolReceipt.run_id)
+        .where(ConversationRunToolReceipt.run_id == run.id)
+        .correlate(run)
+        .exists()
+    )
+    return and_(
+        run.status == "queued",
+        run.source == "start",
+        run.run_source == "CHAT",
+        run.parent_run_id.is_(None),
+        run.worker_instance_id.is_(None),
+        run.owner_generation == 0,
+        run.owner_token.is_(None),
+        run.started_at.is_(None),
+        run.heartbeat_at.is_(None),
+        run.completed_at.is_(None),
+        run.cancel_requested_at.is_(None),
+        run.runtime_materialized_at.is_(None),
+        run.runtime_materialization_sha256.is_(None),
+        run.recovery_model_attempts.is_(None),
+        run.last_event_id.is_(None),
+        ~tool_receipt,
+        accepted,
+    )
+
+
 async def mark_stale_active_runs(
     db: AsyncSession,
     *,
@@ -98,6 +174,7 @@ async def mark_stale_active_runs(
         ConversationRun.status.in_(RUN_ACTIVE_STATUSES),
         reference_time <= stale_before,
         ConversationRun.status != "canceling",
+        _unstarted_independent_handoff().is_not(True),
     ]
     # Enrolled owners and their cancellation state belong to the fenced recovery sweep,
     # including the first sweep after an administrator disables new takeovers.
