@@ -111,7 +111,8 @@ async def test_interrupted_fork_moves_only_its_original_selection_and_can_resume
         await db.commit()
     async with TestSession() as db:
         pre = await _prepare(db, physical)
-        assert pre
+        assert pre and pre.run.metadata_json
+        assert pre.run.metadata_json["ag_ui_projection_version"] == receipt.projection_version
         native = pre.input_payload
         await runs.transition_run(db, pre.run, "running", worker_instance_id="fork-worker")
         await db.commit()
@@ -173,6 +174,8 @@ async def test_interrupted_fork_moves_only_its_original_selection_and_can_resume
     async with TestSession() as db:
         subsequent = await _prepare(db, bound.run_id)
         assert subsequent and subsequent.cfg.checkpoint_id == created
+        assert subsequent.run.metadata_json
+        assert subsequent.run.metadata_json["ag_ui_projection_version"] == bound.projection_version
         response = await graph.ainvoke(
             Command(resume=subsequent.input_payload),
             {"configurable": run_configurable(str(cid), bound.run_id, ctx.tenant_id)},

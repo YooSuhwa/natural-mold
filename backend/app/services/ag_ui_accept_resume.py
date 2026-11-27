@@ -18,7 +18,12 @@ from app.routers.conversation_agent_protocol_resume import (
 )
 from app.routers.session_consent_scope import SessionConsentPayload, SessionConsentTarget
 from app.services import chat_service
-from app.services.ag_ui_commands import AgUiRunBinding, CommandAdmission, bind_command
+from app.services.ag_ui_commands import (
+    PROJECTION_VERSION,
+    AgUiRunBinding,
+    CommandAdmission,
+    bind_command,
+)
 from app.services.ag_ui_deferred_delivery import seal_ag_ui_delivery
 from app.services.ag_ui_resume import claim_verified_resume, verify_ag_ui_resume
 from app.services.agent_execution_owner import OwnedExecutionRequest, accept_owned_execution
@@ -55,6 +60,7 @@ async def accept_resume(
             parent_run_id=parent.id,
             interrupt_id=interrupt_id,
             run_metadata={
+                "ag_ui_projection_version": PROJECTION_VERSION,
                 "protocol": "langgraph_v3",
                 "parent_run_id": str(parent.id),
                 **resume_decision_metadata(verified.resume, verified.pending_interrupts),

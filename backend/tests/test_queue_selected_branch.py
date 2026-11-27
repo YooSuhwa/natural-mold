@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import hashlib
+from unittest.mock import AsyncMock
 from uuid import UUID, uuid4
 
 import pytest
@@ -16,6 +17,7 @@ from langgraph.graph import END, START, MessagesState, StateGraph
 from psycopg_pool import PoolTimeout
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm.attributes import flag_modified
 
 from app.agent_runtime.runtime_config import AgentConfig
 from app.dependencies import CurrentUser
@@ -24,6 +26,7 @@ from app.models.conversation_run import ConversationRun
 from app.models.conversation_run_input import ConversationRunInput
 from app.services import conversation_run_queue_service, conversation_run_queue_worker
 from app.services.ag_ui_commands import find_or_reserve
+from app.services.ag_ui_queue_branch import DEFAULT_BRANCH_AT_CLAIM
 from app.services.ag_ui_retry import load_retry_start
 from app.services.ag_ui_start import accept_start
 from app.services.conversation_run_service import transition_run
@@ -219,6 +222,112 @@ async def test_native_chat_keeps_its_existing_checkpoint_contract(db: AsyncSessi
     assert claim is not None and claim.input.id == queued.id
     assert claim.input.checkpoint_id is None
     assert claim.run.metadata_json and claim.run.metadata_json["checkpoint_id"] is None
+    assert DEFAULT_BRANCH_AT_CLAIM not in claim.run.metadata_json
+
+
+@pytest.mark.parametrize(
+    ("receipt", "selected"),
+    [(True, "explicit-root"), (False, "explicit-root"), (True, None)],
+    ids=["ag-ui-selected", "native-selected", "ag-ui-default"],
+)
+async def test_older_claim_without_checkpoint_uses_only_the_default_ag_ui_branch(
+    db: AsyncSession, monkeypatch: pytest.MonkeyPatch, receipt: bool, selected: str | None
+) -> None:
+    conversation_id = await seed_conversation_with_agent()
+    queued = await _enqueue(db, conversation_id, "authoritative text", ag_ui=receipt)
+    conversation = await db.get(Conversation, conversation_id)
+    assert conversation is not None
+    conversation.active_branch_checkpoint_id = selected
+    await db.commit()
+    with monkeypatch.context() as old_worker:
+        # Claim from the old binary: all normal locks/creation, no branch capture.
+        old_worker.setattr(
+            "app.services.conversation_run_queue_claim.pin_selected_queue_head",
+            AsyncMock(return_value=True),
+        )
+        claim = await conversation_run_queue_service.claim_next_input(
+            db, conversation_id=conversation_id, context=OWNER
+        )
+        assert claim and claim.input.id == queued.id and claim.input.checkpoint_id is None
+        await db.commit()
+    start = AsyncMock()
+    cfg = AsyncMock(wraps=conversation_run_queue_worker.resolve_agent_context)
+    monkeypatch.setattr(conversation_run_queue_worker, "start_conversation_run", start)
+    monkeypatch.setattr(conversation_run_queue_worker, "resolve_agent_context", cfg)
+    await conversation_run_queue_worker.launch_claimed_input(queued.id)
+    await db.refresh(queued)
+    await db.refresh(claim.run)
+    if receipt and selected:
+        cfg.assert_not_awaited()
+        start.assert_not_awaited()
+        assert queued.status == claim.run.status == "failed"
+        assert claim.run.error_code == "queue_branch_unpinned"
+        payload, attachments = await load_retry_start(
+            db, context=OWNER, conversation=conversation, input_id=queued.id, public_run_id="retry"
+        )
+        messages = payload["messages"]
+        assert isinstance(messages, list) and len(messages) == 1 and isinstance(messages[0], dict)
+        assert messages[0]["content"] == "authoritative text" and attachments == []
+    else:
+        start.assert_awaited_once()
+        assert start.await_args is not None and start.await_args.kwargs["cfg"].checkpoint_id is None
+        assert queued.status == "claimed" and claim.run.error_code is None
+
+
+@pytest.mark.parametrize("marker", [True, "true", 1], ids=["server-boolean", "string", "integer"])
+async def test_default_claim_remembers_its_branch_if_the_user_switches_before_launch(
+    db: AsyncSession, saver: InMemorySaver, monkeypatch: pytest.MonkeyPatch, marker: object
+) -> None:
+    conversation_id = await seed_conversation_with_agent()
+    root: RunnableConfig = {
+        "configurable": {"thread_id": str(conversation_id), **checkpoint_tenant(OWNER.tenant_id)}
+    }
+    builder = StateGraph(MessagesState)
+    builder.add_node("reply", lambda state: {})
+    builder.add_edge(START, "reply")
+    builder.add_edge("reply", END)
+    graph = builder.compile(checkpointer=saver)
+    await graph.ainvoke({"messages": [HumanMessage("shared")]}, root)
+    fork = (await graph.aget_state(root)).config
+    await graph.ainvoke({"messages": [HumanMessage("other branch")]}, fork)
+    other = (await graph.aget_state(root)).config
+    await graph.ainvoke({"messages": [HumanMessage("default branch")]}, fork)
+
+    queued = await _enqueue(db, conversation_id, "new user turn")
+    claim = await conversation_run_queue_service.claim_next_input(
+        db, conversation_id=conversation_id, context=OWNER
+    )
+    assert claim and claim.input.id == queued.id and claim.input.checkpoint_id is None
+    assert claim.run.metadata_json and claim.run.metadata_json[DEFAULT_BRANCH_AT_CLAIM] is True
+    if marker is not True:
+        claim.run.metadata_json = {**claim.run.metadata_json, DEFAULT_BRANCH_AT_CLAIM: marker}
+        # Python's 1 == True would otherwise hide the deliberately different JSON type.
+        flag_modified(claim.run, "metadata_json")
+    conversation = await db.get(Conversation, conversation_id)
+    assert conversation is not None
+    conversation.active_branch_checkpoint_id = _checkpoint_id(other)
+    await db.commit()
+
+    invoked: list[list[str]] = []
+
+    async def launch(*, cfg: AgentConfig, input_payload: MessagesState, **_: object) -> None:
+        assert cfg.checkpoint_id is None
+        result = await graph.ainvoke(input_payload, root)
+        invoked.append([message.content for message in result["messages"]])
+
+    monkeypatch.setattr(conversation_run_queue_worker, "start_conversation_run", launch)
+    await conversation_run_queue_worker.launch_claimed_input(queued.id)
+    if marker is True:
+        assert invoked == [["shared", "default branch", "new user turn"]]
+        visible = await graph.aget_state(other)
+        assert [message.content for message in visible.values["messages"]] == [
+            "shared",
+            "other branch",
+        ]
+    else:
+        assert not invoked
+        await db.refresh(claim.run)
+        assert claim.run.status == "failed" and claim.run.error_code == "queue_branch_unpinned"
 
 
 async def test_saver_outage_keeps_the_input_eligible_for_the_same_claim(

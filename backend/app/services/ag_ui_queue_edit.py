@@ -11,13 +11,14 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.authz.org_context import OrgContext
+from app.exceptions import ConflictError
 from app.models.conversation_run_input import ConversationRunInput, JsonValue
 from app.schemas.chat_resource_context import (
     INTERNAL_RESOURCE_CONTEXT_KEY,
     PUBLIC_RESOURCE_CONTEXT_KEY,
 )
 from app.schemas.conversation_graph_input import OMITTED_MEDIA_KEY, is_omitted_user_message
-from app.services.ag_ui_queue_branch import bound_ag_ui_input
+from app.services.ag_ui_queue_branch import bound_ag_ui_input, claimed_default_branch
 from app.services.ag_ui_start_effects import authorize_start_attachments
 from app.services.ag_ui_start_input import OMITTED_MEDIA_SUFFIX, validate_chat_text
 from app.services.chat_resource_context_payload import public_resource_context_from_payload
@@ -97,11 +98,26 @@ async def _authorized_omission(
 
 
 async def validate_ag_ui_queue_delivery(
-    db: AsyncSession, context: OrgContext, queued: ConversationRunInput
+    db: AsyncSession,
+    context: OrgContext,
+    queued: ConversationRunInput,
+    *,
+    selected_checkpoint_id: str | None = None,
 ) -> bool:
     """Return the true omission marker only after verifying its bound input and files."""
     if not await db.scalar(select(bound_ag_ui_input(context, queued.conversation_id, queued.id))):
         return False
+    if (
+        selected_checkpoint_id is not None
+        and queued.source == "chat"
+        and queued.checkpoint_id is None
+        and not await claimed_default_branch(db, context, queued)
+    ):
+        # Older workers could claim a selected branch without recording its head.
+        # A fresh user retry can choose the current leaf after validating the stored turn.
+        raise ConflictError(
+            "queue_branch_unpinned", "The queued run has no recorded branch checkpoint"
+        )
     return await _authorized_omission(db, context, queued)
 
 

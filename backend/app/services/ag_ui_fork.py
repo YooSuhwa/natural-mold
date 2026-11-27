@@ -20,7 +20,12 @@ from app.models.conversation import Conversation
 from app.models.conversation_run import ConversationRun
 from app.models.conversation_run_input import JsonValue
 from app.schemas.conversation_graph_input import OMITTED_MEDIA_KEY, is_omitted_user_message
-from app.services.ag_ui_commands import AgUiRunBinding, CommandAdmission, bind_command
+from app.services.ag_ui_commands import (
+    PROJECTION_VERSION,
+    AgUiRunBinding,
+    CommandAdmission,
+    bind_command,
+)
 from app.services.ag_ui_fork_branch import FORK_SELECTION_KEY
 from app.services.ag_ui_fork_checkpoints import ForkOperation, load_fork_checkpoint
 from app.services.agent_execution_owner import OwnedExecutionRequest, accept_owned_execution
@@ -101,6 +106,7 @@ async def accept_fork(
             context=context,
             source="chat",
             run_source=operation,
+            run_metadata={"ag_ui_projection_version": PROJECTION_VERSION},
             input_preview=preview,
         ),
     )

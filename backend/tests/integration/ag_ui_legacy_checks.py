@@ -16,7 +16,9 @@ from langgraph.types import Command
 from sqlalchemy import delete, func, select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
+from app import database
 from app.agent_runtime import checkpointer, langgraph_agent_stream_runner
+from app.agent_runtime.runtime import usage_guard
 from app.agent_runtime.runtime_config import AgentConfig
 from app.auth.cookies import ACTIVE_ORG_COOKIE
 from app.auth.jwt import create_access_token, create_csrf_token
@@ -68,6 +70,8 @@ async def assert_standard_resume(
                 )
             )
     for module in (
+        database,
+        usage_guard,
         conversation_run_queue_worker,
         conversation_run_worker,
         conversation_stream_service,

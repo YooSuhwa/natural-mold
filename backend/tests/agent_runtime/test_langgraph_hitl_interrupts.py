@@ -6,7 +6,7 @@ from typing import Any
 
 import pytest
 from langchain_core.language_models.fake_chat_models import FakeMessagesListChatModel
-from langchain_core.messages import AIMessage
+from langchain_core.messages import AIMessage, BaseMessage
 from langchain_core.tools import tool
 from langgraph.checkpoint.memory import MemorySaver
 
@@ -90,7 +90,7 @@ async def test_langgraph_runner_emits_input_requested_for_execute_in_skill_inter
             ],
         )
 
-    responses = [tool_call("create")]
+    responses: list[BaseMessage] = [tool_call("create")]
     if next_review:
         responses.append(tool_call("export"))
     responses.append(AIMessage(content="문서 생성이 완료되었습니다."))
