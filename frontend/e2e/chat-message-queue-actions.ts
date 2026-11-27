@@ -1,8 +1,8 @@
-import type { APIRequestContext, Page, Request, Response } from '@playwright/test'
+import type { APIRequestContext, Locator, Page, Request, Response } from '@playwright/test'
 
+import { parseConversationRunStartUrl } from '../scripts/e2e-run-start-response'
 import { API_BASE, apiGetJson, expect, isRecord } from './fixtures'
 import { readAgUiAcceptance, readAgUiRunInput } from './helpers/ag-ui-run-receipt'
-import { sendMessage } from './langgraph-v3-helpers'
 
 export type QueueItem = Record<string, unknown> & {
   readonly id: string
@@ -126,32 +126,74 @@ export async function queueState(
   }
 }
 
+function queueCommand(
+  request: Request,
+  threadId: string,
+  strategy: 'enqueue' | 'interrupt',
+  text: string,
+): boolean {
+  const requestedThread =
+    process.env.NEXT_PUBLIC_CHAT_RUNTIME === 'ag_ui'
+      ? readAgUiRunInput(request, threadId)?.threadId
+      : parseConversationRunStartUrl(request.url(), API_BASE)
+  return (
+    requestedThread === threadId &&
+    commandStrategy(request) === strategy &&
+    runStartHasExactHuman(request, text)
+  )
+}
+
+async function enqueueOnce(thread: Locator, text: string): Promise<void> {
+  const input = thread.locator('textarea[data-moldy-composer-input="true"]')
+  await input.fill(text)
+  const sendNext = thread.getByRole('button', {
+    name: /^(다음 요청으로 대기|Queue as next request)$/,
+  })
+  await expect(sendNext).toBeVisible()
+  await expect(sendNext).toBeEnabled()
+  // The composer intentionally keeps its text while awaiting the server's receipt.
+  await input.press('Enter')
+}
+
+async function responseFor(command: Request): Promise<Response> {
+  const response = await command.response()
+  if (!response) throw new Error('The submitted queue command did not receive a response')
+  return response
+}
+
+async function confirmSteer(
+  thread: Locator,
+  text: string,
+  afterSteerArmed?: () => Promise<void>,
+): Promise<void> {
+  const composer = thread.locator('textarea[data-moldy-composer-input="true"]')
+  await composer.fill(text)
+  const steerButton = thread.locator('[data-moldy-queue-steer-new]')
+  await expect(steerButton).toBeVisible({ timeout: 10_000 })
+  await expect(steerButton).toBeEnabled({ timeout: 10_000 })
+  await steerButton.click()
+  const sendNowButton = thread.locator('[data-moldy-queue-send-now-new]')
+  await expect(sendNowButton).toBeVisible()
+  await afterSteerArmed?.()
+  await sendNowButton.click()
+}
+
 export async function sendForStrategy(
   page: Page,
   text: string,
   strategy: 'enqueue' | 'interrupt',
   options?: { readonly afterSteerArmed?: () => Promise<void> },
 ): Promise<QueueSubmission> {
-  const responsePromise = page.waitForResponse(
-    (response) =>
-      commandStrategy(response.request()) === strategy &&
-      runStartHasExactHuman(response.request(), text),
-  )
-  if (strategy === 'enqueue') {
-    await sendMessage(page, text)
-  } else {
-    const composer = page.locator('textarea[data-moldy-composer-input="true"]').last()
-    await composer.fill(text)
-    const steerButton = page.locator('[data-moldy-queue-steer-new]')
-    await expect(steerButton).toBeVisible({ timeout: 10_000 })
-    await expect(steerButton).toBeEnabled({ timeout: 10_000 })
-    await steerButton.click()
-    const sendNowButton = page.locator('[data-moldy-queue-send-now-new]')
-    await expect(sendNowButton).toBeVisible()
-    await options?.afterSteerArmed?.()
-    await sendNowButton.click()
-  }
-  const response = await responsePromise
+  const threadId = /\/conversations\/([\w-]+)\/?$/.exec(new URL(page.url()).pathname)?.[1]
+  if (!threadId) throw new Error('Queue action requires a conversation page')
+  const thread = page.locator(`[data-chat-selection-thread="${threadId}"]`)
+  const [command] = await Promise.all([
+    page.waitForRequest((req) => queueCommand(req, threadId, strategy, text)),
+    strategy === 'enqueue'
+      ? enqueueOnce(thread, text)
+      : confirmSteer(thread, text, options?.afterSteerArmed),
+  ])
+  const response = await responseFor(command)
   expect(response.ok()).toBeTruthy()
   if (process.env.NEXT_PUBLIC_CHAT_RUNTIME === 'ag_ui') {
     const { queue, physicalRunId } = await readAgUiAcceptance(response)
@@ -174,10 +216,12 @@ export async function beginPersistedEnqueue(
   conversationId: string,
   text: string,
 ): Promise<PersistedEnqueue> {
-  const matches = (candidate: Request) =>
-    commandStrategy(candidate) === 'enqueue' && runStartHasExactHuman(candidate, text)
-  const responsePromise = page.waitForResponse((response) => matches(response.request()))
-  const [command] = await Promise.all([page.waitForRequest(matches), sendMessage(page, text)])
+  const thread = page.locator(`[data-chat-selection-thread="${conversationId}"]`)
+  const [command] = await Promise.all([
+    page.waitForRequest((req) => queueCommand(req, conversationId, 'enqueue', text)),
+    enqueueOnce(thread, text),
+  ])
+  const responsePromise = responseFor(command)
   if (process.env.NEXT_PUBLIC_CHAT_RUNTIME === 'ag_ui') {
     const { queue } = await readAgUiAcceptance(await responsePromise)
     if (!queue) throw new Error('Missing AG-UI queue input receipt')
