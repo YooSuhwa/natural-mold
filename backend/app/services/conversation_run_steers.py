@@ -194,12 +194,20 @@ async def list_steers(
     before_sequence: int | None = None,
     limit: int = 50,
 ) -> list[ConversationRunSteer]:
-    if await load_private_conversation(db, conversation_id, context) is None:
+    conversation = await load_private_conversation(db, conversation_id, context)
+    if conversation is None:
         raise _not_found()
+    readable = await conversation_run_service.readable_conversation_run_ids(
+        db, conversation, context
+    )
     stmt = select(ConversationRunSteer).where(
         ConversationRunSteer.conversation_id == conversation_id,
         private_scope_predicate(ConversationRunSteer, context),
     )
+    if readable is not None:
+        if run_id is not None and run_id not in readable:
+            raise _not_found()
+        stmt = stmt.where(ConversationRunSteer.run_id.in_(readable))
     if run_id is not None:
         visible = await db.scalar(
             select(ConversationRun.id).where(

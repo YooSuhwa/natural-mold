@@ -1,10 +1,12 @@
 """Private projections and serialized user commands for in-conversation child tasks."""
 
 import asyncio
+from collections.abc import AsyncIterator
 from uuid import UUID
 
 from sqlalchemy import Select, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import aliased
 
 from app.authz.conversation_run_scope import private_run_predicate
 from app.authz.conversation_scope import require_private_conversation
@@ -14,7 +16,7 @@ from app.authz.run_decisions import open_request_memo
 from app.config import settings
 from app.exceptions import AppError, ConflictError, NotFoundError
 from app.models.agent_lifecycle import ConversationRunAgent
-from app.models.conversation import INDEPENDENT_JOB_SOURCE
+from app.models.conversation import INDEPENDENT_JOB_SOURCE, Conversation
 from app.models.conversation_child_task import ConversationChildInstruction, ConversationChildTask
 from app.models.conversation_run import ConversationRun
 from app.schemas.conversation_child_task import (
@@ -27,6 +29,7 @@ from app.services.child_tasks_runtime import (
     authorize_child_target,
     settle_child_status_locked,
 )
+from app.services.conversation_run_service import readable_conversation_run_ids
 
 _CONVERSATIONAL = {"running", "awaiting_approval"}
 
@@ -59,18 +62,28 @@ async def _view(db: AsyncSession, child: ConversationChildTask) -> ChildTaskResp
     return ChildTaskResponse.model_validate(child)
 
 
-def _in_conversation(
-    conversation_id: UUID, context: OrgContext
+async def _in_conversation(
+    db: AsyncSession, conversation: Conversation, context: OrgContext
 ) -> Select[tuple[ConversationChildTask]]:
-    return (
+    current = aliased(ConversationRun)
+    stmt = (
         select(ConversationChildTask)
         .join(ConversationRun, ConversationRun.id == ConversationChildTask.run_id)
+        .join(current, current.id == ConversationChildTask.current_run_id)
         .where(
-            ConversationRun.conversation_id == conversation_id,
+            ConversationRun.conversation_id == conversation.id,
+            current.conversation_id == ConversationRun.conversation_id,
             private_run_predicate(context),
         )
         .execution_options(populate_existing=True)
     )
+    readable = await readable_conversation_run_ids(db, conversation, context)
+    if readable is not None:
+        stmt = stmt.where(
+            ConversationChildTask.run_id.in_(readable),
+            ConversationChildTask.current_run_id.in_(readable),
+        )
+    return stmt
 
 
 async def _allow_legacy_details(
@@ -92,6 +105,26 @@ async def _allow_legacy_details(
     return not await db.scalar(select(accepted_root.exists()))
 
 
+async def _candidate_ids(
+    db: AsyncSession, scoped: Select[tuple[ConversationChildTask]], batch_size: int
+) -> AsyncIterator[UUID]:
+    ordered = scoped.with_only_columns(ConversationChildTask.id).order_by(
+        ConversationChildTask.status.in_(_CONVERSATIONAL).desc(),
+        ConversationChildTask.created_at.desc(),
+        ConversationChildTask.id,
+    )
+    raw_offset = 0
+    while True:
+        ids = (await db.scalars(ordered.offset(raw_offset).limit(batch_size))).all()
+        # Each target's authorization must acquire its own proof and locks.
+        await db.rollback()
+        for child_id in ids:
+            yield child_id
+        if len(ids) < batch_size:
+            return
+        raw_offset += len(ids)
+
+
 async def list_child_tasks(
     db: AsyncSession,
     conversation_id: UUID,
@@ -100,38 +133,35 @@ async def list_child_tasks(
     limit: int = 50,
     offset: int = 0,
 ) -> ChildTaskPage:
-    await require_private_conversation(db, conversation_id, context)
+    conversation = await require_private_conversation(db, conversation_id, context)
     enabled = settings.child_tasks_enabled
-    allow_legacy = not enabled and await _allow_legacy_details(db, conversation_id, context)
-    child_ids = (
-        await db.scalars(
-            _in_conversation(conversation_id, context)
-            .with_only_columns(ConversationChildTask.id)
-            .order_by(
-                ConversationChildTask.status.in_(_CONVERSATIONAL).desc(),
-                ConversationChildTask.created_at.desc(),
-                ConversationChildTask.id,
-            )
-            .offset(offset)
-            .limit(limit + 1)
-        )
-    ).all()
-    # A run authorization owns its lock order and proof only for that transaction.
-    # Release it before checking a sibling, which may belong to a different run.
-    await db.rollback()
+    allow_legacy = (
+        not enabled
+        and conversation.source != INDEPENDENT_JOB_SOURCE
+        and await _allow_legacy_details(db, conversation_id, context)
+    )
+    scoped = await _in_conversation(db, conversation, context)
     result: list[ChildTaskResponse] = []
-    for child_id in child_ids[:limit]:
+    visible_count = 0
+    next_offset = None
+    # The public offset counts authorized children only, including the lookahead.
+    async for child_id in _candidate_ids(db, scoped, max(50, limit + 1)):
         open_request_memo()
         try:
             child, _ = await _load(db, conversation_id, child_id, context)
-            result.append(await _view(db, child))
+            if len(result) == limit:
+                next_offset = offset + limit
+                break
+            if visible_count >= offset:
+                result.append(await _view(db, child))
+            visible_count += 1
         except NotFoundError:
             pass
         finally:
             await db.rollback()
     return ChildTaskPage(
         items=result,
-        next_offset=offset + limit if len(child_ids) > limit else None,
+        next_offset=next_offset,
         enabled=enabled,
         allow_legacy_details=allow_legacy,
     )
@@ -146,7 +176,8 @@ async def _load(
     command: bool = False,
 ) -> tuple[ConversationChildTask, ConversationRun]:
     conversation = await require_private_conversation(db, conversation_id, context)
-    stmt = _in_conversation(conversation_id, context).where(ConversationChildTask.id == child_id)
+    scoped = await _in_conversation(db, conversation, context)
+    stmt = scoped.where(ConversationChildTask.id == child_id)
     child = await db.scalar(stmt)
     if child is None:
         raise _not_found()

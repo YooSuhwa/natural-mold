@@ -482,7 +482,7 @@ def test_text_only_schema_rejects_empty_oversize_and_unknown_fields(invalid: dic
         ConversationRunSteerCreate.model_validate(request | invalid)
 
 
-async def test_independent_room_exposes_old_receipts_without_delivering_them(
+async def test_orphan_independent_room_hides_old_receipts_and_skips_delivery(
     db: AsyncSession,
 ) -> None:
     from app.models.conversation import INDEPENDENT_JOB_SOURCE
@@ -495,5 +495,9 @@ async def test_independent_room_exposes_old_receipts_without_delivering_them(
     await db.commit()
 
     assert await claim_steers_for_model(db, conversation_id=room.id, run_id=run.id) == []
-    visible = await list_steers(db, conversation_id=room.id, context=OWNER)
-    assert [(item.id, item.delivery_started_at) for item in visible] == [(previous.id, None)]
+    for run_id in (None, run.id):
+        with pytest.raises(HTTPException) as denied:
+            await list_steers(db, conversation_id=room.id, context=OWNER, run_id=run_id)
+        assert denied.value.status_code == 404
+    await db.refresh(previous)
+    assert previous.status == "pending" and previous.delivery_started_at is None

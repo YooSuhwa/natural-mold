@@ -18,6 +18,7 @@ from app.models.agent_subagent import AgentSubAgentLink
 from app.models.conversation import Conversation
 from app.models.conversation_run import ConversationRun
 from app.models.conversation_run_input import ConversationRunInput
+from app.models.conversation_run_steer import ConversationRunSteer
 from app.models.independent_chat_job import IndependentChatJob
 from app.models.memory import AgentMemorySettings, UserMemorySettings
 from app.models.organization import Organization, OrganizationMember, Tenant, TenantMember
@@ -394,7 +395,6 @@ async def test_independent_room_rejects_goals_and_root_steer(
     db: AsyncSession, client: AsyncClient, job_request: JobRequest, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     from app.models.conversation_goal import ConversationGoal
-    from app.models.conversation_run_steer import ConversationRunSteer
 
     context = unit_context(TEST_USER_ID)
     monkeypatch.setattr(settings, "conversation_goal_org_ids", frozenset({context.org_id}))
@@ -429,6 +429,104 @@ async def test_independent_room_rejects_goals_and_root_steer(
     inputs = (await db.scalars(select(ConversationRunInput))).all()
     assert len(inputs) == 1 and inputs[0].run_id == run.id
     assert inputs[0].source != "goal_followup"
+
+
+async def test_independent_steer_history_filters_run_lineage_before_pagination(
+    db: AsyncSession, client: AsyncClient, job_request: JobRequest, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from app import database
+    from app.services.conversation_run_steer_events import RunSteerReceiptFeed
+    from app.services.conversation_run_steers import claim_steers_for_model
+    from tests.sqlite_test_engine import TestSession
+    from tests.test_independent_child_read_scope import _child_run
+
+    monkeypatch.setattr(database, "async_session", TestSession)
+    monkeypatch.setattr(settings, "chat_steer_enabled", True)
+    issued = await job_request.create(client)
+    job = await db.get(IndependentChatJob, issued.id)
+    initial = await db.get(ConversationRun, issued.child_run_id)
+    assert job is not None and initial is not None
+    await transition_run(db, initial, "running", worker_instance_id="independent")
+    unrelated = _child_run(db, job, source="start", parent_id=None)
+    await db.flush()
+    # Historical rows can outlive admission rules. The unrelated run has the same owner and room.
+    visible_ids: list[UUID] = []
+    for sequence, run in enumerate((initial, unrelated, initial, unrelated), start=1):
+        receipt_id = uuid4()
+        if run is initial:
+            visible_ids.append(receipt_id)
+        db.add(
+            ConversationRunSteer(
+                id=receipt_id,
+                conversation_id=job.child_conversation_id,
+                run_id=run.id,
+                tenant_id=job.tenant_id,
+                org_id=job.org_id,
+                user_id=job.user_id,
+                client_request_id=uuid4(),
+                sequence=sequence,
+                text=f"기록 {sequence}",
+            )
+        )
+    await db.commit()
+
+    base = f"/api/conversations/{job.child_conversation_id}"
+    for path, expected in (
+        (f"{base}/steers", [1, 3]),
+        (f"{base}/steers?limit=1", [3]),
+        (f"{base}/steers?before_sequence=3&limit=1", [1]),
+        (f"{base}/runs/{initial.id}/steers", [1, 3]),
+    ):
+        response = await client.get(path)
+        assert response.status_code == 200, response.text
+        assert [(row["run_id"], row["sequence"]) for row in response.json()] == [
+            (str(initial.id), sequence) for sequence in expected
+        ]
+
+    context = unit_context(TEST_USER_ID)
+    valid_feed = RunSteerReceiptFeed(context, job.child_conversation_id, initial.id)
+    events = await valid_feed.changed_events(first_seq=1)
+    assert [event["id"] for event in events] == [f"{id_}:steer:pending" for id_ in visible_ids]
+    hidden_feed = RunSteerReceiptFeed(context, job.child_conversation_id, unrelated.id)
+    assert await hidden_feed.changed_events(first_seq=1) == []
+
+    for run_id in (unrelated.id, uuid4()):
+        denied = await client.get(f"{base}/runs/{run_id}/steers")
+        assert denied.status_code == 404
+        assert str(unrelated.id) not in denied.text
+
+    rejected = await client.post(
+        f"{base}/runs/{initial.id}/steers", json={"client_request_id": str(uuid4()), "text": "추가"}
+    )
+    assert rejected.status_code == 409
+    assert (
+        await claim_steers_for_model(
+            db, conversation_id=job.child_conversation_id, run_id=initial.id
+        )
+        == []
+    )
+    assert await db.scalar(select(func.count()).select_from(ConversationRunSteer)) == 4
+    assert (
+        await db.scalar(
+            select(func.count())
+            .select_from(ConversationRunSteer)
+            .where(ConversationRunSteer.delivery_started_at.is_not(None))
+        )
+        == 0
+    )
+
+    await db.execute(
+        delete(AgentSubAgentLink).where(
+            AgentSubAgentLink.parent_agent_id == job.parent_agent_id,
+            AgentSubAgentLink.sub_agent_id == job.child_agent_id,
+        )
+    )
+    await db.commit()
+    for path in (f"{base}/steers", f"{base}/runs/{initial.id}/steers"):
+        revoked = await client.get(path)
+        assert revoked.status_code == 404
+    revoked_feed = RunSteerReceiptFeed(context, job.child_conversation_id, initial.id)
+    assert await revoked_feed.changed_events(first_seq=1) == []
 
 
 async def test_removed_delegation_hides_prior_receipt_and_cancel_status(

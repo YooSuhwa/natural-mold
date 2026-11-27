@@ -11,7 +11,7 @@ from sqlalchemy.exc import SQLAlchemyError
 
 from app.agent_runtime import event_names
 from app.agent_runtime.protocol_events import StoredProtocolEvent, stored_custom_protocol_event
-from app.authz.conversation_scope import require_private_conversation
+from app.authz.conversation_scope import can_read_conversation_run_id, require_private_conversation
 from app.authz.org_context import OrgContext
 from app.authz.scoping import private_scope_predicate
 from app.config import settings
@@ -109,7 +109,13 @@ class RunSteerReceiptFeed:
             async with tenant_session(self.context) as db:
                 rows = (await db.execute(stmt)).all()
                 if rows:
-                    await require_private_conversation(db, self.conversation_id, self.context)
+                    conversation = await require_private_conversation(
+                        db, self.conversation_id, self.context
+                    )
+                    if not await can_read_conversation_run_id(
+                        db, conversation, self.run_id, self.context
+                    ):
+                        return []
         except AppError:
             return []
         except SQLAlchemyError as exc:
