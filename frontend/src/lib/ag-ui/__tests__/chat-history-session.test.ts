@@ -56,6 +56,83 @@ function activity(messageId: string) {
 }
 
 describe('AG-UI history session', () => {
+  it('keeps a late tool card on the answer that issued its public call ID', () => {
+    const session = sessionFor(async () => snapshot())
+    const context = { source: 'run' as const, runId: 'accepted' }
+    const publicCallId = 'tool-' + 'a'.repeat(64)
+    session.onRunAccepted({ runId: context.runId, physicalRunId: physical })
+    session.onPublicEvent(
+      {
+        type: EventType.TOOL_CALL_START,
+        toolCallId: publicCallId,
+        toolCallName: 'show_note',
+        parentMessageId: 'tool-owner',
+      },
+      context,
+    )
+    session.onPublicEvent(
+      {
+        type: EventType.TEXT_MESSAGE_START,
+        role: 'assistant',
+        messageId: 'later-answer',
+      },
+      context,
+    )
+    function showCard(messageId: string, binding: Record<string, string>) {
+      session.onPublicEvent(
+        {
+          type: EventType.ACTIVITY_SNAPSHOT,
+          messageId,
+          activityType: 'moldy.ui_data',
+          content: {
+            type: 'demo_note',
+            props: { text: 'A note' },
+            tool_call_id: 'private-provider-id',
+            ...binding,
+          },
+        },
+        context,
+      )
+    }
+    showCard('raw-only', { tool_call_id: publicCallId })
+    showCard('wrong-answer', {
+      public_tool_call_id: publicCallId,
+      public_message_id: 'later-answer',
+    })
+    expect(session.getSnapshot().activities).toEqual([])
+    showCard('owned', { public_tool_call_id: publicCallId })
+    expect(session.getSnapshot().activities).toMatchObject([
+      {
+        messageId: 'owned',
+        parentMessageId: 'tool-owner',
+        physicalRunId: physical,
+        content: { public_tool_call_id: publicCallId },
+      },
+    ])
+    expect([...session.getSnapshot().liveActivityIds]).toEqual(['owned'])
+    session.dispose()
+  })
+
+  it('ignores buffered callbacks from a reader displaced by a newly accepted command', () => {
+    const session = sessionFor(async () => snapshot())
+    const stale = { source: 'attach' as const, runId: 'previous-run' }
+    session.onRunAccepted({ runId: stale.runId, physicalRunId: physical })
+    session.onRunAccepted({
+      runId: 'current-run',
+      physicalRunId: '657a1ce4-3491-43f4-b33e-499e62555d2f',
+    })
+    const current = session.getSnapshot()
+    session.onPublicEvent(activity('delayed-activity'), stale)
+    session.onPublicEvent({ type: EventType.RUN_ERROR, code: 'AG_UI_READ_DENIED' }, stale)
+    session.onPublicEvent({ type: EventType.RUN_ERROR, code: 'AG_UI_SNAPSHOT_REQUIRED' }, stale)
+    expect(session.getSnapshot()).toBe(current)
+    session.onPublicEvent(activity('current-activity'), { source: 'run', runId: 'current-run' })
+    expect(session.getSnapshot().activities.map(({ messageId }) => messageId)).toEqual([
+      'current-activity',
+    ])
+    session.dispose()
+  })
+
   it.each([
     [404, true],
     [503, false],
