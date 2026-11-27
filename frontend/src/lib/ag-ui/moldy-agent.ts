@@ -145,7 +145,12 @@ export class MoldyAgUiAgent extends HttpAgent {
   async readSnapshot({
     runId,
     signal,
-  }: { runId?: string; signal?: AbortSignal } = {}): Promise<WireChatSnapshot> {
+    isCurrent,
+  }: {
+    runId?: string
+    signal?: AbortSignal
+    isCurrent?: () => boolean
+  } = {}): Promise<WireChatSnapshot> {
     const session = this.session
     const version = runId === undefined ? ++session.generation : session.generation
     const query = runId === undefined ? '' : '?' + new URLSearchParams({ runId })
@@ -158,7 +163,7 @@ export class MoldyAgUiAgent extends HttpAgent {
     if (!isOrgScopeCurrent(session.scope))
       throw new DOMException('Organization changed', 'AbortError')
     signal?.throwIfAborted()
-    if (runId === undefined && version === session.generation) {
+    if (runId === undefined && version === session.generation && (isCurrent?.() ?? true)) {
       session.selection = snapshot.activeRunId
       this.pendingInterrupts = [...snapshot.interrupts]
     }
