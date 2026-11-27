@@ -17,14 +17,17 @@ import {
   classifyResponseFailure,
   isExpectedNextRscPrefetchAbort,
   isExpectedApiReadNavigationAbort,
-  deferredApiReadAbortCode,
+  deferredDocumentAbortCode,
   collectNetworkFailureCodes,
   createDocumentCommitTracker,
   shouldDeferApiReadAbort,
   recordNetworkFailure,
+  type DeferredDocumentAbort,
+  type DocumentReplacement,
   type NetworkFailureCode,
 } from './helpers/network-failure-diagnostic'
 import { ONBOARDING_DISMISSED_FLAG, SUPER_USER_WELCOMED_FLAG } from '../src/lib/auth/session-flags'
+import { hasAcceptedAgUiFetch } from './helpers/ag-ui-stream-acceptance'
 import { waitForAgentRunsBeforeDelete } from './helpers/agent-cleanup'
 
 type ErrorCollector = {
@@ -154,25 +157,23 @@ export const test = base.extend<{ authMock: void; failureUi: void; errors: Error
   ],
   errors: async ({ page }, use, testInfo) => {
     const persistentNetworkCodes: NetworkFailureCode[] = []
-    const deferredApiReadAborts: Array<{
-      readonly input: Parameters<typeof classifyRequestFailure>[0]
-      readonly startNavigationGeneration: number
-      readonly url: string
-    }> = []
+    const deferredDocumentAborts: Array<DeferredDocumentAbort & { readonly url: string }> = []
+    const acceptedAgUiRuns = new WeakSet<Request>()
+    const navigations = new WeakMap<Request, DocumentReplacement>()
     const errors: ErrorCollector = {
       console: [],
       page: [],
       get network(): NetworkFailureCode[] {
         return collectNetworkFailureCodes(
           persistentNetworkCodes,
-          deferredApiReadAborts,
+          deferredDocumentAborts,
           documentCommits.generation,
         )
       },
     }
     const mainFrameRequestGenerations = new WeakMap<Request, number>()
     let mainFrameNavigationGeneration = 0
-    // Deferred API-read aborts are judged by committed documents (see the tracker).
+    // Classify deferred disconnects only after the replacement document commits.
     const documentCommits = createDocumentCommitTracker()
     const requestDocumentGenerations = new WeakMap<Request, number>()
 
@@ -186,7 +187,8 @@ export const test = base.extend<{ authMock: void; failureUi: void; errors: Error
       if (observation === undefined) return
       mainFrameNavigationGeneration = observation.navigationGeneration
       requestDocumentGenerations.set(request, documentCommits.generation)
-      if (observation.mainFrameNavigationBegan) documentCommits.navigationRequested()
+      if (observation.mainFrameNavigationBegan)
+        navigations.set(request, documentCommits.navigationRequested())
     })
     page.on('framenavigated', (frame) => {
       if (frame === page.mainFrame()) documentCommits.frameNavigated()
@@ -201,6 +203,12 @@ export const test = base.extend<{ authMock: void; failureUi: void; errors: Error
     })
     page.on('pageerror', (err) => errors.page.push(err.message))
     page.on('response', (response) => {
+      const request = response.request()
+      if (
+        requestDocumentGenerations.has(request) &&
+        hasAcceptedAgUiFetch(request, response, API_BASE)
+      )
+        acceptedAgUiRuns.add(request)
       const status = response.status()
       const url = response.url()
       if (status >= 400 && !isExpectedNonOkResponse(url, status)) {
@@ -220,6 +228,8 @@ export const test = base.extend<{ authMock: void; failureUi: void; errors: Error
       }
     })
     page.on('requestfailed', (req) => {
+      const failedNavigation = navigations.get(req)
+      if (failedNavigation) documentCommits.navigationFailed(failedNavigation)
       const requestStartNavigationGeneration = mainFrameRequestGenerations.get(req)
       const requestStartDocumentGeneration = requestDocumentGenerations.get(req)
       requestDocumentGenerations.delete(req)
@@ -230,6 +240,14 @@ export const test = base.extend<{ authMock: void; failureUi: void; errors: Error
       )
       const url = req.url()
       const errorText = req.failure()?.errorText ?? 'unknown'
+      // A POST that received a matching durable receipt can outlive the page that
+      // opened it. Bind this abort to the specific replacement already underway.
+      const acceptedRunReplacement =
+        acceptedAgUiRuns.delete(req) &&
+        errorText === 'net::ERR_ABORTED' &&
+        nextStaticChunkProvenance.startedBeforeCurrentMainFrameNavigation
+          ? documentCommits.latestNavigation
+          : undefined
       const expectedStreamDetach =
         errorText.includes('net::ERR_ABORTED') &&
         /\/api\/conversations\/[^/]+\/(messages|messages\/resume|runs\/[^/]+\/stream(?:\?.*)?|langgraph\/threads\/[^/]+\/stream\/events)$/.test(
@@ -346,7 +364,8 @@ export const test = base.extend<{ authMock: void; failureUi: void; errors: Error
         !expectedNextStaticChunkAbort &&
         !expectedNextRscPrefetchAbort &&
         !expectedApiReadNavigationAbort &&
-        !apiReadAbortCandidate
+        !apiReadAbortCandidate &&
+        !acceptedRunReplacement
       ) {
         recordNetworkFailure(
           persistentNetworkCodes,
@@ -373,17 +392,19 @@ export const test = base.extend<{ authMock: void; failureUi: void; errors: Error
           })
         }
       }
-      if (apiReadAbortCandidate) {
+      if (apiReadAbortCandidate || acceptedRunReplacement) {
         if (requestStartDocumentGeneration !== undefined) {
-          deferredApiReadAborts.push({
+          deferredDocumentAborts.push({
             startNavigationGeneration: requestStartDocumentGeneration,
+            replacement: acceptedRunReplacement,
             url,
             input: {
               errorText,
               method: req.method(),
               resourceType: req.resourceType(),
               ...nextStaticChunkProvenance,
-              startedBeforeCurrentMainFrameNavigation: false,
+              startedBeforeCurrentMainFrameNavigation:
+                nextStaticChunkProvenance.startedBeforeCurrentMainFrameNavigation,
               requestUrl: url,
               currentPageUrl: page.url(),
             },
@@ -397,8 +418,8 @@ export const test = base.extend<{ authMock: void; failureUi: void; errors: Error
     // Finalize deferred candidates after all request/navigation events have
     // arrived. A later main-frame navigation proves prior-document provenance;
     // otherwise retain the real abort code.
-    for (const candidate of deferredApiReadAborts) {
-      const code = deferredApiReadAbortCode(candidate, documentCommits.generation)
+    for (const candidate of deferredDocumentAborts) {
+      const code = deferredDocumentAbortCode(candidate, documentCommits.generation)
       if (code !== undefined) {
         recordNetworkFailure(persistentNetworkCodes, testInfo.annotations, code)
         testInfo.annotations.push({

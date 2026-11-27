@@ -2,11 +2,11 @@ import { describe, expect, it } from 'vitest'
 import {
   collectNetworkFailureCodes,
   createDocumentCommitTracker,
-  deferredApiReadAbortCode,
+  deferredDocumentAbortCode,
   isApiReadNavigationAbortCandidate,
   isExpectedApiReadNavigationAbort,
   shouldDeferApiReadAbort,
-  type DeferredApiReadAbort,
+  type DeferredDocumentAbort,
   type RequestFailureDiagnosticInput,
 } from '../../e2e/helpers/network-failure-diagnostic'
 
@@ -81,7 +81,7 @@ describe('run status read canceled by document navigation', () => {
 })
 
 describe('event-order provenance correction', () => {
-  const deferred: DeferredApiReadAbort = {
+  const deferred: DeferredDocumentAbort = {
     input: {
       ...input,
       requestUrl: `${API}/api/conversations/55ce328b-e4c5-49c2-a453-231e0b904b6b/runs/ec965b82-294b-4ed6-a2fe-15e0a30f6edb`,
@@ -92,8 +92,8 @@ describe('event-order provenance correction', () => {
 
   it('reports before navigation and clears only after a later navigation', () => {
     expect(isApiReadNavigationAbortCandidate(deferred.input, API)).toBe(true)
-    expect(deferredApiReadAbortCode(deferred, 4)).toBe('api_request_abort')
-    expect(deferredApiReadAbortCode(deferred, 5)).toBeUndefined()
+    expect(deferredDocumentAbortCode(deferred, 4)).toBe('api_request_abort')
+    expect(deferredDocumentAbortCode(deferred, 5)).toBeUndefined()
   })
 
   it('retains the candidate when no later navigation occurs', () => {
@@ -101,7 +101,7 @@ describe('event-order provenance correction', () => {
   })
 
   it('keeps a current-document candidate alongside a cleared prior candidate', () => {
-    const current: DeferredApiReadAbort = { ...deferred, startNavigationGeneration: 5 }
+    const current: DeferredDocumentAbort = { ...deferred, startNavigationGeneration: 5 }
     expect(collectNetworkFailureCodes([], [deferred, current], 5)).toEqual(['api_request_abort'])
   })
 
@@ -112,7 +112,7 @@ describe('event-order provenance correction', () => {
   })
 
   it('retains all codes when a current abort and response failure coexist', () => {
-    const current: DeferredApiReadAbort = { ...deferred, startNavigationGeneration: 5 }
+    const current: DeferredDocumentAbort = { ...deferred, startNavigationGeneration: 5 }
     expect(collectNetworkFailureCodes(['api_response_failure'], [current], 5)).toEqual([
       'api_request_abort',
       'api_response_failure',
@@ -140,7 +140,7 @@ describe('event-order provenance correction', () => {
 })
 
 describe('outgoing-document read during a reload', () => {
-  const candidate = (startNavigationGeneration: number): DeferredApiReadAbort => ({
+  const candidate = (startNavigationGeneration: number): DeferredDocumentAbort => ({
     startNavigationGeneration,
     input: {
       ...input,
@@ -153,9 +153,9 @@ describe('outgoing-document read during a reload', () => {
     const commits = createDocumentCommitTracker()
     commits.navigationRequested()
     const raced = candidate(commits.generation)
-    expect(deferredApiReadAbortCode(raced, commits.generation)).toBe('api_request_abort')
+    expect(deferredDocumentAbortCode(raced, commits.generation)).toBe('api_request_abort')
     commits.frameNavigated()
-    expect(deferredApiReadAbortCode(raced, commits.generation)).toBeUndefined()
+    expect(deferredDocumentAbortCode(raced, commits.generation)).toBeUndefined()
   })
 
   it('keeps an abort of the current document when no new document commits', () => {
@@ -172,6 +172,6 @@ describe('outgoing-document read during a reload', () => {
     const commits = createDocumentCommitTracker()
     const read = candidate(commits.generation)
     commits.frameNavigated()
-    expect(deferredApiReadAbortCode(read, commits.generation)).toBe('api_request_abort')
+    expect(deferredDocumentAbortCode(read, commits.generation)).toBe('api_request_abort')
   })
 })
