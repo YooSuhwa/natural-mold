@@ -44,6 +44,41 @@ def _measure_service(fn: AsyncOperation, name: str) -> AsyncOperation:
     return measure
 
 
+def _sample_id(reader: Any, run: Any) -> str | None:
+    preview = vars(run).get("input_preview")
+    if not isinstance(preview, str) or "E2E_SLOW_STREAM" not in preview:
+        # Native queue claims intentionally have no preview. FastAPI already parsed
+        # the authorized POST; do not read a body from the socket or look up a row.
+        request = reader.source.request
+        payload = vars(request).get("_json")
+        if (
+            request.method != "POST"
+            or not isinstance(payload, dict)
+            or payload.get("runId") != reader.target.public_id
+            or payload.get("threadId") != str(reader.source.conversation_id)
+        ):
+            return None
+        messages = payload.get("messages")
+        if not isinstance(messages, list) or not messages:
+            return None
+        last = messages[-1]
+        if not isinstance(last, dict) or last.get("role") != "user":
+            return None
+        preview = last.get("content")
+        if isinstance(preview, list):
+            preview = " ".join(
+                item["text"]
+                for item in preview
+                if isinstance(item, dict)
+                and item.get("type") == "text"
+                and isinstance(item.get("text"), str)
+            )
+    if not isinstance(preview, str) or "E2E_SLOW_STREAM" not in preview:
+        return None
+    match = _MARKER.search(preview)
+    return match[1] if match else None
+
+
 def _measure_reader(
     fn: AsyncOperation, name: str, fd: int, parts: Mapping[str, tuple[int, ...]]
 ) -> AsyncOperation:
@@ -62,14 +97,11 @@ def _measure_reader(
         target = reader.target
         # Access only already-loaded scalar values; the observer never performs a query.
         run = target.run if target is not None else None
-        preview = vars(run).get("input_preview") if run is not None else None
-        if not isinstance(preview, str) or "E2E_SLOW_STREAM" not in preview:
-            return value
-        sample = _MARKER.search(preview)
-        if not sample:
+        sample = _sample_id(reader, run) if run is not None else None
+        if sample is None:
             return value
         row = {
-            "sample_id": sample[1],
+            "sample_id": sample,
             "run_id": str(vars(run).get("id")),
             "operation": name,
             "start_epoch_ms": epoch_start / 1_000_000,

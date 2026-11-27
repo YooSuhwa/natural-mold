@@ -165,6 +165,8 @@ def browser_gate(
             shutil.rmtree(cache)
         frontend_envs[mode] = build_env
         record["processes"][f"next-{mode}"] = proc.pid
+    # Companion probes may now reuse the same authenticated, production-built frontends.
+    env["MOLDY_AGUI_BROWSER_READY"] = "1"
     suites = [
         ("performance-langgraph_v3", "langgraph_v3", ["e2e/chat-stream-perf.spec.ts"]),
         ("performance-ag_ui", "ag_ui", ["e2e/chat-stream-perf.spec.ts"]),
