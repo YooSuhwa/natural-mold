@@ -57,7 +57,7 @@ def meets_task(csv_text: str | None) -> bool:
         if not reader.fieldnames or sorted(reader.fieldnames) != sorted(COLUMNS):
             return False
         rows = list(reader)
-        if len(rows) != len(REFERENCE):
+        if len(rows) != len(REFERENCE) or any(None in row for row in rows):
             return False
         return sorted(tuple(row.get(key) for key in COLUMNS) for row in rows) == sorted(REFERENCE)
     except (csv.Error, TypeError):
@@ -80,10 +80,6 @@ class Scenario:
         if turn < 1:
             raise ValueError("turn is one-based")
         return self.first if turn == 1 else self.subsequent
-
-    @property
-    def user_requests_second(self) -> bool:
-        return not meets_task(self.first)
 
 
 _VALID = as_csv(REFERENCE)

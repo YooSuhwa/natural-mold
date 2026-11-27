@@ -1,0 +1,200 @@
+{
+  "postgres": "16.15 (Homebrew)",
+  "registered_exact_goals": 14,
+  "reviewed_completions": 2,
+  "false_completions": 0,
+  "counterexamples": 12,
+  "counterexamples_marked_complete": 0,
+  "rows": [
+    {
+      "case": "exact",
+      "mode": "known_facts",
+      "answer_key_pass": true,
+      "goal_status": "completed",
+      "check_reason": "verified",
+      "sha256": "922fc551fe150affd3c21be7b92744562e205946c4e613768cba22d96d855092",
+      "download_matches_expected_document": true,
+      "transition": "completed"
+    },
+    {
+      "case": "order",
+      "mode": "known_facts",
+      "answer_key_pass": true,
+      "goal_status": "completed",
+      "check_reason": "verified",
+      "sha256": "24a4563dc8b6061d2e40295b6c3723f71980c93dd0e7b7a2e6456c3d7d622a93",
+      "download_matches_expected_document": true,
+      "transition": "completed"
+    },
+    {
+      "case": "wrong_value",
+      "mode": "known_facts",
+      "answer_key_pass": false,
+      "goal_status": "active",
+      "check_reason": "reference_mismatch",
+      "sha256": "a336a0f732a911e7608759d008d7f0fdf63f180409cad30296fe89b71b4a4d40",
+      "download_matches_expected_document": null,
+      "transition": null
+    },
+    {
+      "case": "wrong_source",
+      "mode": "known_facts",
+      "answer_key_pass": false,
+      "goal_status": "active",
+      "check_reason": "reference_mismatch",
+      "sha256": "0691a07a9e63ae4413f0bac4cd2bf997245484320e63546e4493ebd3ea342db3",
+      "download_matches_expected_document": null,
+      "transition": null
+    },
+    {
+      "case": "wrong_pair",
+      "mode": "known_facts",
+      "answer_key_pass": false,
+      "goal_status": "active",
+      "check_reason": "reference_mismatch",
+      "sha256": "8285035f724fde2e3f36ac17ac5f2d295b7b292cc15bf81696a1ee79035be6ae",
+      "download_matches_expected_document": null,
+      "transition": null
+    },
+    {
+      "case": "url_path_case",
+      "mode": "known_facts",
+      "answer_key_pass": false,
+      "goal_status": "active",
+      "check_reason": "reference_mismatch",
+      "sha256": "eab4da6bddb8a3727601e0656d8f83717130a4169e5f343fec9975c020ebf21f",
+      "download_matches_expected_document": null,
+      "transition": null
+    },
+    {
+      "case": "wrong_country",
+      "mode": "known_facts",
+      "answer_key_pass": false,
+      "goal_status": "active",
+      "check_reason": "column_mismatch",
+      "sha256": "88416bf41ec01dac86a0dfd070f7cdbbd12b54440d3e863f0de66012bd3551dd",
+      "download_matches_expected_document": null,
+      "transition": null
+    },
+    {
+      "case": "duplicate_vendor",
+      "mode": "known_facts",
+      "answer_key_pass": false,
+      "goal_status": "active",
+      "check_reason": "duplicate_key",
+      "sha256": "4620c0fbead99e920945743bee1f013775ceaf6ba47663ee82f5d40399de523e",
+      "download_matches_expected_document": null,
+      "transition": null
+    },
+    {
+      "case": "missing_company",
+      "mode": "known_facts",
+      "answer_key_pass": false,
+      "goal_status": "active",
+      "check_reason": "reference_mismatch",
+      "sha256": "24e8707a01fa3560de1ea955e901d83e82a8058ea3b379ca32d772b506554698",
+      "download_matches_expected_document": null,
+      "transition": null
+    },
+    {
+      "case": "missing_cell",
+      "mode": "known_facts",
+      "answer_key_pass": false,
+      "goal_status": "active",
+      "check_reason": "empty_cell",
+      "sha256": "bc0d7f84d319634751ae416ecb6d1f531ff0da57c3cc4cebc70018f533ce8ac5",
+      "download_matches_expected_document": null,
+      "transition": null
+    },
+    {
+      "case": "empty",
+      "mode": "known_facts",
+      "answer_key_pass": false,
+      "goal_status": "active",
+      "check_reason": "unreadable_version",
+      "sha256": null,
+      "download_matches_expected_document": null,
+      "transition": null
+    },
+    {
+      "case": "no_file",
+      "mode": "known_facts",
+      "answer_key_pass": false,
+      "goal_status": "active",
+      "check_reason": "artifact_missing",
+      "sha256": null,
+      "download_matches_expected_document": null,
+      "transition": null
+    },
+    {
+      "case": "deleted_after_write",
+      "mode": "known_facts",
+      "answer_key_pass": false,
+      "goal_status": "active",
+      "check_reason": "unreadable_version",
+      "sha256": null,
+      "download_matches_expected_document": null,
+      "transition": null
+    },
+    {
+      "case": "tampered_after_write",
+      "mode": "known_facts",
+      "answer_key_pass": false,
+      "goal_status": "active",
+      "check_reason": "unreadable_version",
+      "sha256": null,
+      "download_matches_expected_document": null,
+      "transition": null
+    },
+    {
+      "case": "wrong_value",
+      "mode": "shape_only",
+      "answer_key_pass": false,
+      "goal_status": "completed",
+      "check_reason": "verified",
+      "sha256": "a336a0f732a911e7608759d008d7f0fdf63f180409cad30296fe89b71b4a4d40",
+      "download_matches_expected_document": false,
+      "transition": "completed"
+    },
+    {
+      "case": "wrong_source",
+      "mode": "shape_only",
+      "answer_key_pass": false,
+      "goal_status": "completed",
+      "check_reason": "verified",
+      "sha256": "0691a07a9e63ae4413f0bac4cd2bf997245484320e63546e4493ebd3ea342db3",
+      "download_matches_expected_document": false,
+      "transition": "completed"
+    },
+    {
+      "case": "matching_explicit_source",
+      "mode": "single_source",
+      "answer_key_pass": true,
+      "goal_status": "completed",
+      "check_reason": "verified",
+      "sha256": "c077ddec79c809796f4a9151de74bf4cdd80c32203799b8029450494d405c034",
+      "download_matches_expected_document": true,
+      "transition": "completed"
+    },
+    {
+      "case": "different_explicit_source_path",
+      "mode": "single_source",
+      "answer_key_pass": false,
+      "goal_status": "active",
+      "check_reason": "column_mismatch",
+      "sha256": "7db704f4417da2bd9521b70bcca51beb003eac396d12280636fe0bed01b40a4e",
+      "download_matches_expected_document": null,
+      "transition": null
+    },
+    {
+      "case": "bounded_provider_csv",
+      "mode": "single_live_sample",
+      "answer_key_pass": true,
+      "goal_status": "completed",
+      "check_reason": "verified",
+      "sha256": "f4d29640383a017dd51bb425a6a7a89777d7ad4d11ff574b7263900a8813e9d4",
+      "download_matches_expected_document": true,
+      "transition": "completed"
+    }
+  ]
+}

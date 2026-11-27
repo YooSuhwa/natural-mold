@@ -1,0 +1,20 @@
+{
+  "http_status": 200,
+  "content": "company,country,price_krw,source\n가온상사,KR,13500,https://quotes.example.invalid/GA/2026Q4\n누리유통,KR,27900,https://quotes.example.invalid/NU/2026Q4\n다온산업,KR,31800,https://quotes.example.invalid/DA/2026Q4",
+  "content_sha256": "f4d29640383a017dd51bb425a6a7a89777d7ad4d11ff574b7263900a8813e9d4",
+  "usage": {
+    "prompt_tokens": 240,
+    "completion_tokens": 92,
+    "total_tokens": 332
+  },
+  "clean_stop": true,
+  "proxy_calls": [
+    {
+      "method": "POST",
+      "path_class": "chat_completions",
+      "status": 200,
+      "count": 1
+    }
+  ],
+  "raw_response_meets_answer_key": true
+}

@@ -61,12 +61,13 @@ def _pg_bin() -> Path:
 
 
 @contextmanager
-def _cluster(root: Path, env: dict[str, str]) -> Iterator[tuple[str, int]]:
+def temporary_postgres(
+    root: Path, env: dict[str, str], *, database: str = "moldy_e2e_scripted_goal_compare"
+) -> Iterator[tuple[str, int]]:
     binary = _pg_bin()
     data = root / "pg"
     port = _port()
     role = "goal_eval"
-    database = "moldy_e2e_scripted_goal_compare"
     with (root / "pg-control.log").open("wb") as log:
 
         def pg(program: str, *args: str) -> None:
@@ -167,7 +168,7 @@ async def paired_stack(
             "MOLDY_DISABLE_ENV_FILE": "true",
             "MOLDY_TEST_RUN_ROOT": str(root),
         }
-        with _cluster(root, env) as (dsn, pg_port):
+        with temporary_postgres(root, env) as (dsn, pg_port):
             password = secrets.token_urlsafe(24)
             env.update(
                 DATABASE_URL=dsn.replace("postgresql://", "postgresql+asyncpg://", 1),
