@@ -38,7 +38,12 @@ router = APIRouter(prefix="/api/conversations/{conversation_id}/goal", tags=["co
 
 def _response(conversation: Conversation, goal: ConversationGoal | None) -> GoalResponse:
     return GoalResponse(
-        enabled=ordinary_conversation(conversation) and goal_enabled(conversation.org_id),
+        enabled=(
+            ordinary_conversation(conversation)
+            and conversation.agent_lifecycle_state == "active"
+            and conversation.agent_id is not None
+            and goal_enabled(conversation.org_id)
+        ),
         goal=GoalDetails.model_validate(goal) if goal else None,
     )
 

@@ -151,6 +151,17 @@ async def test_lifecycle_revision_and_enrollment(
     assert (await client.put(url, json=_body(5))).status_code == 409
 
 
+async def test_archived_conversation_keeps_goal_history_read_only(
+    db: AsyncSession, client: AsyncClient, conversation: Conversation
+) -> None:
+    created = await _goal(client, conversation)
+    conversation.agent_lifecycle_state = "archived"
+    await db.commit()
+    response = (await client.get(_url(conversation))).json()
+    assert response["enabled"] is False
+    assert response["goal"]["id"] == created["id"]
+
+
 async def test_nonordinary_conversation_cannot_accept_goal(
     db: AsyncSession, client: AsyncClient, conversation: Conversation
 ) -> None:
