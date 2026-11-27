@@ -81,6 +81,19 @@ def test_skill_terminal_preserves_truncated_public_stdout_from_the_actual_produc
     }
 
 
+def test_real_terminal_keeps_opaque_attachment_ids() -> None:
+    (event,) = ui_data_from_tool_result("execute_in_skill", "ok", tool_call_id="call/route:1")
+    event.update(message_id="message/답변?1", run_id="run/1+alias")
+    assert public_ui_data(event) == {
+        "schema_version": 1,
+        "type": "terminal",
+        "props": {"lines": "ok"},
+        "tool_call_id": "call/route:1",
+        "message_id": "message/답변?1",
+        "run_id": "run/1+alias",
+    }
+
+
 def test_table_preserves_primitive_cells_only_under_rendered_columns() -> None:
     props = {
         "columns": [{"key": "row", "header": "표시", "meta": "private"}],
@@ -121,6 +134,8 @@ def test_table_preserves_primitive_cells_only_under_rendered_columns() -> None:
             "props": {"columns": [{"key": "__proto__", "header": "p"}], "rows": []},
         },
         {"type": "demo_note", "message_id": "bad\nhandle", "props": {"text": "test"}},
+        {"type": "demo_note", "tool_call_id": "x" * 257, "props": {"text": "test"}},
+        {"type": "demo_note", "run_id": " ", "props": {"text": "test"}},
     ],
 )
 def test_invalid_widgets_fail_closed(payload: dict[str, Any]) -> None:
@@ -165,6 +180,7 @@ def test_draft_has_only_relative_public_filenames_and_counts() -> None:
     assert public_skill_draft({**payload, "file_count": -1}) is None
     assert public_skill_draft({**payload, "mode": "unknown"}) is None
     assert public_skill_draft({**payload, "session_id": {}}) is None
+    assert public_skill_draft({**payload, "session_id": "call/route:1"}) is None
 
 
 @pytest.mark.parametrize("tool_name", ["validate_skill", "finalize_skill"])

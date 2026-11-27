@@ -40,10 +40,21 @@ class _PublicProps(BaseModel):
     model_config = ConfigDict(strict=True, extra="ignore", allow_inf_nan=False)
 
 
+type _AttachmentId = Annotated[str, Field(min_length=1, max_length=256)]
+
+
 class _Attachments(_PublicProps):
-    message_id: _Id | None = None
-    run_id: _Id | None = None
-    tool_call_id: _Id | None = None
+    message_id: _AttachmentId | None = None
+    run_id: _AttachmentId | None = None
+    tool_call_id: _AttachmentId | None = None
+
+    @field_validator("message_id", "run_id", "tool_call_id")
+    @classmethod
+    def printable_id(cls, value: str | None) -> str | None:
+        # Provider IDs are opaque. Preserve printable punctuation and Unicode exactly.
+        if value is not None and (not value.isprintable() or not value.strip()):
+            raise ValueError("Invalid card attachment identifier")
+        return value
 
 
 class _Note(_PublicProps):
