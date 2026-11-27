@@ -19,6 +19,8 @@ from __future__ import annotations
 import re
 from collections.abc import Mapping
 
+from app.agent_runtime.stream_retry_policy import PartialModelStreamError
+
 PREPARED_START_FAILED = "prepared_run_start_failed"
 DENIAL_RUN_ERROR_CODES: Mapping[str, str] = {
     "tenant_suspended": "tenant_suspended",
@@ -80,7 +82,12 @@ def run_error_code(error: BaseException | None, default: str) -> str:
             item, (RecoveryPolicyChanged, RecoveryCheckpointBlocked, ToolRecoveryBlocked)
         ):
             return item.code
-    return denial_error_code(error) or prestart_error_code(error) or default
+    denial = denial_error_code(error)
+    if denial is not None:
+        return denial
+    if any(isinstance(item, PartialModelStreamError) for item in _chain(error)):
+        return PartialModelStreamError.code
+    return prestart_error_code(error) or default
 
 
 def inherited_envelope_code(run_error: str | None) -> str | None:

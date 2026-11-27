@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+from collections.abc import Callable
 from typing import Literal
 
 import openai
@@ -14,6 +15,18 @@ type AttemptOutcome = Literal[
     "retry", "success", "exhausted", "unclassified", "partial", "cancelled", "denied"
 ]
 type GatewayStatus = Literal[429, 504]
+
+
+class PartialModelStreamError(RuntimeError):
+    """The provider stopped after sending part of a model turn."""
+
+    code = "partial_model_stream"
+
+    def __init__(self) -> None:
+        super().__init__(
+            "모델 응답이 중간에 끊겼습니다. 받은 내용과 도구 실행 상태를 확인해주세요."
+        )
+
 
 # These are the full messages observed in the gateway fixtures. An arbitrary
 # server diagnostic mentioning one of these phrases is not evidence of a retryable frame.
@@ -49,6 +62,16 @@ def gateway_stream_status(exc: BaseException) -> GatewayStatus | None:
     return status
 
 
+def stream_error_retryable(exc: Exception, standard: Callable[[Exception], bool]) -> bool:
+    """Keep in-band error codes out of the existing transport/status retry policies."""
+    if isinstance(exc, openai.APIStatusError):
+        if exc.status_code in (401, 403):
+            return False
+    elif isinstance(exc, openai.APIError) and not isinstance(exc, openai.APIConnectionError):
+        return gateway_stream_status(exc) is not None
+    return standard(exc)
+
+
 def record_stream_attempt(*, attempt: int, output_started: bool, outcome: AttemptOutcome) -> None:
     """One countable record per completed provider attempt, with bounded non-content labels."""
     logger.info(
@@ -57,3 +80,12 @@ def record_stream_attempt(*, attempt: int, output_started: bool, outcome: Attemp
         output_started,
         outcome,
     )
+
+
+def stop_delegation_retry(error: Exception) -> None:
+    """Preserve the provider error and tell a parent tool wrapper to propagate it."""
+    error.__dict__["_moldy_stream_attempt_terminal"] = True
+
+
+def delegation_retry_stopped(error: Exception) -> bool:
+    return error.__dict__.get("_moldy_stream_attempt_terminal") is True
