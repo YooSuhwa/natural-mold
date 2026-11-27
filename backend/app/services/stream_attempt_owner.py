@@ -18,6 +18,7 @@ from app.authz.conversation_run_scope import (
 )
 from app.database import tenant_session
 from app.models.conversation_run import ConversationRun
+from app.services.conversation_run_fence import RunOwnershipLost, current_run_fence, lock_run_fence
 from app.services.conversation_run_task_registry import RunTaskRegistry
 
 
@@ -72,4 +73,12 @@ async def _check_owner(owner: _Owner, prepared: bool) -> None:
             raise asyncio.CancelledError
         if not run.is_active or run.status != "running":
             raise StreamAttemptDenied()
+        fence = current_run_fence()
+        if fence is not None:
+            if (
+                fence.run_id != target.run_id
+                or fence.conversation_id != conversation.conversation_id
+            ):
+                raise RunOwnershipLost("Provider attempt belongs to another chat run")
+            await lock_run_fence(db, fence)
     _check_local(owner)
