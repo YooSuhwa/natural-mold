@@ -10,6 +10,8 @@ from typing import Any
 import pytest
 from httpx import AsyncClient
 from langchain_core.messages import AIMessage, HumanMessage
+from langgraph.constants import START
+from langgraph.types import Overwrite
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.agent_runtime.message_utils import parse_msg_id
@@ -842,6 +844,47 @@ async def test_thread_state_marks_old_active_run_stale_for_protocol_hydration(
     assert refreshed is not None
     assert refreshed.status == "stale"
     assert refreshed.is_active is False
+
+
+@pytest.mark.asyncio
+async def test_thread_state_omits_pending_fork_input_until_it_is_applied(
+    client: AsyncClient,
+    db: AsyncSession,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    conversation = await _seed_protocol_conversation(db)
+    leaf = _CheckpointSlim(
+        checkpoint_id="ck-fork-input",
+        parent_checkpoint_id=None,
+        messages=[HumanMessage(id="committed", content="visible branch message")],
+    )
+    replacement = AIMessage(
+        content="pending replacement",
+        additional_kwargs={"reasoning_content": "pending-reasoning-canary"},
+    )
+    pending_input = {"messages": Overwrite(value=[replacement])}
+    checkpointer = _FakeCheckpointer(
+        [leaf],
+        values_by_checkpoint={leaf.checkpoint_id: {START: pending_input}},
+    )
+    monkeypatch.setattr(
+        "app.routers.conversation_agent_protocol_state_snapshot.get_checkpointer",
+        lambda: checkpointer,
+    )
+
+    base = f"/api/conversations/{conversation.id}/langgraph"
+    for path in (f"{base}/threads/{conversation.id}/state", f"{base}/state"):
+        response = await client.get(path)
+        assert response.status_code == 200
+        values = response.json()["values"]
+        assert START not in values
+        assert [(msg["id"], msg["content"]) for msg in values["messages"]] == [
+            ("committed", "visible branch message")
+        ]
+        assert "pending replacement" not in response.text
+        assert "pending-reasoning-canary" not in response.text
+
+    assert pending_input["messages"].value == [replacement]
 
 
 @pytest.mark.asyncio
