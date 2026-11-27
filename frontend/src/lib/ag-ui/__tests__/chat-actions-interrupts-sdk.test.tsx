@@ -24,10 +24,13 @@ const slot = {
   },
 }
 
-function historyFor(agent: HttpAgent): ThreadHistoryAdapter {
+function historyFor(
+  agent: HttpAgent,
+  interrupts: HttpAgent['pendingInterrupts'],
+): ThreadHistoryAdapter {
   return {
     async load() {
-      agent.pendingInterrupts = [slot]
+      agent.pendingInterrupts = interrupts
       return {
         headId: 'paused-assistant',
         messages: [
@@ -55,7 +58,7 @@ function historyFor(agent: HttpAgent): ThreadHistoryAdapter {
                 unstable_annotations: [],
                 unstable_data: [],
                 steps: [],
-                custom: { agui: { interrupts: [slot] } },
+                custom: { agui: { interrupts } },
               },
             },
           },
@@ -101,6 +104,24 @@ function interceptRuns() {
   return posts
 }
 
+function openChat(interrupts?: HttpAgent['pendingInterrupts']) {
+  const posts = interceptRuns()
+  const agent = new HttpAgent({ threadId, url: 'http://localhost/runs' })
+  const history = interrupts ? historyFor(agent, interrupts) : undefined
+  const onError = vi.fn()
+  const { result } = renderHook(() => {
+    const runtime = useAgUiRuntime({
+      agent,
+      adapters: { history },
+      resumeTranscript: 'appended',
+      onError,
+    })
+    const actions = useAgUiHitlActions({ runtime, conversationId: threadId, agentId: 'agent-1' })
+    return { runtime, actions }
+  })
+  return { result, posts, onError }
+}
+
 afterEach(() => {
   cleanup()
   vi.unstubAllGlobals()
@@ -109,20 +130,7 @@ afterEach(() => {
 it.each(['restored', 'live'] as const)(
   'sends one standard resume when both actions of a %s approval are answered',
   async (source) => {
-    const posts = interceptRuns()
-    const agent = new HttpAgent({ threadId, url: 'http://localhost/runs' })
-    const history = source === 'restored' ? historyFor(agent) : undefined
-    const onError = vi.fn()
-    const { result } = renderHook(() => {
-      const runtime = useAgUiRuntime({
-        agent,
-        adapters: { history },
-        resumeTranscript: 'appended',
-        onError,
-      })
-      const actions = useAgUiHitlActions({ runtime, conversationId: threadId, agentId: 'agent-1' })
-      return { runtime, actions }
-    })
+    const { result, posts, onError } = openChat(source === 'restored' ? [slot] : undefined)
 
     if (source === 'live') {
       await act(async () => {
@@ -138,7 +146,6 @@ it.each(['restored', 'live'] as const)(
     const initialCount = source === 'restored' ? 0 : 1
     expect(posts).toHaveLength(initialCount)
     const decide = result.current.actions.registerDecision
-    if (!decide) throw new Error('Missing card action handler')
     const rejectedOutline = { type: 'reject' as const, message: 'Revise the outline.' }
     const first = decide(1, rejectedOutline, undefined, slot.id)
     expect(posts).toHaveLength(initialCount)
@@ -166,3 +173,37 @@ it.each(['restored', 'live'] as const)(
     })
   },
 )
+
+it('keeps a restored mixed approval batch pending when one native interrupt is read-only', async () => {
+  const current = {
+    id: 'current-question',
+    reason: 'moldy.ask_user',
+    responseSchema: { type: 'object' },
+    metadata: { moldy: { type: 'ask_user', question: 'Keep the title?' } },
+  }
+  const readOnly = {
+    id: 'previous-question',
+    reason: 'moldy.ask_user',
+    metadata: { moldy: { type: 'ask_user', question: 'Keep the outline?', actionable: false } },
+  }
+  const { result, posts, onError } = openChat([current, readOnly])
+  const pending = () => result.current.runtime.unstable_getPendingInterrupts()
+  await waitFor(() => expect(pending()).toEqual([current, readOnly]))
+  expect(posts).toHaveLength(0)
+  // Both cards look like known ask_user questions. The backend marked only
+  // the historical slot read-only; neither card can commit the mixed batch.
+  const answer = { type: 'respond' as const, message: 'Yes.' }
+  await act(async () => {
+    const votes = await Promise.allSettled(
+      [current, readOnly].map(({ id }) =>
+        result.current.actions.registerDecision(0, answer, undefined, id),
+      ),
+    )
+    for (const vote of votes) {
+      expect(vote).toMatchObject({ status: 'rejected', reason: { name: 'InvalidStateError' } })
+    }
+  })
+  expect(onError).not.toHaveBeenCalled()
+  expect(pending()).toEqual([current, readOnly])
+  expect(posts).toHaveLength(0)
+})

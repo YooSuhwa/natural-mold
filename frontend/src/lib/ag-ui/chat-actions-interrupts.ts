@@ -34,9 +34,17 @@ function isActionable(reason: string, value: unknown): boolean {
   }
 }
 
+export function isReadOnlyAgUiInterrupt(interrupt: AgUiInterrupt): boolean {
+  const value = interrupt.metadata?.moldy
+  return !!value && typeof value === 'object' && 'actionable' in value && value.actionable === false
+}
+
 export function moldyAgUiInterruptPayloads(
   interrupts: readonly AgUiInterrupt[],
 ): StandardInterruptPayload[] {
+  // The standard resume must cover every pending slot in a single request.
+  // A retained read-only slot therefore also withholds its siblings' controls.
+  if (interrupts.some(isReadOnlyAgUiInterrupt)) return []
   const current = new Map<string, StandardInterruptPayload>()
   for (const interrupt of interrupts) {
     const value = interrupt.metadata?.moldy
@@ -127,6 +135,7 @@ export function useAgUiHitlActions({
     for (const interrupt of current) {
       const previous = pending.find((slot) => slot.id === interrupt.id)
       if (
+        isReadOnlyAgUiInterrupt(interrupt) ||
         !byId.has(interrupt.id) ||
         !previous ||
         (previous !== interrupt && JSON.stringify(previous) !== JSON.stringify(interrupt)) ||

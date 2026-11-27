@@ -110,6 +110,24 @@ describe('Moldy choices on the native AG-UI pending interrupts', () => {
     expect(view.submit).not.toHaveBeenCalled()
   })
 
+  it('blocks every slot after a sibling becomes read-only, even before the UI is notified', async () => {
+    const answerable = ask('historical-question')
+    const readOnly: AgUiInterrupt = {
+      ...answerable,
+      metadata: { moldy: { type: 'ask_user', question: 'Previous question?', actionable: false } },
+    }
+    const active = approvals('current-tools')
+    expect(moldyAgUiInterruptPayloads([active, readOnly])).toEqual([])
+
+    const view = setup([active, answerable])
+    const register = view.result.current.registerDecision
+    view.replace([active, readOnly], false)
+    await expect(register(0, { type: 'approve' }, undefined, active.id)).rejects.toMatchObject({
+      name: 'InvalidStateError',
+    })
+    expect(view.submit).not.toHaveBeenCalled()
+  })
+
   it('batches edits, consent, and a parallel question in native interrupt and reviewed action order', async () => {
     const view = setup([approvals('review'), ask('question')])
     const register = view.result.current.registerDecision
