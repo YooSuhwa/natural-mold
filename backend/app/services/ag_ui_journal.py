@@ -6,7 +6,7 @@ broker watermarks can advance before a flush and are not journal positions.
 
 from __future__ import annotations
 
-from collections.abc import Collection, Sequence
+from collections.abc import Callable, Collection, Sequence
 from dataclasses import dataclass
 from typing import Any
 from uuid import UUID
@@ -17,6 +17,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.agent_runtime.protocol_events import StoredProtocolEvent
 from app.models.conversation import Conversation
 from app.models.conversation_history import ConversationHistoryEvent, ConversationHistoryManifest
+from app.models.conversation_run import RUN_TERMINAL_STATUSES
 from app.models.message_event import MessageEvent, MessageEventChunk
 from app.schemas.conversation_history import JsonValue
 from app.services.ag_ui_journal_legacy import legacy_journal_events
@@ -37,6 +38,12 @@ class JournalEntry:
     source_id: str
     events: tuple[StoredProtocolEvent, ...]
     legacy_users: tuple[dict[str, Any], ...] = ()
+    terminal_status: str | None = None
+
+
+EntryProjector = Callable[
+    [MessageEvent, dict[str, JsonValue], int, Collection[str]], JournalEntry | None
+]
 
 
 @dataclass(frozen=True, slots=True)
@@ -57,13 +64,18 @@ class _Range:
 
 
 def _entry(
-    record: MessageEvent, raw: JsonValue, ordinal: int, secrets: Collection[str]
+    record: MessageEvent,
+    raw: JsonValue,
+    ordinal: int,
+    secrets: Collection[str],
+    legacy_projector: EntryProjector | None,
 ) -> JournalEntry | None:
     if not isinstance(raw, dict):
         return None
     source_id = raw.get("id") or raw.get("event_id")
     if not isinstance(source_id, str) or not source_id:
         source_id = f"{record.assistant_msg_id}:{ordinal}"
+    terminal = None
     if "event" in raw and "method" not in raw:
         # Older emitters stored root SSE, without v3's first-class namespace.
         # Never relabel a child or another conversation's output as root text.
@@ -84,12 +96,44 @@ def _entry(
             seq = source_id[len(prefix) :]
             if seq.isascii() and seq.isdecimal() and seq != str(ordinal):
                 return None
+        if legacy_projector is not None:
+            return legacy_projector(record, raw, ordinal, secrets)
+        if raw["event"] == "message_end":
+            terminal = data.get("status", "completed")
         events = legacy_journal_events(record, raw, ordinal, secrets)
     else:
         # Never reattribute data that claims to belong to a different execution.
-        if raw.get("run_id") not in (None, record.assistant_msg_id) or raw.get("thread_id") not in (
-            None,
-            str(record.conversation_id),
+        if legacy_projector is not None:
+            return None
+        params = raw.get("params") if raw.get("type") == "event" else None
+        # Wire-format events keep their namespace and payload together in params;
+        # accepting a hybrid lets the compatibility reader pick a different root.
+        if raw.get("type") == "event" and (not isinstance(params, dict) or "data" in raw):
+            return None
+        envelopes = (raw, params) if isinstance(params, dict) else (raw,)
+        scopes = [env["namespace"] for env in envelopes if "namespace" in env]
+        if (
+            any(
+                env.get("run_id") not in (None, record.assistant_msg_id)
+                or env.get("thread_id") not in (None, str(record.conversation_id))
+                or env.get("conversation_id") not in (None, str(record.conversation_id))
+                or (
+                    env.get("checkpoint_ns") is not None
+                    and not isinstance(env["checkpoint_ns"], str)
+                )
+                for env in envelopes
+            )
+            or any(
+                not isinstance(ns, list) or not all(isinstance(x, str) and x for x in ns)
+                for ns in scopes
+            )
+            or isinstance(params, dict)
+            and (
+                "namespace" in raw
+                and raw["namespace"] != params.get("namespace", [])
+                or "checkpoint_ns" in raw
+                and raw["checkpoint_ns"] != params.get("checkpoint_ns")
+            )
         ):
             return None
         try:
@@ -100,6 +144,15 @@ def _entry(
             return None
         if not events:
             return None
+        for event in events:
+            payload = event["data"]
+            if (
+                event["method"] == "lifecycle"
+                and not event["namespace"]
+                and not event["checkpoint_ns"]
+                and isinstance(payload, dict)
+            ):
+                terminal = payload.get("event")
     if events is None:
         return None
     users = (
@@ -112,7 +165,13 @@ def _entry(
         if raw.get("event") == "message_start"
         else []
     )
-    return JournalEntry(ordinal, source_id, events, tuple(users))
+    return JournalEntry(
+        ordinal,
+        source_id,
+        events,
+        tuple(users),
+        terminal if isinstance(terminal, str) and terminal in RUN_TERMINAL_STATUSES else None,
+    )
 
 
 def _page(
@@ -125,6 +184,7 @@ def _page(
     limit: int,
     high_water: int,
     secrets: Collection[str],
+    legacy_projector: EntryProjector | None = None,
 ) -> JournalPage:
     gap = JournalPage(generation, (), False, True, status, high_water)
     if after > high_water:
@@ -144,7 +204,9 @@ def _page(
             return gap
         stop = min(group.last + 1, after + limit + 1)
         for ordinal in range(next_pos, stop):
-            entry = _entry(record, group.events[ordinal - group.first], ordinal, secrets)
+            entry = _entry(
+                record, group.events[ordinal - group.first], ordinal, secrets, legacy_projector
+            )
             if entry is None:
                 return gap
             entries.append(entry)
@@ -177,8 +239,33 @@ async def read_journal_page(
         return await _live_page(db, record, after, limit, secret_values)
 
 
+async def read_legacy_trace_page(
+    db: AsyncSession,
+    *,
+    conversation: Conversation,
+    physical_run_id: UUID,
+    entry_projector: EntryProjector,
+    after: int = 0,
+    limit: int = 128,
+    secret_values: Collection[str] = (),
+) -> JournalPage:
+    """Read a tenant-authorized historical transcript without a ConversationRun row."""
+    if after < 0 or not 1 <= limit <= _MAX_PAGE:
+        raise ValueError("invalid journal position or page size")
+    if conversation.agent_lifecycle_state == "purged":
+        return JournalPage(None, (), False, True, None)
+    record = MessageEvent(conversation_id=conversation.id, assistant_msg_id=str(physical_run_id))
+    with db.no_autoflush:
+        return await _live_page(db, record, after, limit, secret_values, entry_projector)
+
+
 async def _live_page(
-    db: AsyncSession, record: MessageEvent, after: int, limit: int, secrets: Collection[str]
+    db: AsyncSession,
+    record: MessageEvent,
+    after: int,
+    limit: int,
+    secrets: Collection[str],
+    legacy_projector: EntryProjector | None = None,
 ) -> JournalPage:
     chunk = MessageEventChunk
     run_scope = (
@@ -186,8 +273,10 @@ async def _live_page(
         chunk.assistant_msg_id == record.assistant_msg_id,
     )
     end = (
-        select(func.max(chunk.seq_end))
+        select(chunk.seq_end)
         .where(chunk.message_event_id == MessageEvent.id, *run_scope)
+        .order_by(chunk.seq_start.desc())
+        .limit(1)
         .scalar_subquery()
     )
     size = func.json_array_length(MessageEvent.events)
@@ -244,6 +333,7 @@ async def _live_page(
         limit=limit,
         high_water=horizon,
         secrets=secrets,
+        legacy_projector=legacy_projector,
     )
 
 

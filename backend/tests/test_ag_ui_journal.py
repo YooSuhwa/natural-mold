@@ -14,7 +14,7 @@ from app.models.conversation import Conversation
 from app.models.conversation_history import ConversationHistoryEvent, ConversationHistoryManifest
 from app.models.message_event import MessageEvent, MessageEventChunk
 from app.schemas.conversation_history import JsonValue
-from app.services.ag_ui_journal import read_journal_page
+from app.services.ag_ui_journal import JournalEntry, read_journal_page, read_legacy_trace_page
 from app.services.conversation_history_projection import canonical_payload_sha256
 from app.services.trace_storage import append_events, finalize_turn
 from tests.conftest import TestSession
@@ -290,3 +290,129 @@ async def test_legacy_partial_flush_committed_out_of_emission_order() -> None:
             db, conversation=await _conversation(db, cid), physical_run_id=rid
         )
         assert page.gap and not page.entries
+
+
+async def test_terminal_witness_is_scoped_and_only_for_durable_root_terminal() -> None:
+    cid, rid = await _seed_conversation(), uuid4()
+    async with TestSession() as db:
+        await append_events(
+            db,
+            conversation_id=cid,
+            assistant_msg_id=str(rid),
+            events_chunk=[
+                {
+                    **_raw(1, rid, cid),
+                    "method": "lifecycle",
+                    "namespace": ["task:child:1"],
+                    "data": {"event": "completed"},
+                },
+                {**_raw(2, rid, cid), "method": "lifecycle", "data": {"event": "completed"}},
+                {"id": "old-end", "event": "message_end", "data": {"content": "ok"}},
+                {
+                    "id": "new-end",
+                    "event": "message_end",
+                    "data": {"content": "", "status": "failed"},
+                },
+                {"id": "partial-only", "event": "content_delta", "data": {"delta": "half"}},
+            ],
+        )
+        await db.commit()
+        page = await read_journal_page(
+            db, conversation=await _conversation(db, cid), physical_run_id=rid
+        )
+        assert [e.terminal_status for e in page.entries] == [
+            None,
+            "completed",
+            "completed",
+            "failed",
+            None,
+        ]
+
+
+@pytest.mark.parametrize("namespace", ["child", [False], [""]])
+async def test_malformed_modern_child_namespace_does_not_become_root(
+    namespace: object,
+) -> None:
+    cid, rid = await _seed_conversation(), uuid4()
+    async with TestSession() as db:
+        await append_events(
+            db,
+            conversation_id=cid,
+            assistant_msg_id=str(rid),
+            events_chunk=[
+                {**_raw(1, rid, cid), "namespace": namespace},
+                {
+                    "id": "wire",
+                    "type": "event",
+                    "seq": 2,
+                    "method": "messages",
+                    "namespace": [],
+                    "params": {"namespace": ["child"], "data": {"content": "private"}},
+                },
+                # The wire projector reads params. A child declaration only on
+                # the outer record would otherwise be stripped and relabeled.
+                {
+                    "id": "ambiguous-wire",
+                    "type": "event",
+                    "seq": 3,
+                    "method": "messages",
+                    "namespace": ["child"],
+                    "params": {"data": {"content": "private"}},
+                },
+                {
+                    "id": "hybrid",
+                    "type": "event",
+                    "seq": 4,
+                    "method": "messages",
+                    "params": {"namespace": ["child"]},
+                    "data": {"content": "private"},
+                },
+            ],
+        )
+        await db.commit()
+        conv = await _conversation(db, cid)
+        for after in (0, 1, 2, 3):
+            p = await read_journal_page(
+                db, conversation=conv, physical_run_id=rid, after=after, limit=1
+            )
+            assert p.gap and not p.entries
+
+
+async def test_transcript_callback_cannot_override_scope_and_order_checks() -> None:
+    cid, rid = await _seed_conversation(), uuid4()
+    projected: list[int] = []
+
+    def project(
+        record: MessageEvent, raw: dict[str, JsonValue], ordinal: int, secrets: Any
+    ) -> JournalEntry:
+        projected.append(ordinal)
+        return JournalEntry(ordinal, str(raw["id"]), ())
+
+    async with TestSession() as db:
+        await append_events(
+            db,
+            conversation_id=cid,
+            assistant_msg_id=str(rid),
+            events_chunk=[
+                {"id": "root", "event": "content_delta", "data": {"delta": "old text"}},
+                {
+                    "id": "other",
+                    "event": "content_delta",
+                    "data": {"thread_id": str(uuid4()), "delta": "x"},
+                },
+                _raw(3, rid, cid),
+            ],
+        )
+        await db.commit()
+        conv = await _conversation(db, cid)
+        for after in (0, 1, 2):
+            p = await read_legacy_trace_page(
+                db,
+                conversation=conv,
+                physical_run_id=rid,
+                after=after,
+                limit=1,
+                entry_projector=project,
+            )
+            assert p.gap == (after > 0)
+        assert projected == [1]
