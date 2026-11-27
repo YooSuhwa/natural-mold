@@ -11,6 +11,7 @@ from app.routers import (
     conversation_files,
     conversation_followup,
     conversation_goals,
+    conversation_history_evidence,
     conversation_messages,
     conversation_pinned_summaries,
     conversation_run_inputs,
@@ -37,3 +38,4 @@ router.include_router(conversation_pinned_summaries.router)
 router.include_router(conversation_branches.router)
 router.include_router(conversation_files.router)
 router.include_router(conversation_followup.router)
+router.include_router(conversation_history_evidence.router)

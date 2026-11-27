@@ -6028,6 +6028,101 @@
         ]
       }
     },
+    "/api/conversations/{conversation_id}/history-evidence/{checkpoint_id}": {
+      "get": {
+        "description": "Read display-safe evidence at an authenticated conversation's exact checkpoint.",
+        "operationId": "get_history_evidence_api_conversations__conversation_id__history_evidence__checkpoint_id__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "conversation_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Conversation Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "checkpoint_id",
+            "required": true,
+            "schema": {
+              "pattern": "^[A-Za-z0-9_-]{1,64}$",
+              "title": "Checkpoint Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "offset",
+            "required": false,
+            "schema": {
+              "default": 0,
+              "minimum": 0,
+              "title": "Offset",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 10,
+              "maximum": 32,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "expected_sha256",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "pattern": "^[a-f0-9]{64}$",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Expected Sha256"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HistoryEvidence"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get History Evidence",
+        "tags": [
+          "conversations",
+          "conversations"
+        ]
+      }
+    },
     "/api/conversations/{conversation_id}/langgraph/state": {
       "get": {
         "operationId": "get_compat_thread_state_api_conversations__conversation_id__langgraph_state_get",
@@ -38821,6 +38916,33 @@
       "title": "EmergencyStopView",
       "type": "object"
     },
+    "EvidenceExcerpt": {
+      "properties": {
+        "role": {
+          "enum": [
+            "user",
+            "assistant"
+          ],
+          "title": "Role",
+          "type": "string"
+        },
+        "text": {
+          "title": "Text",
+          "type": "string"
+        },
+        "truncated": {
+          "title": "Truncated",
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "role",
+        "text",
+        "truncated"
+      ],
+      "title": "EvidenceExcerpt",
+      "type": "object"
+    },
     "ExitResolution": {
       "additionalProperties": false,
       "properties": {
@@ -40590,6 +40712,77 @@
         "relation"
       ],
       "title": "HeldGrant",
+      "type": "object"
+    },
+    "HistoryEvidence": {
+      "properties": {
+        "byte_length": {
+          "title": "Byte Length",
+          "type": "integer"
+        },
+        "checkpoint_id": {
+          "title": "Checkpoint Id",
+          "type": "string"
+        },
+        "content_sha256": {
+          "description": "SHA-256 of verified JSONL records or of one legacy Markdown file, according to format. JSONL excludes a legacy predecessor.",
+          "title": "Content Sha256",
+          "type": "string"
+        },
+        "cutoff_index": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Cutoff Index"
+        },
+        "excerpts": {
+          "description": "Previously published owner-visible text. User entries are limited to submitted run previews; assistant entries require a matching published final text block.",
+          "items": {
+            "$ref": "#/components/schemas/EvidenceExcerpt"
+          },
+          "title": "Excerpts",
+          "type": "array"
+        },
+        "format": {
+          "enum": [
+            "jsonl",
+            "legacy_markdown"
+          ],
+          "title": "Format",
+          "type": "string"
+        },
+        "history_id": {
+          "title": "History Id",
+          "type": "string"
+        },
+        "next_offset": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Next Offset"
+        }
+      },
+      "required": [
+        "checkpoint_id",
+        "history_id",
+        "cutoff_index",
+        "format",
+        "content_sha256",
+        "byte_length",
+        "excerpts",
+        "next_offset"
+      ],
+      "title": "HistoryEvidence",
       "type": "object"
     },
     "HistoryRequest": {
