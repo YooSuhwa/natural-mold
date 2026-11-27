@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 from dataclasses import dataclass
+from unittest.mock import AsyncMock
 from uuid import uuid4
 
 import pytest
@@ -13,7 +14,7 @@ from langchain_core.runnables import RunnableConfig
 from langgraph.checkpoint.memory import InMemorySaver
 from langgraph.graph import END, START, MessagesState, StateGraph
 from langgraph.types import Command, interrupt
-from sqlalchemy import delete, update
+from sqlalchemy import delete, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.agent_runtime import checkpointer
@@ -30,12 +31,15 @@ from app.models.ag_ui_command_receipt import AgUiCommandReceipt
 from app.models.approval_request import ApprovalRequest
 from app.models.conversation import Conversation
 from app.models.conversation_run import ConversationRun
-from app.models.message_event import MessageEvent
+from app.models.message_event import MessageEvent, MessageEventChunk
+from app.services import ag_ui_tool_continuations, trace_storage
+from app.services.ag_ui_tool_continuation_cache import ContinuationCache
 from app.services.ag_ui_tool_continuations import read_tool_continuations
 from app.tenancy.checkpoint_audit import run_configurable
 from tests.authz.agent_execution_runtime_fixture import seed_runtime_run
 from tests.authz.queue_resource_fixture import queue_resource_sql
 from tests.authz.unit_scope_fixture import unit_context
+from tests.conftest import make_user
 
 pytestmark = pytest.mark.asyncio
 
@@ -76,7 +80,11 @@ class ApprovedTurn:
     result: ToolMessage
 
     async def read(
-        self, *, checkpoint_id: str | None, context: OrgContext | None = None
+        self,
+        *,
+        checkpoint_id: str | None,
+        context: OrgContext | None = None,
+        cache: ContinuationCache | None = None,
     ) -> tuple[ToolContinuation, ...]:
         return await read_tool_continuations(
             self.db,
@@ -84,6 +92,7 @@ class ApprovedTurn:
             context=context or self.context,
             run=self.child,
             checkpoint_id=checkpoint_id,
+            cache=cache,
         )
 
 
@@ -349,3 +358,95 @@ async def test_approval_claim_for_a_different_physical_run_cannot_carry_the_call
     )
     await approved.db.commit()
     assert not await approved.read(checkpoint_id=approved.pin)
+
+
+@pytest.mark.parametrize("chunked", [False, True], ids=["inline", "chunked"])
+async def test_cached_issuer_rechecks_middle_source_bytes(
+    approved: ApprovedTurn, monkeypatch: pytest.MonkeyPatch, chunked: bool
+) -> None:
+    started = lifecycle_protocol_event(
+        thread_id=str(approved.room.id), run_id=str(approved.parent.id), seq=0, event="running"
+    )
+    events = [dict(started), *approved.trace.events]
+    if chunked:
+        approved.trace.events = []
+        await approved.db.flush()
+        await trace_storage.append_events(
+            approved.db,
+            conversation_id=approved.room.id,
+            assistant_msg_id=str(approved.parent.id),
+            events_chunk=events,
+            status="completed",
+        )
+        source = await approved.db.scalar(
+            select(MessageEventChunk).where(MessageEventChunk.message_event_id == approved.trace.id)
+        )
+        assert source is not None
+    else:
+        source = approved.trace
+        source.events = events
+    await approved.db.commit()
+    project = AsyncMock(wraps=ag_ui_tool_continuations._issued)
+    monkeypatch.setattr(ag_ui_tool_continuations, "_issued", project)
+    cache = ContinuationCache()
+    first = await approved.read(checkpoint_id=approved.pin, cache=cache)
+    assert len(first) == 1
+    assert await approved.read(checkpoint_id=approved.pin, cache=cache) == first
+    assert project.await_count == 1
+
+    # Keep the physical IDs, ordinals, terminal marker, and number of events.
+    # The source no longer contains the model's tool proposal at ordinal two.
+    changed = list(source.events)
+    changed[1] = {**changed[1], "data": {**changed[1]["data"], "tool_calls": []}}
+    source.events = changed
+    await approved.db.commit()
+    assert not await approved.read(checkpoint_id=approved.pin, cache=cache)
+    assert project.await_count == 2
+
+
+@pytest.mark.parametrize("revoked", ["claim", "owner"])
+async def test_cached_issuer_rechecks_approval_and_predecessor_owner(
+    approved: ApprovedTurn, revoked: str
+) -> None:
+    cache = ContinuationCache()
+    assert await approved.read(checkpoint_id=approved.pin, cache=cache)
+    if revoked == "claim":
+        await approved.db.execute(
+            update(ApprovalRequest)
+            .where(ApprovalRequest.run_id == approved.parent.id)
+            .values(resumed_run_id=approved.parent.id)
+        )
+    else:
+        approved.parent.user_id = (await make_user(approved.db)).id
+    await approved.db.commit()
+    assert not await approved.read(checkpoint_id=approved.pin, cache=cache)
+
+
+@pytest.mark.parametrize("other_claim", [False, True], ids=["pending", "different-physical-run"])
+async def test_parallel_approval_group_requires_every_claim_to_match(
+    approved: ApprovedTurn, other_claim: bool
+) -> None:
+    cache = ContinuationCache()
+    assert await approved.read(checkpoint_id=approved.pin, cache=cache)
+    other_slot = "second-pending-action"
+    [parallel] = await approvals.record_pending(
+        approved.db,
+        approved.parent,
+        [approvals.PendingInterrupt(other_slot, REVIEW)],
+        origin=approvals.RunOrigin(agent_name="Runtime Agent", source="chat"),
+    )
+    if other_claim:
+        await approvals.claim(
+            approved.db,
+            approvals.Claim(
+                run_id=approved.parent.id,
+                decisions={other_slot: ["approve"]},
+                channel="chat",
+                actor_id=approved.context.user_id,
+                resumed_run_id=approved.parent.id,
+            ),
+        )
+    else:
+        assert parallel.status == "pending"
+    await approved.db.commit()
+    assert not await approved.read(checkpoint_id=approved.pin, cache=cache)
