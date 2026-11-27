@@ -53,10 +53,13 @@ async def _legacy_turn(owner: Participant, cid: str, question: str) -> str:
 
 
 def _message_id(messages: list[dict[str, Any]], role: str, content: str) -> str:
+    expected = content.strip()
     ids = [
         message["id"]
         for message in messages
-        if message["role"] == role and message["content"].strip() == content.strip()
+        if message["role"] == role
+        and isinstance(text := message.get("content"), str)
+        and text.strip() == expected
     ]
     require(len(ids) == 1, f"expected one {role} message with the scripted content")
     return str(ids[0])

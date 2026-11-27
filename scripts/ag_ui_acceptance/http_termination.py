@@ -133,6 +133,6 @@ async def check_termination(gate: Gate) -> dict[str, object]:
     return {
         "cancellation": "cancelled",
         "resumed_input": input_id,
-        "failure": "RUN_ERROR",
+        "model_failure_event": "RUN_ERROR",
         "durable_runs": len(states),
     }
