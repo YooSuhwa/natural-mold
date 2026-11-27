@@ -454,6 +454,96 @@ describe('ChatPage', () => {
     })
   })
 
+  it('waits for a persisted AG-UI draft after a failed bootstrap', async () => {
+    const { default: userEvent } = await import('@testing-library/user-event')
+    const user = userEvent.setup()
+    const draft = { ...mockConversation, id: 'persisted-draft' }
+    vi.spyOn(runtimeMode, 'getChatRuntimeMode').mockReturnValue('ag_ui')
+    const runtime = vi.spyOn(chatRuntime, 'ChatRuntimeSection').mockReturnValue(<></>)
+    vi.spyOn(conversationsApi, 'delete').mockResolvedValue(undefined)
+    const createDraft = vi
+      .spyOn(conversationsApi, 'createDraft')
+      .mockRejectedValueOnce(new Error('temporarily unavailable'))
+      .mockResolvedValueOnce(draft)
+    const page = render(
+      <ChatPage
+        params={
+          { agentId: 'agent-1', conversationId: 'new' } as unknown as Promise<{
+            agentId: string
+            conversationId: string
+          }>
+        }
+      />,
+    )
+    try {
+      expect(await screen.findByRole('alert')).toHaveTextContent('새 대화를 준비하지 못했어요.')
+      expect(runtime).not.toHaveBeenCalled()
+      await user.click(screen.getByRole('button', { name: '다시 시도' }))
+      await waitFor(() => expect(runtime).toHaveBeenCalled())
+      expect(createDraft).toHaveBeenCalledTimes(2)
+      for (const [props] of runtime.mock.calls) {
+        expect(props).toMatchObject({
+          activeConversationId: draft.id,
+          useAgUiRuntime: true,
+          useLangGraphRuntime: false,
+        })
+      }
+      expect(mockStreamStartConversation).not.toHaveBeenCalled()
+      expect(mockStreamChat).not.toHaveBeenCalled()
+    } finally {
+      page.unmount()
+      await Promise.resolve()
+      vi.restoreAllMocks()
+    }
+  })
+
+  it.each(['ag_ui', 'langgraph_v3'] as const)(
+    'opens persisted side chat with its own ID using the %s transport',
+    async (mode) => {
+      const { default: userEvent } = await import('@testing-library/user-event')
+      const user = userEvent.setup()
+      const parentId = 'conv-main'
+      const sideId = 'conv-side'
+      vi.spyOn(runtimeMode, 'getChatRuntimeMode').mockReturnValue(mode)
+      const runtime = vi.spyOn(chatRuntime, 'ChatRuntimeSection').mockReturnValue(<></>)
+      const createSide = vi
+        .spyOn(conversationsApi, 'createSideChat')
+        .mockResolvedValue({ ...mockConversation, id: sideId })
+      const page = render(
+        <ChatPage
+          params={
+            { agentId: 'agent-1', conversationId: parentId } as unknown as Promise<{
+              agentId: string
+              conversationId: string
+            }>
+          }
+        />,
+      )
+      try {
+        await user.click(screen.getByRole('button', { name: '사이드 채팅' }))
+        await waitFor(() => {
+          const props = runtime.mock.calls.map(([call]) => call)
+          for (const id of [parentId, sideId]) {
+            expect(props).toContainEqual(
+              expect.objectContaining({
+                activeConversationId: id,
+                useAgUiRuntime: mode === 'ag_ui',
+                useLangGraphRuntime: mode === 'langgraph_v3',
+              }),
+            )
+          }
+        })
+        expect(createSide).toHaveBeenCalledTimes(1)
+        expect(createSide.mock.calls[0][0]).toBe(parentId)
+        expect(mockStreamStartConversation).not.toHaveBeenCalled()
+        expect(mockStreamChat).not.toHaveBeenCalled()
+      } finally {
+        page.unmount()
+        vi.restoreAllMocks()
+      }
+    },
+  )
+
   it('promotes a draft goal into the conversation navigator before its first message', async () => {
     const { default: userEvent } = await import('@testing-library/user-event')
     const user = userEvent.setup()
