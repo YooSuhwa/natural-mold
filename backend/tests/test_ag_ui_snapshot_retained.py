@@ -41,6 +41,7 @@ def _checkpoint(
     *,
     namespace: str = "",
     active: bool = False,
+    todos: list[JsonValue] | None = None,
 ) -> ConversationHistoryCheckpoint:
     return ConversationHistoryCheckpoint(
         conversation_id=conversation.id,
@@ -48,7 +49,7 @@ def _checkpoint(
         checkpoint_id=checkpoint_id,
         parent_checkpoint_id=parent,
         checkpoint_namespace=namespace,
-        channel_values={"internal": "channel values"},
+        channel_values={"internal": "channel values", "todos": todos},
         messages=messages,
         branch={"active": active, "parent_checkpoint_id": parent},
         trace={"private": "execution trace"},
@@ -74,11 +75,27 @@ async def test_selected_retained_ancestor_restores_only_its_latest_root_leaf(
         {"type": "ai", "id": "answer", "content": "first answer"},
     ]
     final: list[JsonValue] = [*first, {"type": "human", "id": "follow", "content": "follow-up"}]
+    stale: list[JsonValue] = [{"content": "ancestor task", "status": "completed"}]
+    secret = "fixture-only-retained-todo-secret"
+    leaf_todos: list[JsonValue] = [
+        {
+            "content": f"check {secret} now",
+            "status": "in_progress",
+            "provider_metadata": {"private": "internal"},
+        }
+    ]
     db.add_all(
         [
-            _checkpoint(conversation, manifest, "a-start", _ROOT, first, active=True),
-            _checkpoint(conversation, manifest, "a-end", "a-start", final),
-            _checkpoint(conversation, manifest, "z-other", _ROOT, [{"content": "other branch"}]),
+            _checkpoint(conversation, manifest, "a-start", _ROOT, first, active=True, todos=stale),
+            _checkpoint(conversation, manifest, "a-end", "a-start", final, todos=leaf_todos),
+            _checkpoint(
+                conversation,
+                manifest,
+                "z-other",
+                _ROOT,
+                [{"content": "other branch"}],
+                todos=[{"content": "sibling task", "status": "pending"}],
+            ),
             _checkpoint(
                 conversation,
                 manifest,
@@ -86,6 +103,7 @@ async def test_selected_retained_ancestor_restores_only_its_latest_root_leaf(
                 "a-start",
                 [{"content": "child transcript"}],
                 namespace="tools:child",
+                todos=[{"content": "child task", "status": "pending"}],
             ),
         ]
     )
@@ -93,14 +111,17 @@ async def test_selected_retained_ancestor_restores_only_its_latest_root_leaf(
     await db.flush()
 
     statements: list[str] = []
+    channel_params: list[tuple[object, ...]] = []
 
-    def capture(*, statement: str, **_: object) -> None:
+    def capture(*, statement: str, parameters: tuple[object, ...], **_: object) -> None:
         statements.append(statement.strip().lower())
+        if ".channel_values" in statement.lower():
+            channel_params.append(parameters)
 
     connection = (await db.connection()).sync_connection
     event.listen(connection, "before_cursor_execute", capture, named=True)
     try:
-        history = await read_retained_snapshot_history(db, conversation)
+        history = await read_retained_snapshot_history(db, conversation, secret_values=(secret,))
     finally:
         event.remove(connection, "before_cursor_execute", capture)
 
@@ -108,6 +129,11 @@ async def test_selected_retained_ancestor_restores_only_its_latest_root_leaf(
     assert history.checkpoint_id == "a-end"
     assert history.lineage_checkpoint_ids == (_ROOT, "a-start", "a-end")
     assert history.has_branches
+    (todo,) = history.todos
+    assert todo.keys() == {"id", "content", "status"}
+    assert todo["id"] == "todo-1" and todo["status"] == "in_progress"
+    assert todo["content"].startswith("check ") and todo["content"].endswith(" now")
+    assert secret not in todo["content"]
     assert [ref.message for ref in history.messages] == final
     assert [ref.original_index for ref in history.messages] == [0, 1, 2]
     assert [(ref.checkpoint_id, ref.parent_checkpoint_id) for ref in history.messages] == [
@@ -119,7 +145,11 @@ async def test_selected_retained_ancestor_restores_only_its_latest_root_leaf(
     sql = "\n".join(statements)
     assert "conversation_history_events" not in sql
     assert ".trace" not in sql
-    assert ".channel_values" not in sql
+    assert sql.count(".channel_values") == 1
+    assert "json_extract(conversation_history_checkpoints.channel_values," in sql
+    (todo_bindings,) = channel_params
+    assert '$."todos"' in todo_bindings and "a-end" in todo_bindings
+    assert not {"a-start", "z-other", "zz-child"}.intersection(todo_bindings)
 
 
 @pytest.mark.parametrize("candidate", ["missing", "child", "wrong-conversation", "wrong-manifest"])

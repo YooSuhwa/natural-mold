@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from collections.abc import Collection
 from itertools import batched
 from typing import TYPE_CHECKING
 
@@ -22,6 +23,8 @@ if TYPE_CHECKING:
 async def read_retained_snapshot_history(
     db: AsyncSession,
     conversation: Conversation,
+    *,
+    secret_values: Collection[str] = (),
 ) -> SnapshotHistory:
     """Called after the private conversation gate. Never opens a checkpointer."""
     from app.services.ag_ui_snapshot_history import (
@@ -30,6 +33,7 @@ async def read_retained_snapshot_history(
         _conflict,
         _replace_snapshot,
         _select_lineage,
+        _snapshot_todos,
     )
 
     manifest_id = await db.scalar(
@@ -93,10 +97,26 @@ async def read_retained_snapshot_history(
             if len(typed) != len(messages):
                 raise _conflict()
             refs = _replace_snapshot(refs, typed, checkpoint_id, parents[checkpoint_id])
+    leaf = lineage[-1] if lineage else None
+    todos = ()
+    if leaf is not None:
+        row = (
+            await db.execute(
+                select(checkpoint.channel_values["todos"]).where(
+                    *root_scope, checkpoint.checkpoint_id == leaf
+                ),
+                execution_options={"autoflush": False},
+            )
+        ).one_or_none()
+        if row is None:
+            raise _conflict()
+        todos = _snapshot_todos(row[0], secret_values)
+
     return SnapshotHistory(
-        checkpoint_id=lineage[-1] if lineage else None,
+        checkpoint_id=leaf,
         messages=tuple(refs),
         source="retained",
         lineage_checkpoint_ids=lineage,
         has_branches=len(parents.keys() - set(parents.values())) > 1,
+        todos=todos,
     )
