@@ -29,8 +29,10 @@ from tests.integration._seed import seed_conversation_with_agent
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize("model_retry", [False, True])
 async def test_direct_text_claim_and_replacement_fence_old_shutdown_and_completion(
     monkeypatch: pytest.MonkeyPatch,
+    model_retry: bool,
 ) -> None:
     monkeypatch.setattr(settings, "chat_run_recovery_enabled", True)
     monkeypatch.setattr(settings, "prepared_run_lease_enabled", False)
@@ -55,6 +57,9 @@ async def test_direct_text_claim_and_replacement_fence_old_shutdown_and_completi
         model_id=str(uuid.uuid4()),
         resolved_model_credential_id=str(uuid.uuid4()),
     )
+    monkeypatch.setattr(
+        settings, "chat_stream_retry_providers", {cfg.provider} if model_retry else set()
+    )
     user = CurrentUser(id=TEST_USER_ID, email="test@example.com", name="Test", is_super_user=True)
     payload = {
         "messages": [
@@ -76,6 +81,9 @@ async def test_direct_text_claim_and_replacement_fence_old_shutdown_and_completi
         recovery_fence=None,
     )
     assert start.started and start.run and start.run.recovery_runtime_digest
+    assert start.run.recovery_model_attempts == (
+        {"version": 1, "limit": 3, "calls": {}} if model_retry else None
+    )
     first = fence_for_run(start.run)
     assert first.generation == 1
     async with TestSession() as db:

@@ -139,6 +139,17 @@ and observed tool status on its original branch. The user can edit a fresh
 continuation before sending it. Per-attempt logs record only the attempt
 number, whether output started, and the outcome.
 
+An ordinary chat enrolled in worker recovery reserves each model send before
+network I/O. The run's owner lock protects the count for each LangGraph
+checkpoint and task. A successor inherits the remaining sends, including
+reservations made just before a crash. It stops when prior sends cannot be
+verified. Each run tracks up to 256 task hashes. Beyond that, the current
+worker can finish with its local limits and a later generation stops before
+its next model send. Apply migration `i50_chat_model_attempts` and upgrade
+all eligible workers before enabling both features. For a rollback, stop new
+enrollments and finish or stop existing enrolled runs before restoring older
+workers or dropping the column.
+
 **Rule.**
 - Tool calls that change external state (write, send, delete) are never retried
   automatically. Read calls may be.
