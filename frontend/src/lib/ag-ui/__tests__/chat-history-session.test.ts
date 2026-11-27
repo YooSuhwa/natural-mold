@@ -30,7 +30,9 @@ function snapshot(fields: Record<string, unknown> = {}) {
   )
 }
 
-function sessionFor(readSnapshot: () => Promise<WireChatSnapshot>) {
+type ReadSnapshot = (signal?: AbortSignal) => Promise<WireChatSnapshot>
+
+function sessionFor(readSnapshot: ReadSnapshot) {
   return createAgUiChatSession({
     conversationId: threadId,
     readSnapshot,
@@ -40,10 +42,12 @@ function sessionFor(readSnapshot: () => Promise<WireChatSnapshot>) {
 
 function deferred<T>() {
   let resolve!: (value: T) => void
-  const promise = new Promise<T>((done) => {
+  let reject!: (reason: Error) => void
+  const promise = new Promise<T>((done, fail) => {
     resolve = done
+    reject = fail
   })
-  return { promise, resolve }
+  return { promise, resolve, reject }
 }
 
 function activity(messageId: string) {
@@ -263,19 +267,28 @@ describe('AG-UI history session', () => {
     session.dispose()
   })
 
-  it('never lets a pre-command history read overwrite a newly accepted run', async () => {
+  it('lets a pre-command GET finish without overwriting the newly accepted run', async () => {
     const old = deferred<WireChatSnapshot>()
-    const session = sessionFor(() => old.promise)
+    const settled = snapshot({ runId: 'just-accepted', latestPhysicalRunId: physical })
+    const read = vi
+      .fn<ReadSnapshot>()
+      .mockReturnValueOnce(old.promise)
+      .mockResolvedValueOnce(settled)
+    const session = sessionFor(read)
     const outOfDate = expect(session.refreshRepository()).rejects.toMatchObject({
       name: 'AbortError',
     })
     session.onRunAccepted({ runId: 'just-accepted', physicalRunId: physical })
+    const abortedOnAcceptance = read.mock.calls[0][0]?.aborted
     old.resolve(snapshot())
     await outOfDate
+    expect(abortedOnAcceptance).toBe(false)
     expect(session.getSnapshot()).toMatchObject({
       activeRunId: 'just-accepted',
       physicalRunId: physical,
     })
+    await session.refreshRepository()
+    expect(session.getSnapshot()).toMatchObject({ snapshot: settled, activeRunId: null })
     session.dispose()
   })
 
@@ -391,20 +404,89 @@ describe('AG-UI history session', () => {
     const old = deferred<WireChatSnapshot>()
     const current = deferred<WireChatSnapshot>()
     const read = vi
-      .fn<() => Promise<WireChatSnapshot>>()
+      .fn<ReadSnapshot>()
       .mockReturnValueOnce(old.promise)
       .mockReturnValueOnce(current.promise)
     const session = sessionFor(read)
     const first = session.refreshRepository()
     const outdated = expect(first).rejects.toMatchObject({ name: 'AbortError' })
     const second = session.refreshRepository()
+    const abortedDuringRefresh = read.mock.calls.map(([signal]) => signal?.aborted)
     current.resolve(snapshot({ activeRunId: 'new-branch', physicalRunId: physical }))
     await second
     old.resolve(snapshot({ activeRunId: 'old-branch', physicalRunId: physical }))
     await outdated
+    expect(abortedDuringRefresh).toEqual([false, false])
     expect(session.getSnapshot().activeRunId).toBe('new-branch')
     session.dispose()
   })
+
+  it('keeps the confirmed branch when a superseded GET later reports a denial', async () => {
+    const stale = deferred<WireChatSnapshot>()
+    const confirmed = snapshot({ activeRunId: 'confirmed', physicalRunId: physical })
+    const read = vi
+      .fn<ReadSnapshot>()
+      .mockReturnValueOnce(stale.promise)
+      .mockResolvedValueOnce(confirmed)
+    const session = sessionFor(read)
+    const first = session.refreshRepository()
+    await session.refreshRepository()
+    const state = session.getSnapshot()
+    stale.reject(new ApiError(404, 'snapshot_unavailable', 'Unable to read history'))
+    await expect(first).rejects.toBeDefined()
+    expect(session.getSnapshot()).toBe(state)
+    expect(state).toMatchObject({ readDenied: false, snapshot: confirmed })
+    session.dispose()
+  })
+
+  it('still cancels the GET when its caller explicitly aborts', async () => {
+    const pending = deferred<WireChatSnapshot>()
+    const read = vi.fn<ReadSnapshot>().mockReturnValueOnce(pending.promise)
+    const session = sessionFor(read)
+    const caller = new AbortController()
+    const result = session.refreshRepository({ signal: caller.signal })
+    caller.abort()
+    expect(read.mock.calls[0][0]?.aborted).toBe(true)
+    pending.resolve(snapshot({ activeRunId: 'obsolete', physicalRunId: physical }))
+    await expect(result).rejects.toMatchObject({ name: 'AbortError' })
+    expect(session.getSnapshot()).toMatchObject({ snapshot: null, readDenied: false })
+    session.dispose()
+  })
+
+  it.each(['access revocation', 'session disposal'] as const)(
+    'aborts every outstanding snapshot GET on %s and discards buffered results',
+    async (reason) => {
+      const old = deferred<WireChatSnapshot>()
+      const current = deferred<WireChatSnapshot>()
+      const read = vi
+        .fn<ReadSnapshot>()
+        .mockReturnValueOnce(old.promise)
+        .mockReturnValueOnce(current.promise)
+      const session = sessionFor(read)
+      const results = Promise.allSettled([session.refreshRepository(), session.refreshRepository()])
+      expect(read.mock.calls.map(([signal]) => signal?.aborted)).toEqual([false, false])
+      if (reason === 'access revocation') {
+        session.onPublicEvent(
+          { type: EventType.RUN_ERROR, code: 'AG_UI_READ_DENIED', threadId },
+          { source: 'attach' },
+        )
+      } else {
+        session.dispose()
+      }
+      expect(read.mock.calls.map(([signal]) => signal?.aborted)).toEqual([true, true])
+      const cleared = session.getSnapshot()
+      expect(cleared.snapshot).toBeNull()
+      expect(cleared.readDenied).toBe(reason === 'access revocation')
+      current.resolve(snapshot({ activeRunId: 'departed', physicalRunId: physical }))
+      old.resolve(snapshot({ activeRunId: 'older', physicalRunId: physical }))
+      expect(await results).toMatchObject([
+        { status: 'rejected', reason: { name: 'AbortError' } },
+        { status: 'rejected', reason: { name: 'AbortError' } },
+      ])
+      expect(session.getSnapshot()).toBe(cleared)
+      session.dispose()
+    },
+  )
 
   it('never notifies a disposed conversation subscriber when an old GET finally returns', async () => {
     const waiting = deferred<WireChatSnapshot>()

@@ -557,6 +557,37 @@ describe('MoldyAgUiAgent HTTP contract', () => {
     expect(agent.messages).toEqual([message])
   })
 
+  it('lets a superseded snapshot finish without replacing the selected run or approvals', async () => {
+    const delayed = Promise.withResolvers<Response>()
+    const calls = intercept(({ url }, index) => {
+      if (url.pathname === `${base}/stream`) return stream(answer())
+      return index === 1 ? Response.json(snapshot(publicRunId)) : delayed.promise
+    })
+    const agent = agentWithMessage()
+    await agent.readSnapshot()
+    const approvals = [{ id: 'current-approval', reason: 'credential_required' }]
+    agent.pendingInterrupts = approvals
+    let isCurrent = true
+    const pending = agent.readSnapshot({ isCurrent: () => isCurrent })
+    await vi.waitFor(() => expect(calls).toHaveLength(2))
+    isCurrent = false
+    delayed.resolve(Response.json(snapshot(nextRunId)))
+    expect((await pending).activeRunId).toBe(nextRunId)
+    expect(calls[1].init.signal?.aborted).toBe(false)
+    expect(agent.pendingInterrupts).toEqual(approvals)
+
+    await agent.connectAgent({
+      forwardedProps: { runConfig: { moldy: { attachRunId: publicRunId } } },
+    })
+    expect(
+      calls.map(({ method, url }) => [method, url.pathname, url.searchParams.get('runId')]),
+    ).toEqual([
+      ['GET', `${base}/snapshot`, null],
+      ['GET', `${base}/snapshot`, null],
+      ['GET', `${base}/stream`, publicRunId],
+    ])
+  })
+
   it('does not create a run when reopening an idle thread', async () => {
     const calls = intercept(() => Response.json(snapshot()))
     await agentWithMessage().connectAgent({ runId: 'generated-by-sdk' })

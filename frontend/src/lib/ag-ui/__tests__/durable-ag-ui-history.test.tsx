@@ -3,8 +3,7 @@ import { act, renderHook, waitFor } from '@testing-library/react'
 import { useAgUiRuntime } from '@assistant-ui/react-ag-ui'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { dispatchMoldyBranchSwitched } from '@/lib/chat/langgraph-runtime/branch-switch-events'
-import { createAgUiChatSession } from '../chat-history'
-import { MoldyAgUiAgent } from '../moldy-agent'
+import { useChatSession } from '../use-chat-session'
 import { useDurableAgUiHistory } from '../use-durable-ag-ui-history'
 
 const conversationId = '08a60eaf-a191-43a4-b2be-f13c370d7abf'
@@ -46,6 +45,7 @@ interface RequestLog {
   method: string
   url: URL
   body: RequestInit['body']
+  signal: RequestInit['signal']
 }
 
 function intercept(reply: (call: RequestLog) => Response | Promise<Response>) {
@@ -56,6 +56,7 @@ function intercept(reply: (call: RequestLog) => Response | Promise<Response>) {
       const call = {
         method: init.method ?? 'GET',
         body: init.body,
+        signal: init.signal ?? (input instanceof Request ? input.signal : undefined),
         url: new URL(input instanceof Request ? input.url : input.toString(), 'http://localhost'),
       }
       requests.push(call)
@@ -66,20 +67,10 @@ function intercept(reply: (call: RequestLog) => Response | Promise<Response>) {
 }
 
 function mountChat(readOnly = false) {
-  const agent: MoldyAgUiAgent = new MoldyAgUiAgent({
-    conversationId,
-    onAccepted: ({ publicRunId, physicalRunId }) =>
-      session.onRunAccepted({ runId: publicRunId, physicalRunId }),
-    onPublicEvent: (event, context) => session.onPublicEvent(event, context),
-  })
-  const session = createAgUiChatSession({
-    conversationId,
-    readSnapshot: (signal?: AbortSignal) => agent.readSnapshot({ signal }),
-    getServerMessages: () => [],
-  })
   const onSettled = vi.fn()
   const view = renderHook(
-    () => {
+    ({ serverActiveRunId }: { serverActiveRunId: string | null }) => {
+      const { agent, session } = useChatSession({ conversationId, serverMessages: [] })
       const runtime = useAgUiRuntime({ agent, adapters: { history: session.history } })
       const busy = useDurableAgUiHistory({
         runtime,
@@ -87,13 +78,14 @@ function mountChat(readOnly = false) {
         agent,
         conversationId,
         readOnly,
+        serverActiveRunId,
         onSettled,
       })
-      return { runtime, busy }
+      return { runtime, busy, session }
     },
-    { wrapper: StrictMode },
+    { wrapper: StrictMode, initialProps: { serverActiveRunId: null } },
   )
-  return { ...view, onSettled, session }
+  return { ...view, onSettled, session: view.result.current.session }
 }
 
 function textFrame(frame: object) {
@@ -102,7 +94,7 @@ function textFrame(frame: object) {
 
 function openSubmission(call: RequestLog) {
   if (typeof call.body !== 'string') throw new Error('Expected a JSON chat command')
-  const { runId }: { runId: string } = JSON.parse(call.body)
+  const { runId, resume }: { runId: string; resume?: unknown[] } = JSON.parse(call.body)
   let output!: ReadableStreamDefaultController<Uint8Array>
   const body = new ReadableStream<Uint8Array>({
     start(controller) {
@@ -146,10 +138,9 @@ function openSubmission(call: RequestLog) {
     },
     snapshot: () => {
       const previous = savedChat('initial')
-      const newMessages = [
-        { id: 'saved-question', role: 'user', content: '새 질문' },
-        { id: 'saved-turn', role: 'assistant', content: '저장된 새 응답' },
-      ]
+      const newMessages = [{ id: 'saved-turn', role: 'assistant', content: '저장된 새 응답' }]
+      if (!resume?.length)
+        newMessages.unshift({ id: 'saved-question', role: 'user', content: '새 질문' })
       return {
         ...previous,
         checkpointId: 'saved-turn',
@@ -394,47 +385,116 @@ describe('durable official chat history', () => {
   })
 
   it.each([
-    { delayedBranch: false, terminal: false, name: 'a lost terminal frame' },
-    { delayedBranch: true, terminal: true, name: 'an older branch read racing the new submission' },
-  ])('imports the accepted POST exactly once after $name', async ({ delayedBranch, terminal }) => {
+    { delayedRead: false, resume: false, terminal: false, name: 'a lost terminal frame' },
+    {
+      delayedRead: true,
+      resume: false,
+      terminal: true,
+      name: 'a branch read racing a new message',
+    },
+    {
+      delayedRead: true,
+      resume: true,
+      terminal: true,
+      name: 'a focus read racing an approval response',
+    },
+  ])('imports the accepted POST exactly once after $name', async (scenario) => {
+    const { delayedRead, resume, terminal } = scenario
     let submitted: ReturnType<typeof openSubmission> | undefined
-    let releaseBranch: ((response: Response) => void) | undefined
-    let branchChanged = false
+    let accept!: () => void
+    let releaseRead: ((response: Response) => void) | undefined
+    let pendingRequest: RequestLog | undefined
+    let refreshing = false
     let stored = false
+    const interrupt = { id: 'current-approval', reason: 'input_required', message: 'Continue?' }
+    const decision = {
+      interruptId: interrupt.id,
+      status: 'resolved' as const,
+      payload: { decisions: [{ type: 'approve' }] },
+    }
+    const initial = savedChat(
+      'initial',
+      resume
+        ? {
+            interruptRunId: publicRunId,
+            physicalInterruptRunId: physicalRunId,
+            interrupts: [interrupt],
+          }
+        : {},
+    )
     const calls = intercept((call) => {
       if (call.method === 'POST' && call.url.pathname.endsWith('/runs')) {
         submitted = openSubmission(call)
+        if (resume) {
+          const { response } = submitted
+          return new Promise<Response>((resolve) => {
+            accept = () => resolve(response)
+          })
+        }
         return submitted.response
       }
       if (!call.url.pathname.endsWith('/snapshot'))
         throw new Error('Unexpected connection: ' + call.url.pathname)
       if (submitted && stored) return Response.json(submitted.snapshot())
-      if (branchChanged && !releaseBranch) {
+      if (refreshing && !releaseRead) {
+        pendingRequest = call
         return new Promise<Response>((resolve) => {
-          releaseBranch = resolve
+          releaseRead = resolve
         })
       }
-      return Response.json(savedChat('initial'))
+      return Response.json(initial)
     })
     const view = mountChat()
     const thread = view.result.current.runtime.thread
     await waitFor(() => expect(thread.getState().messages.at(-1)?.id).toBe('initial'))
-    if (delayedBranch) {
-      branchChanged = true
-      await act(async () => dispatchMoldyBranchSwitched({ conversationId, checkpointId: 'stale' }))
-      await waitFor(() => expect(releaseBranch).toBeDefined())
+    if (delayedRead) {
+      refreshing = true
+      if (resume) {
+        vi.spyOn(document, 'visibilityState', 'get').mockReturnValue('visible')
+        await act(async () => {
+          window.dispatchEvent(new Event('focus'))
+        })
+      } else {
+        await act(async () =>
+          dispatchMoldyBranchSwitched({ conversationId, checkpointId: 'stale' }),
+        )
+      }
+      await waitFor(() => expect(pendingRequest?.signal?.aborted).toBe(false))
+      expect(pendingRequest?.url.search).toBe('')
     }
     act(() => {
-      void thread.append({ role: 'user', content: [{ type: 'text', text: '새 질문' }] })
+      if (resume) void view.result.current.runtime.unstable_submitInterruptResponses([decision])
+      else void thread.append({ role: 'user', content: [{ type: 'text', text: '새 질문' }] })
     })
+    if (resume) {
+      await waitFor(() => expect(accept).toBeDefined())
+      expect(pendingRequest?.signal?.aborted).toBe(false)
+      const stale = savedChat('stale', {
+        interruptRunId: publicRunId,
+        physicalInterruptRunId: physicalRunId,
+        interrupts: [{ ...interrupt, id: 'obsolete-approval' }],
+      })
+      await act(async () => releaseRead?.(Response.json(stale)))
+      expect(view.session.getSnapshot().snapshot?.checkpointId).toBe('initial')
+      expect(
+        view.result.current.runtime.unstable_getPendingInterrupts().map(({ id }) => id),
+      ).not.toContain('obsolete-approval')
+      await act(async () => accept())
+    }
     const streaming = () => thread.getState().messages.at(-1)?.content
     await waitFor(() =>
       expect(streaming()).toContainEqual(
         expect.objectContaining({ type: 'text', text: '새 응답 작성 중' }),
       ),
     )
-    if (delayedBranch) {
-      await act(async () => releaseBranch?.(Response.json(savedChat('stale'))))
+    if (delayedRead) {
+      expect(pendingRequest?.signal?.aborted).toBe(false)
+      const post = calls.find(({ method }) => method === 'POST')
+      const command = JSON.parse(String(post?.body)) as { runId: string }
+      if (resume) expect(command).toMatchObject({ messages: [], resume: [decision] })
+      else await act(async () => releaseRead?.(Response.json(savedChat('stale'))))
+      expect(view.session.getSnapshot().snapshot?.checkpointId).toBe('initial')
+      expect(view.session.getSnapshot().activeRunId).toBe(command.runId)
       expect(streaming()).toContainEqual(
         expect.objectContaining({ type: 'text', text: '새 응답 작성 중' }),
       )
@@ -447,7 +507,7 @@ describe('durable official chat history', () => {
       expect(thread.getState().messages.map(({ id }) => id)).toEqual([
         'question',
         'initial',
-        'saved-question',
+        ...(resume ? [] : ['saved-question']),
         'saved-turn',
       ]),
     )
@@ -614,6 +674,95 @@ describe('durable official chat history', () => {
         calls.every(({ method, url }) => method === 'GET' && url.pathname.endsWith('/snapshot')),
       ).toBe(true)
       view.unmount()
+    },
+  )
+
+  it('reads once more after server run changes during a pending snapshot', async () => {
+    vi.spyOn(document, 'visibilityState', 'get').mockReturnValue('visible')
+    let respond: () => Response | Promise<Response> = () => Response.json(savedChat('initial'))
+    const calls = intercept(() => respond())
+    const view = mountChat()
+    const head = () => view.result.current.runtime.thread.getState().messages.at(-1)?.id
+    await waitFor(() => expect(head()).toBe('initial'))
+    const published: Array<string | null | undefined> = []
+    const stop = view.session.subscribe(() =>
+      published.push(view.session.getSnapshot().snapshot?.checkpointId),
+    )
+    const initialRequests = calls.length
+    let release!: (value: Response) => void
+    respond = () =>
+      new Promise<Response>((resolve) => {
+        release = resolve
+      })
+    await act(async () => {
+      window.dispatchEvent(new Event('focus'))
+    })
+    await waitFor(() => expect(release).toBeDefined())
+    view.rerender({ serverActiveRunId: 'running' })
+    view.rerender({ serverActiveRunId: null })
+    expect(calls).toHaveLength(initialRequests + 1)
+    expect(calls.at(-1)?.signal?.aborted).toBe(false)
+    respond = () => Response.json(savedChat('completed'))
+    await act(async () => release(Response.json(savedChat('obsolete'))))
+    await waitFor(() => expect(head()).toBe('completed'))
+    expect(published).toEqual(['completed'])
+    expect(calls).toHaveLength(initialRequests + 2)
+    expect(
+      calls.every(({ method, url }) => method === 'GET' && url.pathname.endsWith('/snapshot')),
+    ).toBe(true)
+    stop()
+  })
+
+  it.each(['pagehide', 'unmount'])(
+    'coalesces visibility reads and aborts outstanding branch reads on %s',
+    async (departure) => {
+      vi.spyOn(document, 'visibilityState', 'get').mockReturnValue('visible')
+      let release!: () => void
+      const held = new Promise<void>((resolve) => {
+        release = resolve
+      })
+      let refreshing = false
+      const calls = intercept(() =>
+        refreshing
+          ? held.then(() => Response.json(savedChat('obsolete')))
+          : Response.json(savedChat('initial')),
+      )
+      const view = mountChat()
+      const head = () => view.result.current.runtime.thread.getState().messages.at(-1)?.id
+      await waitFor(() => expect(head()).toBe('initial'))
+      const initialRequests = calls.length
+      refreshing = true
+      await act(async () => {
+        window.dispatchEvent(new Event('focus'))
+      })
+      await waitFor(() => expect(calls).toHaveLength(initialRequests + 1))
+      await act(async () => {
+        document.dispatchEvent(new Event('visibilitychange'))
+      })
+      expect(calls).toHaveLength(initialRequests + 1)
+      await act(async () => dispatchMoldyBranchSwitched({ conversationId, checkpointId: 'next' }))
+      await waitFor(() => expect(calls).toHaveLength(initialRequests + 2))
+      const pending = calls.slice(initialRequests)
+      expect(pending.every(({ signal }) => signal?.aborted === false)).toBe(true)
+      if (departure === 'pagehide') {
+        await act(async () => {
+          window.dispatchEvent(new Event('pagehide'))
+        })
+      } else view.unmount()
+      expect(pending.every(({ signal }) => signal?.aborted)).toBe(true)
+      await act(async () => release())
+      if (departure === 'pagehide') {
+        expect(view.session.getSnapshot().snapshot?.checkpointId).toBe('initial')
+        expect(head()).toBe('initial')
+        view.unmount()
+      } else expect(view.session.getSnapshot().snapshot).toBeNull()
+      expect(calls).toHaveLength(initialRequests + 2)
+      expect(
+        pending.every(
+          ({ method, url }) =>
+            method === 'GET' && !url.search && url.pathname.endsWith('/snapshot'),
+        ),
+      ).toBe(true)
     },
   )
 

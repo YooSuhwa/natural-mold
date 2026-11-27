@@ -17,7 +17,10 @@ function createChatConnection(initial: ChatSessionOptions) {
   const { conversationId } = initial
   const agent = new MoldyAgUiAgent({
     conversationId,
-    onBeforeSubmit: () => current.onBeforeNewMessage?.(),
+    onBeforeSubmit: () => {
+      session.invalidateHistoryRead()
+      current.onBeforeNewMessage?.()
+    },
     onAccepted: ({ publicRunId, physicalRunId }) => {
       session.onRunAccepted({ runId: publicRunId, physicalRunId })
       current.onNewMessageAccepted?.()
@@ -29,7 +32,7 @@ function createChatConnection(initial: ChatSessionOptions) {
   })
   const session = createAgUiChatSession({
     conversationId,
-    readSnapshot: (signal?: AbortSignal) => agent.readSnapshot({ signal }),
+    readSnapshot: (signal, isCurrent) => agent.readSnapshot({ signal, isCurrent }),
     getServerMessages: () => current.serverMessages,
   })
   return {
