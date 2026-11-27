@@ -15,6 +15,50 @@ depends_on = None
 _TABLE = "ag_ui_command_receipts"
 
 
+def _install_queue_claim_guard(schema: str) -> None:
+    # An older worker can claim this queue, but cannot resolve a selected
+    # branch. Roll back its whole transaction, including the physical run.
+    op.execute(
+        sa.text(
+            f"""
+            CREATE FUNCTION moldy_guard_ag_ui_queue_claim() RETURNS trigger
+            LANGUAGE plpgsql SECURITY INVOKER SET search_path = pg_catalog, {schema}, pg_temp
+            AS $guard$
+            BEGIN
+                IF EXISTS (
+                    SELECT 1
+                    FROM ag_ui_command_receipts AS r
+                    JOIN conversations AS c ON c.id = r.conversation_id
+                        AND c.user_id = r.user_id
+                        AND c.org_id = r.org_id
+                        AND c.tenant_id = r.tenant_id
+                    WHERE r.input_id = OLD.id AND r.conversation_id = OLD.conversation_id
+                        AND r.user_id = OLD.user_id AND c.agent_id = OLD.agent_id
+                        AND c.active_branch_checkpoint_id IS NOT NULL
+                ) THEN
+                    RAISE EXCEPTION USING ERRCODE = '23514',
+                        CONSTRAINT = 'ck_ag_ui_selected_queue_claim',
+                        MESSAGE = 'A selected conversation branch requires a pinned queue claim';
+                END IF;
+                RETURN NEW;
+            END;
+            $guard$
+            """
+        )
+    )
+    op.execute(
+        sa.text(
+            """
+            CREATE TRIGGER ck_ag_ui_selected_queue_claim
+            BEFORE UPDATE OF status, run_id, checkpoint_id ON conversation_run_inputs
+            FOR EACH ROW WHEN (OLD.status = 'pending' AND OLD.source = 'chat'
+                AND NEW.status = 'claimed' AND NEW.checkpoint_id IS NULL)
+            EXECUTE FUNCTION moldy_guard_ag_ui_queue_claim()
+            """
+        )
+    )
+
+
 def upgrade() -> None:
     op.create_table(
         _TABLE,
@@ -97,7 +141,12 @@ def upgrade() -> None:
             op.execute(
                 sa.text(f"GRANT SELECT, INSERT, UPDATE, DELETE ON {quote(_TABLE)} TO {quote(role)}")
             )
+        schema = bind.execute(sa.text("SELECT current_schema()")).scalar_one()
+        _install_queue_claim_guard(bind.dialect.identifier_preparer.quote_identifier(schema))
 
 
 def downgrade() -> None:
+    if op.get_bind().dialect.name == "postgresql":
+        op.execute(sa.text("DROP TRIGGER ck_ag_ui_selected_queue_claim ON conversation_run_inputs"))
+        op.execute(sa.text("DROP FUNCTION moldy_guard_ag_ui_queue_claim()"))
     op.drop_table(_TABLE)
