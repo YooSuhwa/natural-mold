@@ -253,7 +253,7 @@ test('reads one delegated chat across replicas, approval, AG-UI cutover and roll
         (res) =>
           res.request().method() === 'POST' && new URL(res.url()).pathname.endsWith('/feedback'),
       ),
-      finalBubble.getByRole('button', { name: /도움이 됨|Helpful|Thumbs up/ }).click(),
+      finalBubble.getByRole('button', { name: /도움이 됨|Feedback Up/ }).click(),
     ])
     expect(feedback.status()).toBeLessThan(300)
     const messages = await savedMessages(request, conversationId)
