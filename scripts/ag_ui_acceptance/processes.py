@@ -10,6 +10,7 @@ import select
 import signal
 import socket
 import subprocess
+import sys
 import time
 from collections.abc import Iterator
 from pathlib import Path
@@ -62,7 +63,7 @@ def scrub_logs(logfile: Path, env: dict[str, str]) -> str:
 
 def _exited(process: subprocess.Popen[bytes], timeout: float) -> bool:
     """Observe an exit without releasing the leader's PID before group cleanup."""
-    if hasattr(select, "kqueue"):
+    if sys.platform != "linux":
         # Darwin does not expose waitid(WNOWAIT) in CPython. Registration after
         # exit returns ESRCH, while observation of a running child returns NOTE_EXIT.
         change = select.kevent(
@@ -83,9 +84,7 @@ def _exited(process: subprocess.Popen[bytes], timeout: float) -> bool:
             raise OSError(event.data, "Cannot observe managed child exit")
         return True
     deadline = time.monotonic() + timeout
-    while (
-        os.waitid(os.P_PID, process.pid, os.WEXITED | os.WNOHANG | os.WNOWAIT) is None
-    ):
+    while os.waitid(os.P_PID, process.pid, os.WEXITED | os.WNOHANG | os.WNOWAIT) is None:
         remaining = deadline - time.monotonic()
         if remaining <= 0:
             return False
@@ -94,20 +93,29 @@ def _exited(process: subprocess.Popen[bytes], timeout: float) -> bool:
 
 
 def _live_group(pgid: int) -> bool:
-    # BSD ps -g selects this process group; GNU ps -g selects its session.
-    # Every managed leader creates a new session, so filter by exact PGID on both.
-    result = subprocess.run(
+    if sys.platform == "linux":
+        # Minimal Python images omit procps. Read state only for our group.
+        for task in Path("/proc").iterdir():
+            if not task.name.isdecimal():
+                continue
+            try:
+                if os.getpgid(int(task.name)) != pgid:
+                    continue
+                # The comm field is parenthesized and can itself contain spaces or ')'.
+                state, _, group, _ = (task / "stat").read_bytes().rsplit(b") ", 1)[1].split(None, 3)
+            except (FileNotFoundError, ProcessLookupError):
+                continue
+            if int(group) == pgid and state not in {b"Z", b"X"}:
+                return True
+        return False
+    result = subprocess.run(  # noqa: S603 - fixed BSD ps query limited to our numeric PGID
         ["/bin/ps", "-g", str(pgid), "-o", "pgid=,stat="],
         capture_output=True,
         text=True,
         timeout=5,
         check=False,
     )
-    if (
-        result.returncode == 1
-        and not result.stdout.strip()
-        and not result.stderr.strip()
-    ):
+    if result.returncode == 1 and not result.stdout.strip() and not result.stderr.strip():
         return False
     if result.returncode:
         raise RuntimeError("Could not verify the managed process group")
@@ -141,7 +149,7 @@ def managed(
 ) -> Iterator[tuple[subprocess.Popen[bytes], Path]]:
     output = logs / f"{name}.log"
     with output.open("wb") as f:
-        process = subprocess.Popen(
+        process = subprocess.Popen(  # noqa: S603 - acceptance runner supplies argv without a shell
             args,
             cwd=cwd,
             env=env,
@@ -182,9 +190,7 @@ def command(
         if not _exited(proc, timeout):
             raise RuntimeError(f"{name} exceeded {timeout}s")
     if proc.returncode:
-        raise RuntimeError(
-            f"{name} exited {proc.returncode}\n{scrub_logs(logfile, env)}"
-        )
+        raise RuntimeError(f"{name} exited {proc.returncode}\n{scrub_logs(logfile, env)}")
 
 
 def wait_ready(
@@ -200,7 +206,8 @@ def wait_ready(
     while not _exited(process, 0) and time.monotonic() < deadline:
         if url:
             try:
-                with urlopen(url, timeout=2) as response:
+                # run.py and stack_workers.py supply their freshly allocated loopback HTTP ports.
+                with urlopen(url, timeout=2) as response:  # noqa: S310
                     if response.status == 200:
                         return
             except (URLError, HTTPError, TimeoutError, ConnectionError):
@@ -209,6 +216,4 @@ def wait_ready(
             return
         time.sleep(0.2)
     state = "exited" if _exited(process, 0) else "running"
-    raise RuntimeError(
-        f"{logfile.stem} not ready ({state})\n{scrub_logs(logfile, env)}"
-    )
+    raise RuntimeError(f"{logfile.stem} not ready ({state})\n{scrub_logs(logfile, env)}")
