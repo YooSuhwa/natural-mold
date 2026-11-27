@@ -95,6 +95,12 @@ async function matchingGoalNotices(
   return found
 }
 
+async function browserCsrf(context: BrowserContext) {
+  const cookie = (await context.cookies(API_BASE)).find((item) => item.name === 'moldy_csrf')
+  if (!cookie?.value) throw new Error('Browser session has no CSRF cookie')
+  return cookie.value
+}
+
 async function signInToEmptyContext(
   context: BrowserContext,
   previousCsrf: string,
@@ -114,7 +120,7 @@ async function signInToEmptyContext(
   const auth = object(await apiJson(await response, 'fresh browser login'))
   expect(stringField(object(auth.user), 'id', 'signed-in user')).toBe(ownerId)
   const csrf = stringField(auth, 'csrf_token', 'login session')
-  expect(csrf !== previousCsrf).toBe(true)
+  expect(csrf === (await browserCsrf(context)) && csrf !== previousCsrf).toBe(true)
   await inbox.waitForURL((url) => url.pathname === '/')
   await expect(
     inbox.getByRole('button', { name: process.env.E2E_USER_NAME ?? 'E2E User' }).first(),
@@ -122,9 +128,9 @@ async function signInToEmptyContext(
   const onboarding = inbox.getByRole('dialog', {
     name: /Moldy에 오신 것을 환영합니다|Welcome to Moldy/i,
   })
-  if (await onboarding.isVisible()) {
+  await inbox.addLocatorHandler(onboarding, async () => {
     await onboarding.getByRole('button', { name: /^(나중에|Later)$/i }).click()
-  }
+  })
   return { inbox, headers: { 'X-CSRF-Token': csrf } }
 }
 
@@ -288,12 +294,13 @@ test('a goal edited during a tool call delivers one verified result after a fres
       .toBe(1)
 
     const frontendOrigin = new URL(page.url()).origin
+    const previousCsrf = await browserCsrf(page.context())
     await page.close()
     fresh = await browser.newContext({
       baseURL: frontendOrigin,
       storageState: { cookies: [], origins: [] },
     })
-    const signedIn = await signInToEmptyContext(fresh, headers['X-CSRF-Token'], ownerId)
+    const signedIn = await signInToEmptyContext(fresh, previousCsrf, ownerId)
     const { inbox } = signedIn
     expect(
       await matchingGoalNotices(
