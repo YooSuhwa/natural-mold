@@ -43,6 +43,7 @@ import {
   sanitizePlaywrightEnvironment,
   validatePlaywrightCliArguments,
 } from './e2e-lane-contract.mjs'
+import { INDEPENDENT_JOB_SPEC, independentJobBackendEnvironment } from './e2e-lane-runtime.mjs'
 import {
   authenticationSetupFailure,
   resolveSkillNodeModulesDirectory,
@@ -52,6 +53,22 @@ import { collectJsonNodes, parseArguments, runIsolatedLane } from './run-e2e-lan
 const frontendRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..')
 
 describe('E2E lane contract', () => {
+  it('grants loopback to the independent model fixture only in its dedicated scripted selection', () => {
+    const spec = INDEPENDENT_JOB_SPEC
+    expect(independentJobBackendEnvironment('scripted-full', [spec])).toEqual({
+      INDEPENDENT_CHAT_JOBS_ENABLED: 'true',
+      CHAT_WORK_NOTIFICATIONS_ENABLED: 'true',
+      CREDENTIAL_HTTP_ALLOWED_HOSTS: '127.0.0.1',
+      OUTBOUND_PRIVATE_ALLOWED_HOSTS: '127.0.0.1',
+    })
+    expect(independentJobBackendEnvironment('scripted-full', [])).toBeUndefined()
+    expect(independentJobBackendEnvironment('scripted-full', ['e2e/smoke.spec.ts'])).toBeUndefined()
+    expect(() => independentJobBackendEnvironment('live-manual', [spec])).toThrow('scripted-full')
+    expect(() =>
+      independentJobBackendEnvironment('scripted-full', [spec, 'e2e/smoke.spec.ts']),
+    ).toThrow('alone')
+  })
+
   it('consumes only the redundant fixed worker and retry options', () => {
     expect(
       parseArguments('scripted', [

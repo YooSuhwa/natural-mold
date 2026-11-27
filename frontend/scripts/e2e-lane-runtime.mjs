@@ -182,6 +182,23 @@ export function buildExactLiveTitleFilter(cases = LIVE_E2E_CASES) {
   return escapedTitles.length === 1 ? `${escapedTitles[0]}$` : `(?:${escapedTitles.join('|')})$`
 }
 
+export const INDEPENDENT_JOB_SPEC = 'e2e/independent-chat-jobs.spec.ts'
+
+/** Only this dedicated scripted stack accepts the loopback completion fixture. */
+export function independentJobBackendEnvironment(project, arguments_) {
+  const selections = arguments_.filter((argument) => argument.startsWith('e2e/'))
+  if (!selections.includes(INDEPENDENT_JOB_SPEC)) return undefined
+  if (project !== 'scripted-full' || selections.length !== 1) {
+    throw new Error('Run the independent chat job spec alone in scripted-full.')
+  }
+  return {
+    INDEPENDENT_CHAT_JOBS_ENABLED: 'true',
+    CHAT_WORK_NOTIFICATIONS_ENABLED: 'true',
+    CREDENTIAL_HTTP_ALLOWED_HOSTS: '127.0.0.1',
+    OUTBOUND_PRIVATE_ALLOWED_HOSTS: '127.0.0.1',
+  }
+}
+
 export function buildFrontendWebServerCommand(chatRuntime, apiBaseURL, frontendPort) {
   const runtimeEnvironment = `NEXT_PUBLIC_CHAT_RUNTIME=${chatRuntime} NEXT_PUBLIC_API_BASE_URL=${apiBaseURL}`
   return `pnpm prepare:assets && ${runtimeEnvironment} pnpm exec next build --webpack && ${runtimeEnvironment} pnpm exec next start --port ${frontendPort}`
