@@ -91,23 +91,30 @@ async def _launch_claimed_input(input_id: uuid.UUID) -> ConversationRun | None:
         if local_task is not None and not local_task.done():
             return target.run
         user = await db.get(User, identity.user_id)
-        queued = await db.scalar(
-            private_parent_scoped(
-                select(ConversationRunInput).where(ConversationRunInput.id == input_id),
-                conversation_input_parent(),
-                target.context,
+        row = (
+            await db.execute(
+                private_parent_scoped(
+                    select(ConversationRunInput, Conversation.active_branch_checkpoint_id)
+                    .select_from(ConversationRunInput)
+                    .where(ConversationRunInput.id == input_id),
+                    conversation_input_parent(),
+                    target.context,
+                )
             )
-        )
-        if queued is None or user is None or queued.agent_id is None:
+        ).one_or_none()
+        if row is None or user is None or row[0].agent_id is None:
             await _fail_claimed_input(input_id, error_code="queue_rehydrate_failed")
             return run
+        queued, selected = row
         context = target.context
         current_user = metadata.queue_current_user(user)
         input_payload = queued.input_payload
         try:
             from app.services.ag_ui_queue_edit import validate_ag_ui_queue_delivery
 
-            await validate_ag_ui_queue_delivery(db, context, queued)
+            await validate_ag_ui_queue_delivery(
+                db, context, queued, selected_checkpoint_id=selected
+            )
             cfg = await facade_attr("resolve_agent_context")(
                 db,
                 queued.conversation_id,
@@ -119,8 +126,9 @@ async def _launch_claimed_input(input_id: uuid.UUID) -> ConversationRun | None:
         except (AppError, HTTPException, ValueError) as exc:
             logger.warning("queued input rehydration failed input_id=%s", input_id, exc_info=True)
             error_code = (
-                "independent_job_unsupported"
-                if isinstance(exc, AppError) and exc.code == "independent_job_unsupported"
+                exc.code
+                if isinstance(exc, AppError)
+                and exc.code in {"independent_job_unsupported", "queue_branch_unpinned"}
                 else "queue_rehydrate_failed"
             )
         if error_code is None:
