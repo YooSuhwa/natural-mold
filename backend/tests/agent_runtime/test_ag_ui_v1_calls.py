@@ -9,8 +9,15 @@ from typing import Any
 
 import pytest
 from ag_ui.core import BaseEvent
+from langchain_core.tools import ToolException
 
-from app.agent_runtime.ag_ui_v1_calls import PublicToolCalls
+from app.agent_runtime import event_names
+from app.agent_runtime.ag_ui_v1_calls import PUBLIC_TOOL_FAILURE, PublicToolCalls
+from app.agent_runtime.memory_event_projection import MEMORY_TOOL_NAMES
+from app.agent_runtime.protocol_redaction import MEMORY_RESULT_TOOL_NAMES, REDACTED_MEMORY_FIELD
+from app.agent_runtime.tools.agent_memo import _payload as agent_memo_result
+from app.agent_runtime.tools.memory import _base_payload as memory_result
+from app.tools.keys import DELEGATION_TOOL
 
 _ARCHIVE = Path(__file__).with_name("fixtures") / "delegated_chat_0_7_32.jsonl"
 
@@ -365,7 +372,7 @@ def test_nested_tool_message_failure_survives_duplicate_synthesized_result(wrapp
     )
     events.extend(calls.message(failed, owner=None, parent_id="unused", event_id="synthetic"))
     (result,) = [frame for frame in _wire(events) if frame["type"] == "TOOL_CALL_RESULT"]
-    assert result["content"] == "검색 실패"
+    assert result["content"] == PUBLIC_TOOL_FAILURE == "도구 실행에 실패했습니다."
     assert result["metadata"] == {"moldy": {"isError": True}}
 
 
@@ -466,3 +473,182 @@ def test_rename_before_a_chunk_receives_its_id_cannot_publish_private_arguments(
     )
     frames.extend(calls.close(None))
     assert frames == []
+
+
+_MEMORY_NAMES = sorted(MEMORY_TOOL_NAMES | MEMORY_RESULT_TOOL_NAMES)
+_MEM_CONTENT = "private preference from the source record"
+_MEM_REASON = "private explanation from the source record"
+
+
+def _memory_result_data(name: str) -> dict[str, Any]:
+    if name == "propose_agent_memo":
+        raw = agent_memo_result(event_names.MEMORY_PROPOSED, _MEM_CONTENT, _MEM_REASON)
+        return json.loads(raw)
+    return memory_result(
+        memory_event=event_names.MEMORY_PROPOSED
+        if name == "propose_memory"
+        else event_names.MEMORY_SAVED,
+        scope="agent" if name == "save_agent_memory" else "user",
+        content=_MEM_CONTENT,
+        reason=_MEM_REASON,
+        policy="review",
+        agent_id=None,
+        conversation_id=None,
+    )
+
+
+@pytest.mark.parametrize("name", _MEMORY_NAMES)
+@pytest.mark.parametrize(
+    "shape", ["native-json", "native-object", "message-json", "command-object", "delta"]
+)
+def test_memory_tool_result_is_redacted_before_serializing_any_public_frame(
+    name: str, shape: str
+) -> None:
+    calls = PublicToolCalls("run", _allow)
+    events = calls.message(_proposal(name=name), owner=None, parent_id="issuer", event_id="call")
+    payload = _memory_result_data(name)
+    encoded = json.dumps(payload, ensure_ascii=False)
+    if name == "search_memory" and shape == "delta":
+        encoded = f"<memory_search_results>\n{_MEM_CONTENT}\n</memory_search_results>"
+    content = payload if shape.endswith("object") else encoded
+    message = {"type": "tool", "tool_call_id": "call", "content": content}
+    finished: dict[str, Any] = {"event": "tool-finished", "tool_call_id": "call"}
+    if shape == "message-json":
+        events += calls.message(message, owner=None, parent_id="unused", event_id="message")
+    else:
+        if shape == "delta":
+            for i, chunk in enumerate([encoded[:20], encoded[20:]]):
+                events += calls.tool(
+                    {"event": "tool-output-delta", "tool_call_id": "call", "delta": chunk},
+                    owner=None,
+                    event_id=str(i),
+                )
+        else:
+            finished["output"] = (
+                {"update": {"messages": [message]}} if shape == "command-object" else content
+            )
+        events += calls.tool(finished, owner=None, event_id="done")
+    frames = _wire(events)
+    (result,) = [frame for frame in frames if frame["type"] == "TOOL_CALL_RESULT"]
+    assert result["content"] == REDACTED_MEMORY_FIELD == "<redacted>"
+    assert not any(marker in json.dumps(frames) for marker in (_MEM_CONTENT, _MEM_REASON))
+
+
+@pytest.mark.parametrize("name", _MEMORY_NAMES)
+def test_memory_tool_failure_is_redacted_and_still_reports_failure(name: str) -> None:
+    calls = PublicToolCalls("run", _allow)
+    calls.message(_proposal(name=name), owner=None, parent_id="issuer", event_id="call")
+    events = calls.tool(
+        {"event": "tool-error", "tool_call_id": "call", "message": _MEM_REASON},
+        owner=None,
+        event_id="failed",
+    )
+    (result,) = [frame for frame in _wire(events) if frame["type"] == "TOOL_CALL_RESULT"]
+    assert result["content"] == REDACTED_MEMORY_FIELD
+    assert result["metadata"] == {"moldy": {"isError": True}}
+
+
+@pytest.mark.parametrize("alteration", ["unknown", "revoked", "wrong inner name", "wrong inner id"])
+def test_unattributable_nested_memory_results_are_withheld(alteration: str) -> None:
+    accepted = {"call"}
+    calls = PublicToolCalls("run", lambda _name, raw_id: raw_id in accepted)
+    calls.message(_proposal(name="search"), owner=None, parent_id="issuer", event_id="call")
+    raw_id = "unknown" if alteration == "unknown" else "call"
+    if alteration == "revoked":
+        accepted.clear()
+    message = {
+        "type": "tool",
+        "tool_call_id": "other" if alteration == "wrong inner id" else raw_id,
+        "name": "search_memory" if alteration == "wrong inner name" else "search",
+        "content": _MEM_CONTENT,
+    }
+    events = calls.tool(
+        {
+            "event": "tool-finished",
+            "tool_call_id": raw_id,
+            "output": {"update": {"messages": [message]}},
+        },
+        owner=None,
+        event_id="native",
+    )
+    assert events == []
+
+
+def test_successful_ordinary_tool_preserves_its_authored_result() -> None:
+    calls = PublicToolCalls("run", _allow)
+    calls.message(_proposal(name="get_settings"), owner=None, parent_id="issuer", event_id="call")
+    content = {"content": "a public setting", "reason": "chosen for display"}
+    events = calls.tool(
+        {"event": "tool-finished", "tool_call_id": "call", "output": content},
+        owner=None,
+        event_id="done",
+    )
+    (result,) = [frame for frame in _wire(events) if frame["type"] == "TOOL_CALL_RESULT"]
+    assert json.loads(result["content"]) == content
+
+
+def test_mcp_tool_exception_cannot_publish_the_sdk_binary_block_representation() -> None:
+    calls = PublicToolCalls("run", _allow)
+    calls.message(_proposal(name="mcp_image"), owner=None, parent_id="issuer", event_id="call")
+    # app.mcp.sdk.as_langchain_tool uses str(blocks) when an error result has no text.
+    blocks = [{"type": "image", "base64": "private-binary-body", "mime_type": "image/png"}]
+    error = ToolException(str(blocks))
+    events = calls.tool(
+        {"event": "tool-error", "tool_call_id": "call", "message": str(error)},
+        owner=None,
+        event_id="failure",
+    )
+    (result,) = [frame for frame in _wire(events) if frame["type"] == "TOOL_CALL_RESULT"]
+    assert result["content"] == PUBLIC_TOOL_FAILURE
+    assert result["metadata"] == {"moldy": {"isError": True}}
+    assert "private-binary-body" not in json.dumps(result)
+
+
+def test_delegation_identity_requires_a_currently_visible_task_call_in_the_same_owner() -> None:
+    permitted = {"delegated", "ordinary"}
+    calls = PublicToolCalls("run", lambda _name, raw_id: raw_id in permitted)
+    calls.message(_proposal("ordinary", "search"), owner=None, parent_id="assistant", event_id="1")
+    calls.message(
+        _proposal("delegated", DELEGATION_TOOL),
+        owner="child",
+        parent_id="assistant-child",
+        event_id="2",
+    )
+    assert calls.delegation_id(None, "ordinary") is None
+    assert calls.delegation_id(None, "delegated") is None
+    assert calls.delegation_id("child", "unknown") is None
+    assert calls.delegation_id("child", "delegated") == calls.public_id("child", "delegated")
+    assert calls.delegation_id("child", "delegated") is not None
+    permitted.clear()
+    assert calls.delegation_id("child", "delegated") is None
+
+
+def test_tool_identity_and_owner_policy_must_both_authorize_a_delegation() -> None:
+    allowed_owners = {"permitted"}
+    calls = PublicToolCalls(
+        "run",
+        lambda _name, raw_id: raw_id == "same-id",
+        allow_scoped_tool=lambda _name, _raw_id, owner: owner in allowed_owners,
+    )
+
+    def propose(owner: str, raw_id: str) -> list[BaseEvent]:
+        return calls.message(
+            _proposal(raw_id, DELEGATION_TOOL), owner=owner, parent_id="issuer", event_id=raw_id
+        )
+
+    assert not propose("permitted", "globally-denied")
+    assert not propose("denied-sibling", "same-id")
+    assert calls.public_id("denied-sibling", "same-id") is None
+    assert calls.delegation_id("denied-sibling", "same-id") is None
+    assert propose("permitted", "same-id")
+    assert calls.public_id("permitted", "same-id") == calls.delegation_id("permitted", "same-id")
+    assert calls.delegation_id("permitted", "same-id") is not None
+
+    allowed_owners.clear()
+    assert calls.public_id("permitted", "same-id") is None
+    assert calls.delegation_id("permitted", "same-id") is None
+    assert not calls.tool(
+        {"event": "tool-finished", "tool_call_id": "same-id", "output": "private child output"},
+        owner="permitted",
+        event_id="unnamed",
+    )

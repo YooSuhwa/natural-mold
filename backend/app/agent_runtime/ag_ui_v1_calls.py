@@ -16,9 +16,15 @@ from ag_ui.core import (
     ToolCallStartEvent,
 )
 
+from app.agent_runtime.memory_event_projection import MEMORY_TOOL_NAMES
 from app.agent_runtime.message_utils import content_to_text
 from app.agent_runtime.protocol_egress import project_and_redact_protocol_data
+from app.agent_runtime.protocol_redaction import MEMORY_RESULT_TOOL_NAMES, REDACTED_MEMORY_FIELD
+from app.tools.keys import DELEGATION_TOOL
 
+# Tool exceptions may include stringified binary MCP blocks or provider diagnostics.
+PUBLIC_TOOL_FAILURE = "도구 실행에 실패했습니다."
+_PRIVATE_RESULTS = MEMORY_TOOL_NAMES | MEMORY_RESULT_TOOL_NAMES
 _ABSENT = object()
 _TOOL_BLOCKS = ("tool_call", "tool_call_chunk", "server_tool_call", "server_tool_call_chunk")
 _PRIVATE_RESULT_KEYS = {
@@ -169,25 +175,36 @@ class PublicToolCalls:
         allow_tool: Callable[[str | None, str], bool],
         *,
         secret_values: Iterable[str] | None = None,
+        allow_scoped_tool: Callable[[str | None, str, str | None], bool] | None = None,
     ) -> None:
         self._run_id = run_id
         self._allow = allow_tool
+        self._allow_scoped = allow_scoped_tool
         self._secrets = tuple(secret_values) if secret_values is not None else None
         self._calls: dict[tuple[str | None, str], _Call] = {}
         self._denied: set[tuple[str | None, str]] = set()
         self._slots: dict[tuple[str | None, str, int], _Slot] = {}
 
+    def _authorized(self, owner: str | None, name: str, raw_id: str) -> bool:
+        return self._allow(name, raw_id) and (
+            self._allow_scoped is None or self._allow_scoped(name, raw_id, owner)
+        )
+
     def _visible(self, owner: str | None, raw_id: str | None) -> _Call | None:
         if not raw_id or (owner, raw_id) in self._denied:
             return None
         call = self._calls.get((owner, raw_id))
-        if call is not None and self._allow(call.name, raw_id):
+        if call is not None and self._authorized(owner, call.name, raw_id):
             return call
         return None
 
     def public_id(self, owner: str | None, raw_id: str | None) -> str | None:
         call = self._visible(owner, raw_id)
         return call.public_id if call else None
+
+    def delegation_id(self, owner: str | None, raw_id: str | None) -> str | None:
+        call = self._visible(owner, raw_id)
+        return call.public_id if call and call.name == DELEGATION_TOOL else None
 
     def parent_id(self, owner: str | None, raw_id: str | None) -> str | None:
         call = self._visible(owner, raw_id)
@@ -201,13 +218,15 @@ class PublicToolCalls:
         if key in self._denied:
             return None, []
         if existing:
-            if (name and existing.name != name) or not self._allow(existing.name, raw_id):
+            if (name and existing.name != name) or not self._authorized(
+                owner, existing.name, raw_id
+            ):
                 self._denied.add(key)
                 return None, self._end_args(existing, disclose=False)
             return existing, []
         if not name:
             return None, []
-        if not self._allow(name, raw_id):
+        if not self._authorized(owner, name, raw_id):
             self._denied.add(key)
             return None, []
         public_id = raw_id if owner is None else _derived_id("tool", self._run_id, owner, raw_id)
@@ -381,11 +400,13 @@ class PublicToolCalls:
         if event == "tool-output-delta":
             delta = data.get("delta")
             if isinstance(delta, str):
-                call.output_deltas.append(delta)
+                if call.name not in _PRIVATE_RESULTS:
+                    call.output_deltas.append(delta)
+                elif not call.output_deltas:
+                    call.output_deltas.append(REDACTED_MEMORY_FIELD)
             return []
         if event not in ("tool-finished", "tool-result", "finish", "tool-error", "error"):
             return []
-        events = self._end_args(call)
         failed = event in ("tool-error", "error") or data.get("status") == "error"
         fields = (
             ("message", "error", "content", "output", "result")
@@ -395,6 +416,10 @@ class PublicToolCalls:
         value = next((data[k] for k in fields if k in data), _ABSENT)
         message = _result_message(data if _tool_message(data) else value, raw_id)
         if message is not None:
+            claimed = _identifier(message.get("name"))
+            if claimed and claimed != call.name:
+                self._denied.add((owner, raw_id))
+                return self._end_args(call, disclose=False)
             value = message.get("content", _ABSENT)
             failed |= message.get("status") == "error"
         elif isinstance(value, Mapping) and (
@@ -403,22 +428,32 @@ class PublicToolCalls:
         ):
             # Command updates may contain unrelated state, private child output and
             # other calls' messages. Only the matching ToolMessage is attributable.
-            return events
+            return []
+        events = self._end_args(call)
         if value is _ABSENT and call.output_deltas:
             value = "".join(call.output_deltas)
-        content = _result_content(value)
-        if content is _ABSENT:
+        if value is _ABSENT and not failed:
             return events
-        public = project_and_redact_protocol_data(
-            "tools",
-            {"name": call.name, "tool_call_id": raw_id, "content": content},
-            secret_values=self._secrets,
-        )["content"]
-        result = (
-            public
-            if isinstance(public, str)
-            else json.dumps(public, ensure_ascii=False, separators=(",", ":"))
-        )
+        if call.name in _PRIVATE_RESULTS:
+            # Memory writers return the original content and rationale inside JSON
+            # text. They remain private even when the engine only supplies a string.
+            result = REDACTED_MEMORY_FIELD
+        elif failed:
+            result = PUBLIC_TOOL_FAILURE
+        else:
+            content = _result_content(value)
+            if content is _ABSENT:
+                return events
+            public = project_and_redact_protocol_data(
+                "tools",
+                {"name": call.name, "tool_call_id": raw_id, "content": content},
+                secret_values=self._secrets,
+            )["content"]
+            result = (
+                public
+                if isinstance(public, str)
+                else json.dumps(public, ensure_ascii=False, separators=(",", ":"))
+            )
         message_id = _identifier(message.get("id")) if message is not None else None
         if owner is None and message_id and message_id not in (call.public_id, call.parent_id):
             result_id = message_id
