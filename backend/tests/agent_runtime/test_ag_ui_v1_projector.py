@@ -361,21 +361,23 @@ def test_ambiguous_historical_call_and_current_slot_never_create_actions() -> No
     )
     assert "parentToolCallId" not in started
     assert stream.child_task_handles == {}
+    approval = {"type": "ask_user", "question": "Old private request?"}
+    # The original journal can repeat this slot on a root values frame first.
+    stream.project(event("values", {"__interrupt__": [{"id": "spent-slot", "value": approval}]}))
+    stream.project(
+        event("input.requested", {"interrupt_id": "spent-slot", "payload": approval}, CHILD)
+    )
+    [closed] = wire(
+        stream.project(event("lifecycle", {"event": "interrupted", "namespace": list(CHILD)}))
+    )
+    assert closed["outcome"] == {"type": "suspended", "interruptIds": []}
     final = wire(
         stream.finish(
             "interrupted",
-            interrupts=[
-                {
-                    "id": "old",
-                    "ns": list(CHILD),
-                    "value": {"type": "ask_user", "question": "Continue?"},
-                }
-            ],
-            legacy_child_ids={"old"},
+            interrupts=[{"id": "spent-slot", "ns": [], "value": approval}],
+            legacy_child_ids={"spent-slot"},
         )
     )
-    [slot] = final[-1]["outcome"]["interrupts"]
-    assert slot["subagentRunId"] == started["subagentRunId"]
-    assert slot["metadata"]["moldy"]["actionable"] is False
-    assert "legacyInterruptAccess" not in slot["metadata"]["moldy"]
-    assert "responseSchema" not in slot
+    assert final[-1]["code"] == "pending_input_unavailable"
+    assert "spent-slot" not in json.dumps(final)
+    assert "Old private request" not in json.dumps(final)

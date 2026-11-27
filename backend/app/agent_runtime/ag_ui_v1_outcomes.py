@@ -172,6 +172,9 @@ class PendingInterrupts:
             }
         )
 
+    def discard(self, interrupt_id: str) -> None:
+        self._by_id.pop(interrupt_id, None)
+
     def mark_passive(self) -> None:
         """Show authorized slot descriptions when a complete resume is unavailable."""
         for item in tuple(self._by_id.values()):

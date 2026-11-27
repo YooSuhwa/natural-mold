@@ -168,6 +168,11 @@ class AgUiV1Projector:
             return self.finish(status)
         return []
 
+    def _hide_interrupt(self, interrupt_id: str) -> None:
+        # A serializer may first repeat a child slot without its namespace.
+        self._hidden_interrupts.add(interrupt_id)
+        self._pending.discard(interrupt_id)
+
     def project(self, event: StoredProtocolEvent) -> list[BaseEvent]:
         if self.closed:
             return []
@@ -182,7 +187,8 @@ class AgUiV1Projector:
         lifecycle = method in {"lifecycle", "subagents", "subgraphs"}
         if not self._children.visible(namespace):
             self._hidden_child = True
-            self._hidden_interrupts.update(i["id"] for i in protocol_interrupts_from_event(event))
+            for item in protocol_interrupts_from_event(event):
+                self._hide_interrupt(item["id"])
             return []
         if method == "error":
             if namespace:
@@ -231,8 +237,10 @@ class AgUiV1Projector:
             return self._lifecycle(namespace, safe_event["data"])
         for item in protocol_interrupts_from_event(safe_event):
             ns = tuple(item["ns"]) or namespace
-            if not self._children.visible(ns):
-                self._hidden_interrupts.add(item["id"])
+            if not self._children.visible(ns) or self._children.historical_only(ns):
+                # A read-only relation proves where old tool results belong,
+                # never that the former approval slot can still be answered.
+                self._hide_interrupt(item["id"])
             elif item["id"] not in self._hidden_interrupts:
                 owner = self._children.owner(ns)
                 if owner:
@@ -342,6 +350,7 @@ class AgUiV1Projector:
             for item in interrupts:
                 if (
                     not self._children.visible(tuple(item["ns"]))
+                    or self._children.historical_only(tuple(item["ns"]))
                     or item["id"] in self._hidden_interrupts
                 ):
                     # Resume must resolve ALL current slots. A partial set would
@@ -366,14 +375,6 @@ class AgUiV1Projector:
                 else (),
             )
         elif (self._hidden_interrupts or passive) and status == "interrupted":
-            self._pending.mark_passive()
-        if status == "interrupted" and any(
-            item.subagent_run_id is not None
-            and self._children.historical_only(self._slot_scopes.get(item.subagent_run_id, ()))
-            for item in self._pending.public()
-        ):
-            # An already-consumed historical binding cannot authorize a second
-            # resume, including when its journal is replayed without a checkpoint.
             self._pending.mark_passive()
         terminal = run_terminal_event(
             self.thread_id,
