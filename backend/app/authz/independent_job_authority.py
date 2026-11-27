@@ -14,6 +14,7 @@ from app.agent_runtime.identity import (
     make_agent_runtime_name,
     resolve_agent_run_identity,
 )
+from app.agent_runtime.memory_paths import memory_access
 from app.agent_runtime.runtime_policy import RuntimePolicySnapshotError
 from app.approvals.emergency import refuse_run, stop_for_agent
 from app.authz.conversation_agent_checks import current_authz, require_agent_run
@@ -32,6 +33,7 @@ from app.models.conversation_run import ConversationRun
 from app.models.organization import Organization
 from app.services.chat.run_agents import get_run_agent_with_tools
 from app.services.conversation_runtime_policy import snapshot_from_conversation
+from app.services.memory_service import resolve_effective_policy
 from app.services.readiness_gate import require_agent_ready
 from app.tenancy.attribution import RunAttribution, attribute_child, attribute_run
 
@@ -145,12 +147,24 @@ async def _admitted_targets(
             continue
         if await stop_for_agent(db, tenant_id=context.tenant_id, agent_id=child.id):
             continue
-        # require_lease_supported cannot guard legacy agent-memory writes or
-        # fallback-model sends. Hide those targets before a handoff is offered.
+        # The delegated target becomes a new CHAT root. Its private memory settings
+        # follow the authenticated chat caller even for a fixed-identity agent.
         if (
             child.runtime_profile != "standard"
             or child.model_fallback_list
             or child.runtime_policy is None
+            or (
+                memory_access("chat").write_tools
+                and (
+                    await resolve_effective_policy(
+                        db,
+                        context=context,
+                        agent_id=child.id,
+                        persist_defaults=False,
+                    )
+                ).write_policy
+                != "off"
+            )
         ):
             if selected_agent_id == child.id:
                 raise AppError(

@@ -18,6 +18,7 @@ from app.models.conversation import Conversation
 from app.models.conversation_run import ConversationRun
 from app.models.conversation_run_input import ConversationRunInput
 from app.models.independent_chat_job import IndependentChatJob
+from app.models.memory import AgentMemorySettings, UserMemorySettings
 from app.models.organization import Organization, OrganizationMember, Tenant, TenantMember
 from app.schemas.independent_chat_job import IndependentJobOut, IndependentJobsOut
 from app.services.agent_execution_acceptance import OwnedExecutionRequest, accept_owned_execution
@@ -69,6 +70,7 @@ def launch(monkeypatch: pytest.MonkeyPatch) -> AsyncMock:
 async def job_request(db: AsyncSession, launch: AsyncMock) -> JobRequest:
     root, target, conversation = await _seed_execution_tree(db)
     target.runtime_policy = {"version": 1}
+    db.add(AgentMemorySettings(agent_id=target.id, memory_policy_override="off"))
     await db.commit()
     accepted = await accept_owned_execution(
         db,
@@ -366,3 +368,22 @@ async def test_independent_mutations_require_csrf_with_browser_cookie(
     fixture = JobRequest(parent_id, uuid4(), uuid4(), uuid4())
     assert (await raw_client.post(fixture.create_path, json=fixture.payload())).status_code == 403
     assert (await raw_client.post(f"{fixture.listing}/{uuid4()}/cancel")).status_code == 403
+
+
+@pytest.mark.asyncio
+async def test_inherited_writable_memory_hides_target_and_refuses_explicit_handoff(
+    client: AsyncClient, db: AsyncSession, job_request: JobRequest, launch: AsyncMock
+) -> None:
+    override = await db.get(AgentMemorySettings, job_request.target_id)
+    assert override is not None
+    await db.delete(override)
+    await db.commit()
+    response = await client.get(job_request.listing, params={"run_id": str(job_request.run_id)})
+    assert response.status_code == 200
+    assert IndependentJobsOut.model_validate_json(response.content).targets == []
+    rejected = await client.post(job_request.create_path, json=job_request.payload())
+    assert rejected.status_code == 409
+    assert rejected.json()["error"]["code"] == "independent_job_unsupported_agent"
+    assert await db.scalar(select(func.count()).select_from(IndependentChatJob)) == 0
+    assert await db.get(UserMemorySettings, TEST_USER_ID) is None
+    launch.assert_not_awaited()

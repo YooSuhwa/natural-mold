@@ -23,6 +23,7 @@ from app.models.conversation import Conversation
 from app.models.conversation_run import ConversationRun
 from app.models.emergency_stop import EmergencyStop
 from app.models.independent_chat_job import IndependentChatJob
+from app.models.memory import AgentMemorySettings, UserMemorySettings
 from app.models.organization import OrganizationMember
 from app.services.agent_execution_acceptance import OwnedExecutionRequest, accept_owned_execution
 from tests.authz.unit_scope_fixture import unit_context
@@ -41,6 +42,7 @@ async def delegation(
     await _skip_sqlite_advisory_locks(monkeypatch)
     root, child, origin = await _seed_execution_tree(db)
     child.runtime_policy = {"version": 1}
+    db.add(AgentMemorySettings(agent_id=child.id, memory_policy_override="off"))
     await db.flush()
     context = unit_context(root.user_id)
     await credential_service.create(
@@ -69,7 +71,8 @@ async def delegation(
     db.add(destination)
     await db.flush()
     execution = await accept_owned_execution(
-        db, OwnedExecutionRequest(destination.id, child.id, context, "chat", None)
+        db,
+        OwnedExecutionRequest(destination.id, child.id, context, "chat", None, run_source="start"),
     )
     await db.commit()
     parent_run = await db.get(ConversationRun, accepted.run_id)
@@ -236,3 +239,98 @@ async def test_each_send_observes_revoked_child_grant(
         with pytest.raises(AppError) as rejected:
             await require_job_authority(db, job, context)
         assert rejected.value.status == 404
+
+
+@pytest.mark.parametrize("read_only_source", ["user", "agent", "scope_intersection"])
+async def test_effective_read_only_child_still_accepts_and_runs(
+    db: AsyncSession,
+    delegation: tuple[OrgContext, ConversationRun, ConversationRun, IndependentChatJob],
+    read_only_source: str,
+) -> None:
+    context, parent, _, job = delegation
+    target_settings = await db.get(AgentMemorySettings, job.child_agent_id)
+    assert target_settings
+    if read_only_source == "user":
+        target_settings.memory_policy_override = "inherit"
+        db.add(UserMemorySettings(user_id=context.user_id, memory_write_policy="off"))
+    elif read_only_source == "scope_intersection":
+        target_settings.memory_policy_override = "inherit"
+        target_settings.memory_scopes_override = "agent_only"
+        db.add(
+            UserMemorySettings(
+                user_id=context.user_id, allowed_scopes="user", memory_write_policy="auto"
+            )
+        )
+    await db.commit()
+    targets = await list_independent_targets(db, parent, context)
+    assert [target.id for target in targets] == [job.child_agent_id]
+    await db.commit()
+    await require_job_authority(db, job, context)
+
+
+async def test_writable_memory_enabled_after_handoff_stops_next_dispatch(
+    db: AsyncSession,
+    delegation: tuple[OrgContext, ConversationRun, ConversationRun, IndependentChatJob],
+) -> None:
+    context, _, _, job = delegation
+    target_settings = await db.get(AgentMemorySettings, job.child_agent_id)
+    assert target_settings
+    await db.delete(target_settings)
+    await db.commit()
+    with pytest.raises(AppError) as rejected:
+        await require_job_authority(db, job, context)
+    assert rejected.value.code == "independent_job_unsupported_agent"
+    assert rejected.value.status == 409
+    assert await db.get(UserMemorySettings, context.user_id) is None
+
+
+@pytest.mark.parametrize("identity_mode", ["fixed", "per_user"])
+async def test_shared_child_memory_uses_the_chat_callers_settings(
+    db: AsyncSession, monkeypatch: pytest.MonkeyPatch, identity_mode: str
+) -> None:
+    from app.authz import runtime
+    from app.authz.fake import FakeAuthz
+    from app.authz.service import AuthzService
+    from app.dependencies import CurrentUser
+    from tests.authz.unit_scope_fixture import ensure_unit_scope
+
+    await _skip_sqlite_advisory_locks(monkeypatch)
+    root, child, _ = await _seed_execution_tree(db)
+    root.identity_mode = child.identity_mode = identity_mode
+    child.runtime_policy = {"version": 1}
+    caller = CurrentUser(id=uuid.uuid4(), email="shared-memory@test.invalid", name="Caller")
+    context = await ensure_unit_scope(db, caller)
+    conversation = Conversation(
+        agent_id=root.id,
+        user_id=caller.id,
+        org_id=context.org_id,
+        tenant_id=context.tenant_id,
+        agent_name_snapshot=root.name,
+        title="Shared",
+        last_activity_at=datetime.now(UTC),
+    )
+    owner_settings = UserMemorySettings(user_id=child.user_id, memory_write_policy="off")
+    caller_settings = UserMemorySettings(user_id=caller.id, memory_write_policy="ask")
+    db.add_all([conversation, owner_settings, caller_settings])
+    await db.commit()
+    grants = frozenset(
+        (f"user:{caller.id}", "can_run", f"agent:{agent.id}") for agent in (root, child)
+    )
+    monkeypatch.setattr(
+        runtime,
+        "_current",
+        AuthzService(FakeAuthz(grants), mode="enforce", enforce_types=frozenset({"agent"})),
+    )
+    accepted = await accept_owned_execution(
+        db, OwnedExecutionRequest(conversation.id, root.id, context, "chat", None)
+    )
+    await db.commit()
+    parent = await db.get(ConversationRun, accepted.run_id)
+    assert parent
+    assert await list_independent_targets(db, parent, context) == []
+    await db.commit()
+    owner_settings.memory_write_policy, caller_settings.memory_write_policy = "ask", "off"
+    await db.commit()
+    assert [target.id for target in await list_independent_targets(db, parent, context)] == [
+        child.id
+    ]

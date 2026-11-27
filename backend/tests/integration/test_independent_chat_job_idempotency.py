@@ -18,6 +18,7 @@ from app.models.conversation import Conversation
 from app.models.conversation_run import ConversationRun
 from app.models.conversation_run_input import ConversationRunInput
 from app.models.independent_chat_job import IndependentChatJob
+from app.models.memory import AgentMemorySettings
 from app.schemas.independent_chat_job import IndependentJobCreate
 from app.services.agent_execution_acceptance import OwnedExecutionRequest, accept_owned_execution
 from app.services.conversation_run_service import transition_run
@@ -48,6 +49,7 @@ async def _accepted_parent(
         )
         db.add(child)
         await db.flush()
+        db.add(AgentMemorySettings(agent_id=child.id, memory_policy_override="off"))
         db.add(AgentSubAgentLink(parent_agent_id=root_id, sub_agent_id=child.id))
         await db.commit()
         accepted = await accept_owned_execution(
