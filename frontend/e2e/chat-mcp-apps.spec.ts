@@ -162,6 +162,7 @@ function expectRestoredWidget(snapshot: unknown, seeded: SeededMcpApp, bindingId
       parentToolCallId: publicToolCallId,
     }),
   )
+  return publicToolCallId
 }
 
 test.describe('Chat MCP Apps', () => {
@@ -239,19 +240,20 @@ test.describe('Chat MCP Apps', () => {
             privateReads.push(url.searchParams.get('binding_id') ?? '')
           }
         })
+      const waitForSnapshot = () =>
+        page.waitForResponse(
+          (response) =>
+            response.request().method() === 'GET' &&
+            new URL(response.url()).pathname === `${conversationPath}/ag-ui/snapshot`,
+        )
       const [snapshot] = await Promise.all([
-        agUi
-          ? page.waitForResponse(
-              (response) =>
-                response.request().method() === 'GET' &&
-                new URL(response.url()).pathname === `${conversationPath}/ag-ui/snapshot`,
-            )
-          : Promise.resolve(null),
+        agUi ? waitForSnapshot() : Promise.resolve(null),
         page.goto(`/agents/${appSeed.agentId}/conversations/${appSeed.conversationId}`),
       ])
+      let publicToolCallId: string | undefined
       if (snapshot) {
         expect(snapshot.ok()).toBe(true)
-        expectRestoredWidget(await snapshot.json(), appSeed, bindingId)
+        publicToolCallId = expectRestoredWidget(await snapshot.json(), appSeed, bindingId)
       }
       const app = page.locator(`[data-mcp-app-resource="${RESOURCE_URI}"]`)
       await expect(app).toBeVisible({ timeout: 20_000 })
@@ -282,6 +284,44 @@ test.describe('Chat MCP Apps', () => {
         path: screenshotPath,
         contentType: 'image/png',
       })
+      if (publicToolCallId) {
+        await apiDeleteOk(
+          request,
+          `${API_BASE}/api/mcp-servers/${appSeed.mcpServerId}`,
+          csrfHeaders,
+        )
+        seeded = null
+        const [restored] = await Promise.all([waitForSnapshot(), page.reload()])
+        expect(restored.ok()).toBe(true)
+        const body: unknown = await restored.json()
+        if (!isRecord(body) || !Array.isArray(body.messages))
+          throw new Error('Missing restored messages')
+        expect(body.messages).not.toContainEqual(
+          expect.objectContaining({ activityType: 'moldy.mcp_app' }),
+        )
+        expect(body.messages).toContainEqual(
+          expect.objectContaining({ role: 'tool', toolCallId: publicToolCallId }),
+        )
+        const genericTool = page
+          .getByRole('button')
+          .filter({ has: page.getByText('weather', { exact: true }) })
+        await expect(genericTool).toBeVisible()
+        await expect(app).toHaveCount(0)
+        const denied = await request.get(`${API_BASE}${widgetPath}`, {
+          params: { binding_id: bindingId },
+        })
+        expect(denied.status()).toBe(404)
+        testInfo.annotations.push({
+          type: 'moldy.mcp-apps-authorization.v1',
+          description: JSON.stringify({
+            refreshToolStatus: toolResponse.status(),
+            restoredSnapshotStatus: restored.status(),
+            genericToolVisible: await genericTool.isVisible(),
+            revokedFrameCount: await app.count(),
+            revokedResultStatus: denied.status(),
+          }),
+        })
+      }
       const unexpectedErrors = unexpectedMcpAppsBrowserErrors(
         consoleErrors,
         requestFailures,
