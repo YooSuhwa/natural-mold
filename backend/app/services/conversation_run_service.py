@@ -111,6 +111,40 @@ async def get_latest_interrupted_run(
     )
 
 
+async def resume_candidate_status(
+    db: AsyncSession,
+    conversation: Conversation,
+    context: OrgContext,
+    *,
+    run_id: uuid.UUID | None = None,
+) -> tuple[uuid.UUID, str] | None:
+    """Observe only the owned run identity and state while its worker can still be writing."""
+    await require_private_actor(db, context)
+    readable_ids = await readable_conversation_run_ids(db, conversation, context)
+    query = select(ConversationRun.id, ConversationRun.status).where(
+        ConversationRun.conversation_id == conversation.id,
+        private_run_predicate(context),
+        or_(
+            ConversationRun.is_active.is_(True),
+            (ConversationRun.status == "interrupted") & ~_resume_exists(readable_ids),
+        ),
+    )
+    if readable_ids is not None:
+        query = query.where(ConversationRun.id.in_(readable_ids))
+    if run_id is not None:
+        query = query.where(ConversationRun.id == run_id)
+    candidate = (
+        await db.execute(
+            query.order_by(
+                ConversationRun.is_active.asc(),
+                ConversationRun.completed_at.desc(),
+                ConversationRun.created_at.desc(),
+            ).limit(1)
+        )
+    ).one_or_none()
+    return (candidate.id, candidate.status) if candidate else None
+
+
 async def get_active_run(
     db: AsyncSession,
     *,

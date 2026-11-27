@@ -125,8 +125,18 @@ async def _handle_input_respond_command(
     start_run: StartConversationRun,
     executor_fn: AgentStreamExecutor,
     approval_channel: str = "chat",
+    wait_for_parent: bool = False,
 ) -> JSONResponse:
     resume = build_resume_payload(command.params)
+    expected_parent_id = None
+    if wait_for_parent:
+        # The public command has only performed private reads here. Its execution
+        # locks would block the worker's terminal trace FK insert while we wait.
+        if resume.interrupt_id:
+            expected_parent_id = await _wait_for_interrupted_parent_run(
+                db, conversation=conversation, context=context
+            )
+        await chat_service.require_executable_conversation(db, conversation.id, context)
     if not resume.interrupt_id:
         return command_error(
             command,
@@ -139,16 +149,7 @@ async def _handle_input_respond_command(
         conversation_id=conversation.id,
         context=context,
     )
-    if parent_run is None:
-        parent_run = await _wait_for_interrupted_parent_run(
-            db, conversation_id=conversation.id, context=context
-        )
-        if parent_run is not None:
-            # 워커 전이는 별도 세션 커밋이라, 대기 초반에 identity map에 적재된
-            # 인스턴스는 status/interrupt_id가 stale일 수 있다(R2) — PK는 정확하나
-            # 이후 필드를 읽는 코드가 오동작하지 않게 새로고침한다.
-            await db.refresh(parent_run)
-    if parent_run is None:
+    if parent_run is None or (wait_for_parent and parent_run.id != expected_parent_id):
         return command_error(
             command,
             code="RESUME_NOT_FOUND",
