@@ -82,8 +82,11 @@ def _exited(process: subprocess.Popen[bytes], timeout: float) -> bool:
         if event.flags & select.KQ_EV_ERROR and event.data != errno.ESRCH:
             raise OSError(event.data, "Cannot observe managed child exit")
         return True
+    waitid = getattr(os, "waitid", None)
+    if waitid is None:
+        raise RuntimeError("Process-group cleanup needs kqueue or waitid")
     deadline = time.monotonic() + timeout
-    while os.waitid(os.P_PID, process.pid, os.WEXITED | os.WNOHANG | os.WNOWAIT) is None:
+    while waitid(os.P_PID, process.pid, os.WEXITED | os.WNOHANG | os.WNOWAIT) is None:
         remaining = deadline - time.monotonic()
         if remaining <= 0:
             return False
