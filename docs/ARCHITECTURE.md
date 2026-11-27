@@ -255,7 +255,8 @@ State flow:
 lib/api/* -> lib/hooks/* (TanStack Query) -> components/app routes
 lib/stores/* (Jotai) for chat rail, artifacts, sidebar, local UI state
 lib/sse/* and lib/chat/use-chat-runtime.ts for legacy streaming and resume
-lib/chat/langgraph-runtime/* for the feature-flagged LangGraph v3 runtime
+lib/ag-ui/* for the default AG-UI 1.0 transport in ordinary and side chat
+lib/chat/langgraph-runtime/* for the LangGraph v3 transport
 ```
 
 The LangGraph v3 frontend transport path is selected with
