@@ -53,7 +53,7 @@ function PendingApproval({ index = 0, count = 1 }: { index?: number; count?: num
 }
 
 describe('ApprovalCard', () => {
-  it.each(['signed', 'legacy'] as const)(
+  it.each(['signed', 'signed group', 'legacy'] as const)(
     'handles an elapsed approval deadline in a %s chat',
     async (mode) => {
       const onResumeDecisions = vi
@@ -63,12 +63,13 @@ describe('ApprovalCard', () => {
         .fn<NonNullable<HiTLContextValue['registerDecision']>>()
         .mockResolvedValue(undefined)
       const addResult = vi.fn()
-      function TimedApproval() {
+      function TimedApproval({ index = 0 }: { index?: number }) {
         return renderApproval({
           args: {
-            approval_id: 'timed:0',
+            approval_id: `timed:${index}`,
             hitl_interrupt_id: 'timed',
-            hitl_action_index: 0,
+            hitl_action_index: index,
+            hitl_total_actions: mode === 'signed group' ? 2 : 1,
             timeout_seconds: 1,
             allowed_decisions: ['approve', 'reject'],
           },
@@ -77,11 +78,12 @@ describe('ApprovalCard', () => {
         })
       }
       const context: HiTLContextValue =
-        mode === 'signed'
+        mode !== 'legacy'
           ? {
               canRespond: true,
               approvalGeneration: 'timed-checkpoint',
-              canRespondTo: (id, index) => id === 'timed' && index === 0,
+              canRespondTo: (id, index) =>
+                id === 'timed' && (index === 0 || (mode === 'signed group' && index === 1)),
               registerDecision,
               onResumeDecisions,
             }
@@ -90,15 +92,35 @@ describe('ApprovalCard', () => {
       try {
         render(
           <HiTLContext.Provider value={context}>
-            <TimedApproval />
+            {mode === 'signed group' ? (
+              <GroupedApprovalCard count={2}>
+                <TimedApproval index={0} />
+                <TimedApproval index={1} />
+              </GroupedApprovalCard>
+            ) : (
+              <TimedApproval />
+            )}
           </HiTLContext.Provider>,
         )
-        expect(screen.getByText('0:01')).toBeVisible()
+        if (mode === 'signed group') {
+          expect(screen.queryByText('0:01')).toBeNull()
+          expect(screen.getByRole('button', { name: 'approveAll' })).toBeEnabled()
+        } else {
+          expect(screen.getByText('0:01')).toBeVisible()
+        }
         await act(async () => {
           await vi.advanceTimersByTimeAsync(3000)
         })
-        if (mode === 'signed') {
-          expect(screen.getByText('expired')).toBeVisible()
+        if (mode !== 'legacy') {
+          if (mode === 'signed group') {
+            expect(screen.queryByText('expired')).toBeNull()
+            expect(screen.getByTestId('approval-group')).toHaveAttribute(
+              'data-hitl-pending-actions',
+              '2',
+            )
+          } else {
+            expect(screen.getByText('expired')).toBeVisible()
+          }
           expect(onResumeDecisions).not.toHaveBeenCalled()
           expect(registerDecision).not.toHaveBeenCalled()
           expect(addResult).not.toHaveBeenCalled()
@@ -208,7 +230,7 @@ describe('ApprovalCard', () => {
     expect(onResumeDecisions).not.toHaveBeenCalled()
   })
 
-  it('discards staged group votes when a new checkpoint reuses the same interrupt and indices', async () => {
+  it.each(['direct', 'recheck'])('resets staged group votes on %s rollover', async (mode) => {
     const registerDecision = vi
       .fn<NonNullable<HiTLContextValue['registerDecision']>>()
       .mockResolvedValue(undefined)
@@ -236,8 +258,10 @@ describe('ApprovalCard', () => {
     await waitFor(() => expect(screen.getByTestId('approval-action-1')).toBeVisible())
     expect(registerDecision).not.toHaveBeenCalled()
 
-    rerender(view(null))
-    expect(screen.getByRole('button', { name: 'approveAll' })).toBeDisabled()
+    if (mode === 'recheck') {
+      rerender(view(null))
+      expect(screen.getByRole('button', { name: 'approveAll' })).toBeDisabled()
+    }
     rerender(view('checkpoint-b'))
     expect(screen.getByTestId('approval-group')).toHaveAttribute('data-hitl-pending-actions', '2')
     expect(screen.getByTestId('approval-action-0')).toBeVisible()
