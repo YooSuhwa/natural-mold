@@ -15,6 +15,8 @@ export interface HiTLContextValue {
     displayText?: string,
     interruptId?: string | null,
   ) => Promise<void>
+  /** False while the server has not confirmed that the current approval batch may resume. */
+  canRespond?: boolean
   /** The agent the thread runs (auth card connect, G-05); absent → the route's agent. */
   agentId?: string
 }

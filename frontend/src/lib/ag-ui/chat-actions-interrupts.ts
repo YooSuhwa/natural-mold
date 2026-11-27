@@ -1,6 +1,13 @@
 'use client'
 
-import { useCallback, useLayoutEffect, useMemo, useRef, useSyncExternalStore } from 'react'
+import {
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useSyncExternalStore,
+} from 'react'
 import type {
   AgUiAssistantRuntime,
   AgUiInterrupt,
@@ -79,6 +86,7 @@ interface Options {
   readonly runtime: Runtime
   readonly conversationId: string
   readonly agentId: string
+  readonly getReadyBatchKey: (native: readonly AgUiInterrupt[]) => string | null
 }
 
 function allowsDecision(
@@ -105,6 +113,7 @@ export function useAgUiHitlActions({
   runtime,
   conversationId,
   agentId,
+  getReadyBatchKey,
 }: Options): Required<HiTLContextValue> {
   const subscribe = useCallback((notify: () => void) => runtime.thread.subscribe(notify), [runtime])
   const getPending = useCallback(() => {
@@ -115,13 +124,14 @@ export function useAgUiHitlActions({
   const payloads = useMemo(() => moldyAgUiInterruptPayloads(pending), [pending])
   const byId = useMemo(() => new Map(payloads.map((p) => [p.interrupt_id, p])), [payloads])
 
+  const readyBatchKey =
+    pending.length && byId.size === pending.length ? getReadyBatchKey(pending) : null
   const owner = useMemo(
-    () => ({ runtime, conversationId, agentId }),
-    [runtime, conversationId, agentId],
+    () => ({ runtime, conversationId, agentId, readyBatchKey }),
+    [runtime, conversationId, agentId, readyBatchKey],
   )
   const activeOwner = useRef<typeof owner | null>(null)
   useLayoutEffect(() => {
-    activeOwner.current = owner
     return () => {
       activeOwner.current = null
     }
@@ -132,6 +142,8 @@ export function useAgUiHitlActions({
     const current = getPending()
     if (
       activeOwner.current !== owner ||
+      readyBatchKey === null ||
+      getReadyBatchKey(current) !== readyBatchKey ||
       !current.length ||
       byId.size !== current.length ||
       pending.length !== current.length
@@ -150,7 +162,7 @@ export function useAgUiHitlActions({
       }
     }
     return current
-  }, [byId, getPending, owner, pending])
+  }, [byId, getPending, getReadyBatchKey, owner, pending, readyBatchKey])
 
   const submissions = useRef(new Set<string>())
   const respond = useCallback(
@@ -197,7 +209,9 @@ export function useAgUiHitlActions({
     [respond],
   )
   const actions = useHitlDecisionController({
-    conversationId,
+    // A new verified checkpoint cancels votes buffered for the previous checkpoint,
+    // including when the reloaded tool IDs and all visible choices are identical.
+    conversationId: JSON.stringify([conversationId, agentId, readyBatchKey]),
     stream,
     interruptPayloads: payloads,
     interruptPayloadsById: byId,
@@ -205,8 +219,14 @@ export function useAgUiHitlActions({
     refreshLifecycle: finish,
     updateResolvedInterrupts: ignoreResolved,
   })
+  // The coordinator resets pending votes in its effect. Activate callbacks for
+  // the new generation only after that reset has completed.
+  useEffect(() => {
+    activeOwner.current = owner
+  }, [owner])
   return {
     agentId,
+    canRespond: readyBatchKey !== null,
     registerDecision: async (index, decision, displayText, interruptId) => {
       currentBatch()
       const target =
