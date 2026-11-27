@@ -31309,6 +31309,17 @@
           ],
           "title": "Runstatus"
         },
+        "selectedPhysicalRunId": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Selectedphysicalrunid"
+        },
         "subagents": {
           "items": {
             "$ref": "#/components/schemas/SnapshotSubagent"
