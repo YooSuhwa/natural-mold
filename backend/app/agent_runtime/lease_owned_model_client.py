@@ -30,7 +30,6 @@ from typing import Any
 import anthropic
 import httpx
 from langchain_anthropic import ChatAnthropic
-from langchain_openai import ChatOpenAI
 from pydantic import PrivateAttr
 
 from app.agent_runtime.lease_bound_model import (
@@ -39,6 +38,7 @@ from app.agent_runtime.lease_bound_model import (
     LeaseSendGuard,
 )
 from app.agent_runtime.model_client_cache import _ssl_ctx
+from app.agent_runtime.openai_prompt_cache import ConversationCacheChatOpenAI
 
 
 def _new_async_transport(lib: ModuleType) -> Any:
@@ -110,7 +110,7 @@ class OwnedHttpClients:
             await self.async_client.aclose()
 
 
-class LeaseChatOpenAI(LeaseBoundChatModelMixin, ChatOpenAI):
+class LeaseChatOpenAI(LeaseBoundChatModelMixin, ConversationCacheChatOpenAI):
     """``ChatOpenAI`` bound to one lease guard and its own HTTP clients."""
 
     _lease_guard: LeaseSendGuard | None = PrivateAttr(default=None)

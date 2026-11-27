@@ -1,6 +1,7 @@
 import os
 from pathlib import Path
 from typing import Final, Literal
+from uuid import UUID
 
 from pydantic import AliasChoices, Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
@@ -34,6 +35,7 @@ class Settings(AuthzSettings):
 
     # LLM API Keys
     openai_api_key: str = ""
+    openai_prompt_cache_org_ids: frozenset[UUID] = frozenset()
     anthropic_api_key: str = ""
     google_api_key: str = ""
 

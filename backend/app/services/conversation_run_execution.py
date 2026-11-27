@@ -12,6 +12,7 @@ from collections.abc import AsyncGenerator, Callable
 from functools import partial
 from typing import Any
 
+from app.agent_runtime.openai_prompt_cache import conversation_prompt_cache
 from app.agent_runtime.run_error_codes import run_error_code
 from app.agent_runtime.run_metrics import RunMetricsAccumulator
 from app.agent_runtime.run_metrics_types import TerminalRunState
@@ -156,18 +157,19 @@ async def _run_conversation(
             run_id=ctx.run_id,
             output_dir=prepared_start.lease_output_dir(start),  # M1: index the lease output
         )
-        async for chunk in (start.executor or executor_fn)(
-            cfg,
-            input_payload,
-            moldy_source=moldy_source,
-            **stream_kwargs,
-        ):
-            compat_seq = _publish_yielded_chunk_if_needed(
-                ctx,
-                chunk,
-                compat_seq,
-                broker=terminal_delivery,
-            )
+        with conversation_prompt_cache(cfg.org_context, conversation_id, run_path=cfg.run_path):
+            async for chunk in (start.executor or executor_fn)(
+                cfg,
+                input_payload,
+                moldy_source=moldy_source,
+                **stream_kwargs,
+            ):
+                compat_seq = _publish_yielded_chunk_if_needed(
+                    ctx,
+                    chunk,
+                    compat_seq,
+                    broker=terminal_delivery,
+                )
         executor_exhausted_normally = True
 
         if ctx.has_stream_error():
