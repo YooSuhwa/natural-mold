@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import logging
 from collections.abc import AsyncIterator
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from unittest.mock import AsyncMock, Mock
 from uuid import UUID
 
@@ -13,8 +13,9 @@ from sqlalchemy import select, text
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 from sqlalchemy.pool import NullPool
 
-from app.models.memory import MemoryRecall, MemoryRecallRun
+from app.models.memory import MemoryRecall, MemoryRecallRun, MemoryRecord
 from app.services import memory_embedder, memory_recall, memory_recall_shadow
+from app.text import korean_terms
 from tests.sqlite_test_engine import engine
 from tests.test_memory_recall import _count, _embed, _run, _save
 from tests.test_memory_recall_shadow import (
@@ -142,3 +143,36 @@ async def test_rolled_back_preparation_is_discarded_and_next_commit_cannot_repla
     await _drain_shadow()
     case.schedule.assert_called_once()
     case.embed.assert_awaited_once()
+
+
+@pytest.mark.parametrize("mode", ["shadow", "serve"])
+async def test_local_preparation_keeps_keyword_recall_without_provider_or_shadow(
+    db: AsyncSession,
+    case: PreparedCase,
+    approved: memory_embedder.OpenAIShapedEmbedder,
+    monkeypatch: pytest.MonkeyPatch,
+    mode: str,
+) -> None:
+    # Model choice, an index projection and stored Nori tokens are all present. The
+    # local preparation must derive suffix tokens on both sides of the comparison.
+    model_lookup = AsyncMock(return_value=replace(approved, recall_mode=mode))
+    nori = AsyncMock(side_effect=AssertionError("unexpected analyzer call"))
+    monkeypatch.setattr(memory_embedder, "resolve_embedder", model_lookup)
+    monkeypatch.setattr(korean_terms, "nori_terms", nori)
+    fact = await db.get(MemoryRecord, case.fact_id)
+    assert fact is not None
+    fact.search_tokens_analyzer = korean_terms.NORI_ANALYZER
+    fact.search_tokens = "리모트 토큰"
+    await db.commit()
+
+    result = await memory_recall.prepared_recall_for_run(
+        db, case.sessions, CONTEXT, run_id=case.run_id, filters=case.filters, local_only=True
+    )
+    assert result.mode == "fresh" and [row.id for row in result.records] == [case.fact_id]
+    await db.commit()
+    await _drain_shadow()
+    assert await db.scalar(select(MemoryRecallRun.fallback)) == "independent_preparation_keyword"
+    case.schedule.assert_not_called()
+    case.embed.assert_not_awaited()
+    model_lookup.assert_not_awaited()
+    nori.assert_not_awaited()

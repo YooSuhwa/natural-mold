@@ -297,12 +297,20 @@ async def _candidates(
 
 
 async def _keyword_scores(
-    records: list[MemoryRecord], terms: _Terms, changed: Collection[uuid.UUID] = ()
+    records: list[MemoryRecord],
+    terms: _Terms,
+    changed: Collection[uuid.UUID] = (),
+    *,
+    local_only: bool = False,
 ) -> dict[uuid.UUID, float]:
     scores: dict[uuid.UUID, float] = {}
     for record in records:
         analyzer = record.search_tokens_analyzer or korean_terms.FALLBACK_ANALYZER
-        if record.search_tokens is None or record.id in changed:
+        if (
+            record.search_tokens is None
+            or record.id in changed
+            or (local_only and analyzer != korean_terms.FALLBACK_ANALYZER)
+        ):
             analyzer = korean_terms.FALLBACK_ANALYZER
             stored = list(korean_terms.fallback_terms(record.content))
         else:
@@ -452,9 +460,13 @@ async def rank(
     now: datetime | None = None,
     candidate_floor: float | None = None,
     on_missing_vectors: Callable[[memory_embedder.MemoryEmbedder], None] | None = None,
+    local_only: bool = False,
 ) -> Ranked:
     """Candidates that pass a raw-score floor, best first (``final``)."""
     started = time.monotonic()
+    if local_only:
+        # An independent job can repeat preparation before its first authorized send.
+        embedder = None
     now = now or _now()
     records = await _candidates(db, context, filters, now)
     if not records or not query.messages:
@@ -462,7 +474,9 @@ async def rank(
     floor = candidate_floor if candidate_floor is not None else vector_floor(embedder)
     terms = _Terms(query)
     initial = {r.id: (r.content, r.search_tokens_analyzer) for r in records}
-    nori = any(analyzer == korean_terms.NORI_ANALYZER for _, analyzer in initial.values())
+    nori = not local_only and any(
+        analyzer == korean_terms.NORI_ANALYZER for _, analyzer in initial.values()
+    )
     if nori:
         await terms.get(korean_terms.NORI_ANALYZER)
 
@@ -506,7 +520,7 @@ async def rank(
             cosine = {r.id: cosine[r.id] for r in records if r.id in cosine}
 
     by_id = {record.id: record for record in records}
-    keyword = await _keyword_scores(records, terms, changed)
+    keyword = await _keyword_scores(records, terms, changed, local_only=local_only)
     keyword_list = sorted(
         (rid for rid, score in keyword.items() if score >= KEYWORD_FLOOR),
         key=lambda rid: -keyword[rid],
@@ -891,6 +905,7 @@ async def _select_for_run(
     existing: tuple[uuid.UUID, ...] | None,
     *,
     on_missing_vectors: Callable[[memory_embedder.MemoryEmbedder], None] | None = None,
+    local_only: bool = False,
 ) -> tuple[str, Selection, str | None, Query | None]:
     root_id = str(root.id)
     if existing is not None:
@@ -917,6 +932,7 @@ async def _select_for_run(
             embedder=embedder,
             now=now,
             on_missing_vectors=on_missing_vectors,
+            local_only=local_only,
         )
         mode, chosen, fallback = "fresh", select_within_budget(ranked.items, now), ranked.fallback
     return mode, chosen, fallback, query
@@ -1059,6 +1075,7 @@ async def prepared_recall_for_run(
     *,
     run_id: str,
     filters: Filters,
+    local_only: bool = False,
 ) -> RunRecall:
     """Keep recall receipts atomic with lease activation and bound ranking on a reader.
 
@@ -1079,7 +1096,7 @@ async def prepared_recall_for_run(
         nonlocal backfill
         backfill = model
 
-    embedder = await _resolve_recall_model(context) if existing is None else None
+    embedder = await _resolve_recall_model(context) if existing is None and not local_only else None
     limit = settings.memory_recall_statement_timeout_ms / 1000 + (
         settings.memory_embedding_timeout_seconds if vector_floor(embedder) is not None else 0
     )
@@ -1097,6 +1114,7 @@ async def prepared_recall_for_run(
                 embedder,
                 existing=existing,
                 on_missing_vectors=request_backfill,
+                local_only=local_only,
             )
     except Exception as exc:  # optional ranking never rolls back the owning transaction
         logger.warning("prepared memory recall fell back: %s", type(exc).__name__)
@@ -1108,6 +1126,8 @@ async def prepared_recall_for_run(
 
         await memory_index.enqueue_backfill(owner, context, backfill)
     if existing is None:
+        if local_only and mode == "fresh":
+            fallback = "independent_preparation_keyword"
         await _record(
             owner,
             context,
@@ -1120,7 +1140,10 @@ async def prepared_recall_for_run(
         )
         await owner.flush()
     result = _recall_result(mode, chosen, now)
-    _shadow_after_commit(owner, session_factory, context, root.id, filters, query, embedder, result)
+    if not local_only:
+        _shadow_after_commit(
+            owner, session_factory, context, root.id, filters, query, embedder, result
+        )
     return result
 
 

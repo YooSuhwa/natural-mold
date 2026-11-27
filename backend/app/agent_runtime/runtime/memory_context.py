@@ -179,6 +179,7 @@ async def _user_memory_context_in(
             agent_id=agent_uuid,
             exclude=profile.source_ids,
             owner=db,
+            local_only=cfg.independent_job,
         )
         cfg.memory_recall_block = recall.block or None
         briefs.extend(_recalled_memory_briefs(list(recall.records)))

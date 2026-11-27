@@ -1059,6 +1059,7 @@ async def run_recall(
     agent_id: uuid.UUID | None,
     exclude: frozenset[uuid.UUID],
     owner: AsyncSession | None = None,
+    local_only: bool = False,
 ) -> Any:
     """Rank the current run's memories and record the selection in its owning transaction."""
     from app.services import memory_recall
@@ -1066,8 +1067,10 @@ async def run_recall(
     filters = memory_recall.Filters(scopes=scopes, agent_id=agent_id, exclude=exclude)
     if owner is not None:
         return await memory_recall.prepared_recall_for_run(
-            owner, session_factory, context, run_id=run_id, filters=filters
+            owner, session_factory, context, run_id=run_id, filters=filters, local_only=local_only
         )
+    if local_only:
+        raise PermissionError("independent_job_requires_lease")
     return await memory_recall.timed_recall_for_run(
         session_factory,
         context,
