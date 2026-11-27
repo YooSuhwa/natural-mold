@@ -8,6 +8,7 @@ from typing import Any
 from ag_ui.core import BaseEvent, EventType
 
 from app.agent_runtime.ag_ui_v1_calls import PublicToolCalls
+from app.agent_runtime.ag_ui_v1_issuance import ToolContinuation
 from app.agent_runtime.ag_ui_v1_text import PublicTextMessages, message_id
 from app.agent_runtime.protocol_events import StoredProtocolEvent
 from app.marketplace.redaction import prepare_secret_values
@@ -20,15 +21,28 @@ class PublicChatEntities:
         allow_tool: Callable[[str | None, str], bool],
         *,
         secret_values: Iterable[str] = (),
+        tool_continuations: Iterable[ToolContinuation] = (),
         allow_scoped_tool: Callable[[str | None, str, str | None], bool] | None = None,
     ) -> None:
         secrets = prepare_secret_values(secret_values)
         self._messages = PublicTextMessages(run_id, secrets)
         self._calls = PublicToolCalls(
-            run_id, allow_tool, secret_values=secrets, allow_scoped_tool=allow_scoped_tool
+            run_id,
+            allow_tool,
+            secret_values=secrets,
+            allow_scoped_tool=allow_scoped_tool,
+            tool_continuations=tool_continuations,
         )
         self._non_assistant_streams: set[str | None] = set()
         self._non_assistant_ids: set[tuple[str | None, str]] = set()
+
+    @property
+    def root_issuances(self) -> dict[tuple[str | None, str], str]:
+        return self._calls.root_issuances
+
+    @property
+    def unresolved_tool_calls(self) -> tuple[ToolContinuation, ...]:
+        return self._calls.unresolved_tool_calls
 
     def known_message_id(self, owner: str | None, raw_id: str | None) -> str | None:
         return self._messages.known(owner, raw_id)
@@ -41,6 +55,11 @@ class PublicChatEntities:
 
     def current_observed_message_id(self, owner: str | None) -> str | None:
         return self.observed_message_id(owner, self._messages.current.get(owner))
+
+    def permits_synthetic_tool(
+        self, owner: str | None, raw_id: object, source_id: str | None
+    ) -> bool:
+        return self._calls.permits_synthetic(owner, raw_id, source_id)
 
     def public_tool_id(self, owner: str | None, raw_id: str | None) -> str | None:
         return self._calls.public_id(owner, raw_id)
