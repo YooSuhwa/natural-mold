@@ -29,7 +29,17 @@ const history: ThreadHistoryAdapter = {
       messages: transcript.map(([role, id], index) => ({
         parentId: transcript[index - 1]?.[1] ?? null,
         message: fromThreadMessageLike(
-          { id, role, content: id, metadata: { custom: { agui: { messageId: 'wire-' + id } } } },
+          {
+            id,
+            role,
+            content: id,
+            metadata: {
+              custom: {
+                agui: { messageId: 'wire-' + id },
+                parentCheckpointId: 'before-' + id,
+              },
+            },
+          },
           id,
           { type: 'complete', reason: 'stop' },
         ),

@@ -124,9 +124,16 @@ export function EditButton() {
 function MessageReloadButton(props: ComponentProps<typeof ActionBarPrimitive.Reload>) {
   const aui = useAui()
   const runBranchAction = useMessageBranchAction()
+  const parentCheckpointId = useAuiState((s) => s.message.metadata.custom?.parentCheckpointId)
+  // Terminal history replaces the SDK's temporary reply with its checkpoint-backed row.
+  // Only that row can keep ownership of a click while the current branch is verified.
+  const waitingForCheckpoint =
+    runBranchAction !== null &&
+    (typeof parentCheckpointId !== 'string' || !parentCheckpointId.trim())
   return (
     <ActionBarPrimitive.Reload
       {...props}
+      disabled={props.disabled || waitingForCheckpoint}
       onClick={(event) => {
         props.onClick?.(event)
         if (event.defaultPrevented || !runBranchAction) return
