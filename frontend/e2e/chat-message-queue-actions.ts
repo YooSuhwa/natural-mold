@@ -146,11 +146,15 @@ function queueCommand(
 async function enqueueOnce(thread: Locator, text: string): Promise<void> {
   const input = thread.locator('textarea[data-moldy-composer-input="true"]')
   await input.fill(text)
-  const sendNext = thread.getByRole('button', {
-    name: /^(다음 요청으로 대기|Queue as next request)$/,
+  // A v3 thread with no SDK history can enqueue through the ordinary send control.
+  const sendAction = thread.getByRole('button', {
+    name:
+      process.env.NEXT_PUBLIC_CHAT_RUNTIME === 'ag_ui'
+        ? /^(다음 요청으로 대기|Queue as next request)$/
+        : /^(다음 요청으로 대기|Queue as next request|전송|Send Button)$/,
   })
-  await expect(sendNext).toBeVisible()
-  await expect(sendNext).toBeEnabled()
+  await expect(sendAction).toBeVisible()
+  await expect(sendAction).toBeEnabled()
   // The composer intentionally keeps its text while awaiting the server's receipt.
   await input.press('Enter')
 }
