@@ -51,6 +51,7 @@ class SnapshotSubagent(_SnapshotModel):
     result: str | None = None
     error: str | None = None
     interrupt_ids: list[str] = Field(default_factory=list)
+    legacy_interrupt_access: bool = False
     todos: list[SnapshotTodo] = Field(default_factory=list)
 
 

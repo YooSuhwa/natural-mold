@@ -333,3 +333,34 @@ async def test_public_id_binding_is_stable_and_rejects_physical_alias_and_unsupp
     assert rejected.status_code == 409, rejected.text
     assert "AG_UI_SNAPSHOT_REQUIRED" in rejected.text
     assert "reply-1" not in rejected.text
+
+
+async def test_workerless_cancellation_never_opens_a_graph_lifecycle(
+    raw_client: AsyncClient, db: AsyncSession
+) -> None:
+    agent, conversation = await _seed_conversation(db)
+    run = await _create_run(db, conversation=conversation, agent=agent)
+    await db.commit()
+    _sign_in(raw_client)
+    url = f"/api/conversations/{conversation.id}/ag-ui"
+    params = {"runId": str(run.id)}
+    queued = await raw_client.get(f"{url}/events", params=params)
+    assert queued.status_code == 200
+    assert queued.json()["frames"] == []
+    await conversation_run_service.transition_run(db, run, "canceling")
+    await conversation_run_service.transition_run(
+        db, run, "canceled", allow_workerless_cancellation_ack=True
+    )
+    await conversation_run_service.finalize_run_outputs_for_status(
+        db, run, "canceled", append_terminal_event=True
+    )
+    await db.commit()
+
+    stream = await raw_client.get(f"{url}/stream", params=params)
+    assert stream.status_code == 200
+    frames = _sse(stream.text)
+    assert [frame["event"]["type"] for frame in frames] == ["RUN_ERROR"]
+    assert frames[0]["event"]["code"] == "AG_UI_INPUT_UNAVAILABLE"
+    tail = await raw_client.get(f"{url}/events", params={**params, "after": frames[0]["id"]})
+    assert tail.status_code == 200
+    assert tail.json()["terminal"] and not tail.json()["frames"]

@@ -20,7 +20,7 @@ from app.services.ag_ui_read_access import require_read_conversation
 from app.services.ag_ui_read_target import resolve_read_target
 from app.services.ag_ui_snapshot import load_ag_ui_snapshot
 
-_SSE_RESPONSE = {
+_SSE_RESPONSE: dict[int | str, dict[str, Any]] = {
     200: {"description": "Committed AG-UI lifecycle", "content": {"text/event-stream": {}}}
 }
 

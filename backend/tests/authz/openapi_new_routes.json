@@ -57682,6 +57682,11 @@
           "title": "Interruptids",
           "type": "array"
         },
+        "legacyInterruptAccess": {
+          "default": false,
+          "title": "Legacyinterruptaccess",
+          "type": "boolean"
+        },
         "name": {
           "title": "Name",
           "type": "string"
