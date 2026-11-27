@@ -31,7 +31,10 @@ from app.schemas.independent_chat_job import (
 from app.services import chat_service, conversation_run_service
 from app.services.agent_execution_acceptance import OwnedExecutionRequest, accept_owned_execution
 from app.services.conversation_run_queue_persistence import persist_direct_input
-from app.services.independent_job_runs import describe_jobs
+from app.services.independent_job_runs import (
+    can_read_independent_child_conversation,
+    describe_readable_jobs,
+)
 from app.services.prepared_run_decisions import predecided_run
 
 
@@ -81,6 +84,10 @@ async def accept_independent_job(
         raise resume_not_found()
     replay = await _find_replayed_job(db, run.id, data, context)
     if replay is not None:
+        if not await can_read_independent_child_conversation(
+            db, conversation_id=replay.child_conversation_id, context=context
+        ):
+            raise resume_not_found()
         return AcceptedJob(replay, None)
     if not independent_jobs_available():
         raise HTTPException(409, "Independent jobs are disabled")
@@ -218,7 +225,7 @@ async def list_independent_jobs(
         .order_by(IndependentChatJob.created_at.desc(), IndependentChatJob.id)
     )
     result = IndependentJobsOut(enabled=independent_jobs_available())
-    for view in await describe_jobs(db, jobs.all(), context):
+    for view in await describe_readable_jobs(db, jobs.all(), context):
         if view.child_conversation_id == conversation.id:
             result.parent_job = view
         else:

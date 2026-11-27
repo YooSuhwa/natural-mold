@@ -6,6 +6,7 @@ from uuid import UUID
 from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.authz.independent_job_history import readable_job_conversations
 from app.authz.org_context import OrgContext
 from app.authz.scoping import private_scope_predicate
 from app.error_codes import resume_not_found
@@ -19,6 +20,10 @@ from app.services.independent_job_runs import current_job_run
 async def get_cancelable_job(
     db: AsyncSession, conversation_id: UUID, job_id: UUID, context: OrgContext
 ) -> IndependentChatJob:
+    # A replayed link cannot disclose child status after its delegation was revoked.
+    # Resolve remote decisions before acquiring the mutation row lock.
+    if job_id not in await readable_job_conversations(db, context, job_ids=[job_id]):
+        raise resume_not_found()
     job = await db.scalar(
         select(IndependentChatJob)
         .where(

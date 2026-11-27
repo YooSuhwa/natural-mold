@@ -221,6 +221,7 @@ def test_migration_recreates_model_constraints(
     revision = ScriptDirectory.from_config(config).get_revision(REVISION)
     assert revision is not None and isinstance(revision.down_revision, str)
     table = IndependentChatJob.__table__
+    assert isinstance(table, sa.Table)
     with Session(lab.admin) as db, db.begin():
         # This database belongs to this test module. Isolate the orphan case
         # from any still-linked children created by earlier tests.

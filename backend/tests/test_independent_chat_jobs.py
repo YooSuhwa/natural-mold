@@ -7,13 +7,14 @@ from uuid import UUID, uuid4
 import pytest
 from fastapi import FastAPI
 from httpx import AsyncClient
-from sqlalchemy import func, select
+from sqlalchemy import delete, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.approvals.service import PendingInterrupt, RunOrigin, record_pending
 from app.authz.org_context import OrgContext
 from app.config import settings
 from app.dependencies import CurrentUser, get_current_user, get_org_context
+from app.models.agent_subagent import AgentSubAgentLink
 from app.models.conversation import Conversation
 from app.models.conversation_run import ConversationRun
 from app.models.conversation_run_input import ConversationRunInput
@@ -428,3 +429,27 @@ async def test_independent_room_rejects_goals_and_root_steer(
     inputs = (await db.scalars(select(ConversationRunInput))).all()
     assert len(inputs) == 1 and inputs[0].run_id == run.id
     assert inputs[0].source != "goal_followup"
+
+
+async def test_removed_delegation_hides_prior_receipt_and_cancel_status(
+    db: AsyncSession,
+    client: AsyncClient,
+    job_request: JobRequest,
+) -> None:
+    job = await job_request.create(client)
+    await db.execute(
+        delete(AgentSubAgentLink).where(
+            AgentSubAgentLink.parent_agent_id == job.parent_agent_id,
+            AgentSubAgentLink.sub_agent_id == job.child_agent_id,
+        )
+    )
+    await db.commit()
+
+    response = await client.get(job_request.listing)
+    assert IndependentJobsOut.model_validate_json(response.content).jobs == []
+    replay = await client.post(job_request.create_path, json=job_request.payload())
+    cancel = await client.post(f"{job_request.listing}/{job.id}/cancel")
+    assert replay.status_code == cancel.status_code == 404
+    for denied in (replay, cancel):
+        assert job.child_agent_name not in denied.text
+        assert str(job.child_run_id) not in denied.text
