@@ -114,6 +114,8 @@ async def _pending_input_for_update(
     )
     if queued is None:
         raise queue_input_not_found()
+    if queued.source == "goal_followup":
+        raise _conflict("Change the goal to update its automatic followup")
     if queued.status != "pending":
         raise _conflict("Only pending conversation inputs can be changed")
     if queued.revision != expected_revision:

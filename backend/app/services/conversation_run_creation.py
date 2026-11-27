@@ -195,6 +195,7 @@ async def create_run_from_locked_proof(
     if active is not None:
         raise _conflict("Conversation already has an active run")
 
+    interrupted_parent = None
     if source == "resume":
         if parent_run_id is None:
             if not allow_legacy_resume or not interrupt_id:
@@ -222,6 +223,7 @@ async def create_run_from_locked_proof(
                 raise _conflict("Resume run must target the latest interrupted run")
             if latest.interrupt_id and latest.interrupt_id != interrupt_id:
                 raise _conflict("Resume interrupt id does not match the interrupted run")
+            interrupted_parent = latest
             try:
                 require_parent_snapshot_match(latest, runtime_policy)
             except RuntimePolicySnapshotError as exc:
@@ -256,4 +258,9 @@ async def create_run_from_locked_proof(
             await db.rollback()
             raise _conflict("Conversation already has an active run") from exc
         raise
+    from app.services.conversation_goal_worker import capture_new_run
+
+    await capture_new_run(
+        db, conversation=conversation, run=run, interrupted_parent=interrupted_parent
+    )
     return run

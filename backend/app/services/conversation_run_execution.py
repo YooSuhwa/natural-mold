@@ -270,6 +270,13 @@ async def _run_conversation(
                     if executor_exhausted_normally
                     else None,
                 )
+                if final_run is not None and (final_run.metadata_json or {}).get("goal_attempt_id"):
+                    from app.services.conversation_goal_worker import reconcile_committed_goal
+
+                    try:
+                        await reconcile_committed_goal(run_id, conversation_id, cfg.org_context)
+                    except Exception:
+                        logger.exception("goal decision pending recovery run_id=%s", run_id)
                 if final_run is not None and executor_exhausted_normally:
                     live_terminal, persisted_terminal = (
                         terminal_delivery.terminal_events_for_status(effective_status)

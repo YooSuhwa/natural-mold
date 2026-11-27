@@ -191,7 +191,16 @@ async def _handle_input_respond_command(
     )
     await db.commit()
     await chat_service.require_executable_conversation(db, conversation.id, context)
-    cfg = await resolve_agent_context(db, conversation.id, user, context=context)
+    restricted = parent_run is not None and bool(
+        (parent_run.metadata_json or {}).get("goal_followup_input_id")
+    )
+    cfg = await resolve_agent_context(
+        db,
+        conversation.id,
+        user,
+        context=context,
+        include_subagents=not restricted,
+    )
     # Plan 15 (5.2): a resumed schedule or API run keeps its path (inbox resumes come here).
     cfg.run_path = await origin_run_path(db, parent_run)
     # 순번 23 W2c: a workflow step keeps its output schema and keeps waiting for the inbox.

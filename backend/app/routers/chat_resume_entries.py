@@ -241,7 +241,16 @@ async def resume_message(
     metadata: dict[str, JsonValue] | None = None
     if legacy_interrupt_trace is not None:
         metadata = {"legacy_interrupt_assistant_msg_id": legacy_interrupt_trace.assistant_msg_id}
-    cfg = await resolve_agent_context(db, conversation_id, user, context=context)
+    restricted = parent_run is not None and bool(
+        (parent_run.metadata_json or {}).get("goal_followup_input_id")
+    )
+    cfg = await resolve_agent_context(
+        db,
+        conversation_id,
+        user,
+        context=context,
+        include_subagents=not restricted,
+    )
     if parent_run is not None:  # plan 15 (5.2): a resumed schedule or API run keeps its path
         cfg.run_path = await origin_run_path(db, parent_run)
     await db.commit()

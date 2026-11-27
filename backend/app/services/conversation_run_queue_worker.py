@@ -84,7 +84,10 @@ async def dispatch_next_for_conversation(
     async with _company_session(scope) as db:
         try:
             context = await resolve_conversation_actor(db, conversation_id, owner_id)
-        except AppError:
+        except AppError as exc:
+            from app.services.conversation_goal_worker import stop_reservations_on_denial
+
+            await stop_reservations_on_denial(db, conversation_id, scope, exc)
             return None
         try:
             with fresh_run_decision_scope():

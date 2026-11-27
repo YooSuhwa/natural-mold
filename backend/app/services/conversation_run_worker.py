@@ -196,8 +196,12 @@ async def start_conversation_run(
             if error.code == "AGENT_ARCHIVED":
                 raise
             raise conversation_not_found() from error
-        if await lock_executable_run(session, target) is None:
+        run = await lock_executable_run(session, target)
+        if run is None:
             raise conversation_not_found()
+        from app.services.conversation_goal_worker import configure_goal_runtime
+
+        await configure_goal_runtime(session, run, cfg)
         registry = registry or get_run_task_registry()
         ctx = stream_service.prepare_stream_context(
             conversation_id, run_id=str(run_id), tenant=target.conversation.context

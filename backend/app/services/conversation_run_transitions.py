@@ -197,6 +197,10 @@ async def _transition_to_running(
         # ``start=False`` (prepared lease probe): classify without starting.
         if run.status != "queued" or not start:
             return run, False
+        from app.services.conversation_goal_worker import automatic_run_can_start
+
+        if not await automatic_run_can_start(session, run, target.conversation.context):
+            return run, False
         await conversation_run_service.transition_run(
             session,
             run,

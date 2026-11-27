@@ -214,6 +214,10 @@ async def _start_prepared(
     handles: list[tuple[PreparedRunHandle, frozenset[str]]] = []
 
     async def prepare(db: Any, run: ConversationRun) -> Any:
+        from app.services.conversation_goal_worker import automatic_run_can_start
+
+        if not await automatic_run_can_start(db, run, conversation.context):
+            raise PreparedRunTransactionError(RUN_NOT_MATERIALIZABLE)
         prepared = await resolver(db, run)
         locked.append(run)
         return prepared

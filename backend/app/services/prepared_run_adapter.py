@@ -79,6 +79,9 @@ def chat_config_resolver(
             checkpoint_id=checkpoint_id,
             include_subagents=False,
         )
+        from app.services.conversation_goal_worker import configure_goal_runtime
+
+        await configure_goal_runtime(db, run, cfg)
         cfg.run_path = await origin_run_path(db, run)  # plan 15 (5.2): a resume keeps its origin
         return cfg
 
