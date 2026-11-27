@@ -237,6 +237,36 @@ describe('AuthRequiredCard OAuth connect (G-05)', () => {
     }
   })
 
+  it('does not navigate a popup when authorization starts after the request was replaced', async () => {
+    const popup = { location: { href: 'about:blank' }, close: vi.fn(), focus: vi.fn() }
+    const open = vi.spyOn(window, 'open').mockReturnValue(popup as unknown as Window)
+    try {
+      const authorization =
+        Promise.withResolvers<Awaited<ReturnType<typeof credentialsApi.startOAuth2>>>()
+      vi.mocked(credentialsApi.startOAuth2).mockReturnValue(authorization.promise)
+      const register = vi.fn()
+      const { update } = renderWith(register, args, undefined, {
+        canRespond: true,
+        approvalGeneration: 'first',
+      })
+      fireEvent.click(screen.getByRole('button', { name: 'connectOAuth' }))
+      await waitFor(() => expect(credentialsApi.startOAuth2).toHaveBeenCalledOnce())
+      update(args, { canRespond: true, approvalGeneration: 'next' })
+      await act(async () =>
+        authorization.resolve({
+          state: 'old',
+          authorization_url: 'https://auth.example/authorize',
+        }),
+      )
+      expect(popup.location.href).toBe('about:blank')
+      expect(popup.focus).not.toHaveBeenCalled()
+      expect(screen.queryByText('oauthWaiting')).toBeNull()
+      expect(register).not.toHaveBeenCalled()
+    } finally {
+      open.mockRestore()
+    }
+  })
+
   it('keeps an accepted answer visible until another checkpoint uses this slot', async () => {
     const { update } = renderWith(vi.fn().mockResolvedValue(undefined), args, undefined, {
       canRespond: true,
