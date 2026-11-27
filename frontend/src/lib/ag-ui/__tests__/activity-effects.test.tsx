@@ -90,6 +90,8 @@ function file(id: string, versionId: string): ArtifactSummary {
     mime_type: 'text/markdown',
     extension: 'md',
     artifact_kind: 'markdown',
+    agent_name: '',
+    conversation_title: null,
     size_bytes: 12,
     sha256: 'a'.repeat(64),
     status: 'ready',
