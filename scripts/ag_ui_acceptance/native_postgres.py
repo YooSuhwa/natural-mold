@@ -168,6 +168,8 @@ def native_postgres() -> Iterator[NativePostgres]:
                     str(socket_dir),
                     "-c",
                     "unix_socket_permissions=0700",
+                    "-c",
+                    "track_commit_timestamp=on",
                 ],
                 env=env,
                 stdin=subprocess.DEVNULL,
