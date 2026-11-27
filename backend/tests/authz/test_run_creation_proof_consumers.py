@@ -79,14 +79,16 @@ def test_acceptance_and_creation_ingresses_take_proof_first() -> None:
     assert _first_call_line(acceptance, "accept_owned_execution", "acquire_execution_proof") < (
         _first_call_line(acceptance, "accept_owned_execution", "_validated_envelope")
     )
-    for path, function in (
-        ("services/agent_creation_service.py", "create_agent"),
-        ("services/builder_agent_finalization.py", "confirm_build"),
-        ("services/skill_builder_hidden_agent.py", "get_or_create_skill_builder_agent"),
+    for path, function, gate in (
+        ("services/agent_creation_service.py", "create_agent", "require_execution_prefix"),
+        ("services/builder_agent_finalization.py", "confirm_build", "require_execution_prefix"),
+        (
+            "services/skill_builder_hidden_agent.py",
+            "get_or_create_skill_builder_agent",
+            "acquire_execution_proof",
+        ),
     ):
-        assert _first_call_line(path, function, "require_execution_prefix") < _first_call_line(
-            path, function, "Agent"
-        )
+        assert _first_call_line(path, function, gate) < _first_call_line(path, function, "Agent")
 
 
 @pytest.mark.asyncio

@@ -7,7 +7,9 @@ role. Without the identity scope every one of them would read zero rows.
 
 from __future__ import annotations
 
+import asyncio
 from collections.abc import AsyncGenerator, AsyncIterator, Iterator
+from pathlib import Path
 from uuid import UUID, uuid4
 
 import pytest
@@ -17,13 +19,20 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_asyn
 
 from app import database
 from app.auth.password import hash_password
+from app.authz import runtime
+from app.authz.fake import FakeAuthz
+from app.authz.service import AuthzService
 from app.config import settings
 from app.database import platform_session, tenant_session
 from app.dependencies import CurrentUser, get_db
 from app.main import create_app
+from app.models.agent import AGENT_RUNTIME_PROFILE_SKILL_BUILDER, Agent
+from app.models.authz import AuthzOutbox
+from app.models.organization import OrganizationMember
 from app.models.user import User
+from app.seed.e2e_scripted_model import seed_e2e_scripted_model
 from tests.authz.i06_rls_lab import RlsLab, async_url, rls_lab
-from tests.authz.unit_scope_fixture import ensure_unit_scope
+from tests.authz.unit_scope_fixture import TEST_ORG_ID, ensure_unit_scope
 
 pytestmark = pytest.mark.integration
 PASSWORD = "correct horse battery staple"  # noqa: S105 - fixture-only account
@@ -112,3 +121,86 @@ async def test_wrong_credentials_are_still_audited_and_refused(
             sa.text("SELECT failed_login_attempts FROM users WHERE email = :e"), {"e": email}
         )
     assert failures == 1
+
+
+async def test_two_first_builder_sessions_share_one_private_agent(
+    lab: RlsLab, client: AsyncClient, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    user_id, email = await _seed_user(lab)
+    login = await client.post("/api/auth/login", json={"email": email, "password": PASSWORD})
+    assert login.status_code == 200, login.text
+    client.headers["X-CSRF-Token"] = login.json()["csrf_token"]
+    monkeypatch.setattr(settings, "data_root", str(tmp_path))
+    monkeypatch.setattr(settings, "e2e_scripted_model_enabled", True)
+    # Exercise real lifecycle outbox writes without requiring a live tuple server.
+    service = AuthzService(FakeAuthz(), mode="enforce", enforce_types=frozenset({"agent"}))
+    monkeypatch.setattr(runtime, "runtime_authz", lambda: service)
+
+    engine = create_async_engine(async_url(lab.admin_url))
+    try:
+        sessions = async_sessionmaker(engine, expire_on_commit=False)
+        async with sessions.begin() as db:
+            assert await seed_e2e_scripted_model(db) is not None
+
+        # Both authenticated requests may insert their sessions and miss the initial
+        # agent lookup. Hold the membership row until both reach the execution prefix.
+        async with asyncio.timeout(30), asyncio.TaskGroup() as requests, sessions.begin() as guard:
+            await guard.get(OrganizationMember, (TEST_ORG_ID, user_id), with_for_update=True)
+            tasks = [
+                requests.create_task(
+                    client.post(
+                        "/api/skill-builder", json={"mode": "create", "user_request": prompt}
+                    )
+                )
+                for prompt in ("first", "second")
+            ]
+            waiters = sa.text("""
+                WITH RECURSIVE blocked(pid) AS (
+                    SELECT pg_backend_pid()
+                    UNION
+                    SELECT activity.pid FROM pg_stat_activity activity, blocked
+                    WHERE activity.datname = current_database()
+                      AND blocked.pid = ANY(pg_blocking_pids(activity.pid))
+                )
+                SELECT count(*) - 1 FROM blocked
+            """)
+            while await guard.scalar(waiters) != len(tasks):
+                for task in tasks:
+                    if task.done():
+                        pytest.fail(f"Request returned before the seed race: {task.result().text}")
+                await guard.execute(sa.text("SELECT pg_stat_clear_snapshot()"))
+                await asyncio.sleep(0.01)
+
+        replies = [task.result() for task in tasks]
+        assert [reply.status_code for reply in replies] == [201, 201], [
+            reply.text for reply in replies
+        ]
+        first, second = (reply.json() for reply in replies)
+        assert first["id"] != second["id"]
+        assert first["conversation_id"] != second["conversation_id"]
+        assert first["agent_id"] == second["agent_id"]
+        async with sessions() as db:
+            hidden = (
+                await db.scalars(
+                    sa.select(Agent.id).where(
+                        Agent.user_id == user_id,
+                        Agent.runtime_profile == AGENT_RUNTIME_PROFILE_SKILL_BUILDER,
+                    )
+                )
+            ).all()
+            assert list(hidden) == [UUID(first["agent_id"])]
+            rows = await db.scalars(
+                sa.select(AuthzOutbox.tuple_key).where(
+                    AuthzOutbox.source_table == "agents", AuthzOutbox.source_id == hidden[0]
+                )
+            )
+            agent, org = f"agent:{hidden[0]}", f"organization:{TEST_ORG_ID}"
+            assert sorted(rows) == sorted(
+                [
+                    f"{org} org {agent}",
+                    f"user:{user_id} owner {agent}",
+                    f"{agent} resident_agent {org}",
+                ]
+            )
+    finally:
+        await engine.dispose()
