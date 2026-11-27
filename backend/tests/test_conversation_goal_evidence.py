@@ -136,7 +136,7 @@ async def _seed_run_artifact(
         tenant_id=_CONTEXT.tenant_id,
         artifact_id=artifact_id,
         version_number=1,
-        display_name="report.csv",
+        display_name="비교.csv",
         source_path=source,
     )
     checksum = hashlib.sha256(data).hexdigest()
@@ -565,9 +565,9 @@ async def test_goal_evidence_reads_shared_version_once_for_different_conditions(
     read = conversation_goal_evidence._read_verified
     paths: list[Path] = []
 
-    def count_read(path: Path, *, size: int, sha256: str) -> bytes:
+    def count_read(path: Path, *, object_key: str, size: int, sha256: str) -> bytes:
         paths.append(path)
-        return read(path, size=size, sha256=sha256)
+        return read(path, object_key=object_key, size=size, sha256=sha256)
 
     monkeypatch.setattr(conversation_goal_evidence, "_read_verified", count_read)
     async with TestSession() as db:

@@ -6,6 +6,9 @@ import * as readiness from '@/components/readiness/agent-readiness-gate'
 import * as runtimeMode from '@/lib/chat/runtime-mode'
 import { conversationsApi } from '@/lib/api/conversations'
 import * as goalsApi from '@/lib/api/conversation-goals'
+import { independentJobsApi } from '@/lib/api/independent-chat-jobs'
+import { http, HttpResponse } from 'msw'
+import { server } from '../setup'
 import { mockAgent, mockConversation, mockMessageList } from '../mocks/fixtures'
 
 // Mock scrollIntoView for jsdom
@@ -95,11 +98,7 @@ vi.mock('@/lib/hooks/use-conversations', () => ({
     const result = mockUseMessages(...args)
     if (args[1] === false) {
       return {
-        data: {
-          messages: [],
-          active_checkpoint_id: null,
-          total_cost: 0,
-        },
+        data: undefined,
         isLoading: false,
       }
     }
@@ -111,6 +110,7 @@ vi.mock('@/lib/hooks/use-conversations', () => ({
           : {
               messages: result.data,
               conversation_source: result.source === undefined ? 'ui' : result.source,
+              active_run: result.activeRun,
               active_checkpoint_id: null,
               total_cost: 0,
             },
@@ -409,6 +409,86 @@ describe('ChatPage', () => {
     expect(mockUseMessages).toHaveBeenCalledWith('new', false)
     expect(screen.getByPlaceholderText('메시지 입력...')).toBeInTheDocument()
     expect(container.querySelectorAll("[data-slot='skeleton']")).toHaveLength(0)
+  })
+
+  it('keeps a fresh draft editable if its bootstrap response has no conversation ID', async () => {
+    const mode = vi.spyOn(runtimeMode, 'getChatRuntimeMode').mockReturnValue('langgraph_v3')
+    const listJobs = vi.spyOn(independentJobsApi, 'list')
+    let release!: () => void
+    const pending = new Promise<void>((resolve) => {
+      release = resolve
+    })
+    server.use(
+      http.post('*/api/agents/agent-1/conversations/draft', async () => {
+        await pending
+        return HttpResponse.json({})
+      }),
+    )
+    const params = { agentId: 'agent-1', conversationId: 'new' }
+    const { container, unmount } = render(
+      <ChatPage params={params as unknown as Promise<typeof params>} />,
+    )
+    try {
+      expect(container.querySelector('[data-slot="skeleton"]')).toBeInTheDocument()
+      expect(listJobs).not.toHaveBeenCalled()
+      release()
+      expect(await screen.findByPlaceholderText('메시지 입력...')).toBeEnabled()
+      expect(listJobs).not.toHaveBeenCalled()
+    } finally {
+      release()
+      unmount()
+      mode.mockRestore()
+      listJobs.mockRestore()
+    }
+  })
+
+  it('restores the composer only after the new route has its own history', async () => {
+    const listJobs = vi.spyOn(independentJobsApi, 'list').mockResolvedValue({
+      enabled: true,
+      parent_job: null,
+      jobs: [],
+      targets: [],
+    })
+    const route = (conversationId: string) => {
+      const params = { agentId: 'agent-1', conversationId }
+      return <ChatPage params={params as unknown as Promise<typeof params>} />
+    }
+    const oldRun = { id: 'child-run', conversation_id: 'child-conversation' }
+    mockUseMessages.mockReturnValue({ data: [], source: 'independent_job', activeRun: oldRun })
+    const { rerender, unmount } = render(route('child-conversation'))
+    try {
+      expect(screen.queryByPlaceholderText('메시지 입력...')).not.toBeInTheDocument()
+      mockUseMessages.mockReturnValue({
+        data: [],
+        source: 'ui',
+        activeRun: oldRun,
+        isPlaceholderData: true,
+      })
+      rerender(route('ordinary-conversation'))
+      expect(screen.queryByPlaceholderText('메시지 입력...')).not.toBeInTheDocument()
+      expect(listJobs).not.toHaveBeenCalledWith(
+        'ordinary-conversation',
+        'child-run',
+        expect.anything(),
+      )
+      mockUseMessages.mockReturnValue({
+        data: [],
+        source: 'ui',
+        activeRun: { id: 'ordinary-run', conversation_id: 'ordinary-conversation' },
+      })
+      rerender(route('ordinary-conversation'))
+      expect(await screen.findByPlaceholderText('메시지 입력...')).toBeEnabled()
+      await waitFor(() =>
+        expect(listJobs).toHaveBeenCalledWith(
+          'ordinary-conversation',
+          'ordinary-run',
+          expect.anything(),
+        ),
+      )
+    } finally {
+      unmount()
+      listJobs.mockRestore()
+    }
   })
 
   it('starts a conversation from draft and replaces the URL after streaming', async () => {

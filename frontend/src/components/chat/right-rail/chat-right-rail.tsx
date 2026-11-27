@@ -72,7 +72,6 @@ export function ChatRightRail({ className, conversationId }: Props) {
   const isStaleConversation =
     state.mode !== 'none' &&
     conversationId !== undefined &&
-    conversationId !== null &&
     stateConversationId !== undefined &&
     stateConversationId !== null &&
     stateConversationId !== conversationId
