@@ -3,6 +3,7 @@ import { describe, expect, it, vi } from 'vitest'
 import { SearchRender } from '../search-tool-ui'
 
 vi.mock('next-intl', () => ({
+  useLocale: () => 'ko-KR',
   useTranslations: () => (key: string, params?: Record<string, unknown>) =>
     params ? `${key}(${Object.values(params).join('/')})` : key,
 }))
@@ -71,6 +72,22 @@ describe('SearchRender', () => {
     expect(document.querySelector('[data-moldy-search-price]')).not.toBeNull()
     expect(screen.getByText('price(12,900)')).toBeInTheDocument()
     expect(screen.getByText('몰')).toBeInTheDocument()
+  })
+
+  it('shows the search failure without counting it as a result', () => {
+    const error = 'Research search is temporarily unavailable. Retry later.'
+    render(
+      <SearchRender
+        toolName="research_search"
+        args={{ query: 'query' }}
+        result={error}
+        isError
+        status={DONE}
+      />,
+    )
+    expect(screen.getByText(error)).toBeInTheDocument()
+    expect(screen.queryByText('count(1)')).not.toBeInTheDocument()
+    expect(screen.queryByRole('link')).not.toBeInTheDocument()
   })
 
   it('running 상태에서는 결과/answer를 렌더하지 않는다', () => {

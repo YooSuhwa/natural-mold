@@ -166,6 +166,8 @@ describe('URL sanitize (신뢰 경계 밖 도구 결과)', () => {
     expect(searchItemUrl({ url: 'javascript:alert(1)' })).toBeUndefined()
     expect(searchItemUrl({ link: 'data:text/html,<script>1</script>' })).toBeUndefined()
     expect(searchItemUrl({ url: 'https://ok.example/a' })).toBe('https://ok.example/a')
+    expect(sanitizeExternalUrl('https://')).toBeUndefined()
+    expect(sanitizeExternalUrl('https://public.example@other.example/file')).toBeUndefined()
     expect(sanitizeExternalUrl('  http://ok.example ')).toBe('http://ok.example')
   })
 

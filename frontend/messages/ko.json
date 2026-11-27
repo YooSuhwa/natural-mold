@@ -2974,6 +2974,8 @@
         "defaultTitle": "웹 검색",
         "running": "검색 중…",
         "count": "{count}건",
+        "countByProvider": "{provider} · {count}건",
+        "published": "발행일 {date}",
         "answer": "요약 답변",
         "price": "최저 {price}원",
         "thumbnailAlt": "검색 결과 썸네일"

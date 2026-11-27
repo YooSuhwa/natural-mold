@@ -68,7 +68,7 @@ function normalizeSearchItem(value: unknown): SearchResultItem | null {
   const price = priceFrom(value)
   if (price !== undefined) item.price = price
   if (typeof value.mallName === 'string' && value.mallName) item.mall_name = value.mallName
-  return Object.keys(item).length > 0 ? item : (value as SearchResultItem)
+  return Object.keys(item).length > 0 ? item : { snippet: JSON.stringify(value) }
 }
 
 function normalizeSearchItems(value: unknown): SearchResultItem[] {
@@ -121,19 +121,24 @@ export function parseSearchResults(raw: unknown): SearchResultItem[] {
   return []
 }
 
-/** Tavily `answer`(요약 답변) 추출 — 없으면 null. */
+function searchEnvelope(raw: unknown): Record<string, unknown> | undefined {
+  if (typeof raw === 'string') return searchEnvelope(parseJsonString(raw))
+  if (Array.isArray(raw)) return searchEnvelope(unwrapMcpTextContent(raw))
+  return isRecord(raw) ? raw : undefined
+}
+
 export function searchAnswerFromResult(raw: unknown): string | null {
-  if (typeof raw === 'string') {
-    const parsed = parseJsonString(raw)
-    return parsed === undefined ? null : searchAnswerFromResult(parsed)
-  }
-  if (Array.isArray(raw)) {
-    const unwrapped = unwrapMcpTextContent(raw)
-    return unwrapped === undefined ? null : searchAnswerFromResult(unwrapped)
-  }
-  if (!isRecord(raw)) return null
-  const answer = raw.answer
+  const answer = searchEnvelope(raw)?.answer
   return typeof answer === 'string' && answer.trim() ? answer : null
+}
+
+export function searchProviderFromResult(raw: unknown): string | undefined {
+  const envelope = searchEnvelope(raw)
+  if (!envelope || !Array.isArray(envelope.results)) return undefined
+  const provider = envelope.provider
+  if (provider === 'tavily') return 'Tavily'
+  if (provider === 'searxng') return 'SearXNG'
+  return undefined
 }
 
 /**
@@ -170,7 +175,13 @@ export function looksLikeSearchResults(raw: unknown): boolean {
 export function sanitizeExternalUrl(url: string | undefined): string | undefined {
   if (!url) return undefined
   const trimmed = url.trim()
-  return /^https?:\/\//i.test(trimmed) ? trimmed : undefined
+  if (!/^https?:\/\/[^/\\]/i.test(trimmed) || /[\s\\]/.test(trimmed)) return undefined
+  try {
+    const parsed = new URL(trimmed)
+    return parsed.hostname && !parsed.username && !parsed.password ? trimmed : undefined
+  } catch {
+    return undefined
+  }
 }
 
 /** 썸네일은 원격 http(s) 외에 로컬(상대 경로) 에셋도 허용한다. */

@@ -2974,6 +2974,8 @@
         "defaultTitle": "Default Title",
         "running": "Running",
         "count": "{count} results",
+        "countByProvider": "{provider} · {count, plural, one {# result} other {# results}}",
+        "published": "Published {date}",
         "answer": "Answer",
         "price": "From ₩{price}",
         "thumbnailAlt": "Search result thumbnail"

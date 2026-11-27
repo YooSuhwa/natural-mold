@@ -40,6 +40,7 @@ function backendRenderer<TArgs, TResult>(render: ToolCallMessagePartComponent<TA
 }
 
 const SEARCH_TOOLKIT = {
+  research_search: backendRenderer(SearchToolUI),
   tavily_search: backendRenderer(SearchToolUI),
   web_search: backendRenderer(SearchToolUI),
   naver_search_blog: backendRenderer(SearchToolUI),

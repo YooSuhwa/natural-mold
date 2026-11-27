@@ -96,6 +96,27 @@ describe('ToolGroupContainer', () => {
       expect(screen.getByText('3회')).toBeInTheDocument()
     })
 
+    it('research_search 묶음의 출처는 원문 도메인에서 집계한다', () => {
+      setParts([
+        {
+          result: JSON.stringify({
+            provider: 'searxng',
+            results: [{ url: 'https://first.example/1' }],
+          }),
+        },
+        { result: { provider: 'tavily', results: [{ url: 'https://second.example/2' }] } },
+      ])
+      render(
+        <ToolGroupContainer toolName="research_search" count={2} running={false} indices={[0, 1]}>
+          <div>leaf</div>
+        </ToolGroupContainer>,
+      )
+      expect(screen.getByText('웹 검색')).toBeInTheDocument()
+      expect(screen.getByText('출처 2개')).toBeInTheDocument()
+      expect(screen.getByText('F')).toBeInTheDocument()
+      expect(screen.getByText('S')).toBeInTheDocument()
+    })
+
     it('URL 중복은 dedup되어 출처 수가 정확하다', () => {
       setParts([
         { result: tavilyResult(['https://a.com/1', 'https://b.com/2']) },
