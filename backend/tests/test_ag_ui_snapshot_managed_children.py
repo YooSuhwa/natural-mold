@@ -338,3 +338,55 @@ async def test_disappearing_nested_task_cannot_transfer_its_approval_to_its_pare
 
     assert await case.restore(db) == {}
     assert case.merged.subagents == []
+
+
+async def test_expired_approval_recovers_the_same_owner_without_its_control_handle(
+    db: AsyncSession,
+    pending_child: ChildSnapshot,
+) -> None:
+    case = pending_child
+    child_id = public_subagent_id(str(case.conversation.id), NATIVE)
+    assert await case.restore(db) == {NATIVE: child_id}
+    [before] = case.merged.subagents
+    assert before["childTaskId"] == str(case.task.id)
+
+    case.pending = replace(
+        case.pending,
+        actionable=False,
+        interrupts=(
+            ProtocolInterrupt(
+                id=SLOT,
+                ns=list(NATIVE),
+                value={
+                    "action_requests": [{"name": "send", "args": {"body": PRIVATE}}],
+                    "review_configs": [
+                        {"action_name": "send", "allowed_decisions": ["approve", "reject"]}
+                    ],
+                },
+            ),
+        ),
+        expires_at={SLOT: "2000-01-01T00:00:00+00:00"},
+    )
+    assert await case.restore(db) == {NATIVE: child_id}
+    [expired] = case.merged.subagents
+    assert expired["subagentRunId"] == child_id
+    assert expired["parentMessageId"] == ISSUER
+    assert expired["parentToolCallId"] == public_tool_call_id(PUBLIC, None, ISSUER, CALL)
+    assert not expired.get("childTaskId")
+    assert PRIVATE not in repr(expired)
+
+
+async def test_expiration_does_not_revive_a_denied_approval_owner(
+    db: AsyncSession,
+    pending_child: ChildSnapshot,
+) -> None:
+    case = pending_child
+    case.pending = replace(
+        case.pending,
+        actionable=False,
+        child_authority_denied=True,
+        expires_at={SLOT: "2000-01-01T00:00:00+00:00"},
+    )
+
+    assert await case.restore(db) == {}
+    assert case.merged.subagents == []
