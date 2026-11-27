@@ -1,6 +1,7 @@
 import type { APIRequestContext, Page, Request, Response } from '@playwright/test'
 
 import { API_BASE, apiGetJson, expect, isRecord } from './fixtures'
+import { readAgUiAcceptance, readAgUiRunInput } from './helpers/ag-ui-run-receipt'
 import { sendMessage } from './langgraph-v3-helpers'
 
 export type QueueItem = Record<string, unknown> & {
@@ -55,6 +56,9 @@ export function inputHasExactHuman(value: unknown, expectedText: string): boolea
 
 export function runStartHasExactHuman(request: Request | undefined, expectedText: string): boolean {
   if (!request) return false
+  if (process.env.NEXT_PUBLIC_CHAT_RUNTIME === 'ag_ui') {
+    return inputHasExactHuman(readAgUiRunInput(request), expectedText)
+  }
   try {
     const body = request.postDataJSON() as { params?: unknown }
     return isRecord(body.params) && inputHasExactHuman(body.params.input, expectedText)
@@ -89,6 +93,12 @@ export async function expectUniqueTranscriptTurn(
 
 export function commandStrategy(request: Request): string | null {
   if (request.method() !== 'POST') return null
+  if (process.env.NEXT_PUBLIC_CHAT_RUNTIME === 'ag_ui') {
+    const props: unknown = readAgUiRunInput(request)?.forwardedProps
+    if (!isRecord(props) || !isRecord(props.moldy)) return null
+    const strategy = props.moldy.strategy
+    return strategy === 'enqueue' || strategy === 'interrupt' ? strategy : null
+  }
   try {
     const body = request.postDataJSON() as { method?: unknown; params?: unknown }
     if (body.method !== 'run.start' || !isRecord(body.params)) return null
@@ -123,7 +133,9 @@ export async function sendForStrategy(
   options?: { readonly afterSteerArmed?: () => Promise<void> },
 ): Promise<QueueSubmission> {
   const responsePromise = page.waitForResponse(
-    (response) => commandStrategy(response.request()) === strategy,
+    (response) =>
+      commandStrategy(response.request()) === strategy &&
+      runStartHasExactHuman(response.request(), text),
   )
   if (strategy === 'enqueue') {
     await sendMessage(page, text)
@@ -141,6 +153,11 @@ export async function sendForStrategy(
   }
   const response = await responsePromise
   expect(response.ok()).toBeTruthy()
+  if (process.env.NEXT_PUBLIC_CHAT_RUNTIME === 'ag_ui') {
+    const { queue, physicalRunId } = await readAgUiAcceptance(response)
+    if (!queue) throw new Error('Missing AG-UI queue input receipt')
+    return { inputId: queue.inputId, runId: physicalRunId }
+  }
   const body = (await response.json()) as { result?: unknown }
   if (!isRecord(body.result) || typeof body.result.input_id !== 'string') {
     throw new Error('queued run.start did not return input_id')
@@ -157,14 +174,23 @@ export async function beginPersistedEnqueue(
   conversationId: string,
   text: string,
 ): Promise<PersistedEnqueue> {
-  const responsePromise = page.waitForResponse(
-    (response) => commandStrategy(response.request()) === 'enqueue',
-  )
-  const requestPromise = page.waitForRequest(
-    (candidate) => commandStrategy(candidate) === 'enqueue',
-  )
-  await sendMessage(page, text)
-  const command = await requestPromise
+  const matches = (candidate: Request) =>
+    commandStrategy(candidate) === 'enqueue' && runStartHasExactHuman(candidate, text)
+  const responsePromise = page.waitForResponse((response) => matches(response.request()))
+  const [command] = await Promise.all([page.waitForRequest(matches), sendMessage(page, text)])
+  if (process.env.NEXT_PUBLIC_CHAT_RUNTIME === 'ag_ui') {
+    const { queue } = await readAgUiAcceptance(await responsePromise)
+    if (!queue) throw new Error('Missing AG-UI queue input receipt')
+    await expect
+      .poll(
+        async () =>
+          (await queueState(request, conversationId)).items.find(
+            (item) => item.id === queue.inputId,
+          )?.status,
+      )
+      .toBe('pending')
+    return { inputId: queue.inputId, responsePromise }
+  }
   const body = command.postDataJSON() as { params?: unknown }
   if (!isRecord(body.params) || typeof body.params.client_request_id !== 'string') {
     throw new Error('queued run.start did not send client_request_id')

@@ -8,9 +8,10 @@ import {
   loginApi,
   type CsrfHeaders,
 } from './fixtures'
-import { commandMethod, waitForAcceptedRunStart } from './helpers/run-start'
+import { acceptedPhysicalRun, readAgUiRunInput } from './helpers/ag-ui-run-receipt'
+import { commandMethod, waitForAcceptedRunStart as waitForV3RunStart } from './helpers/run-start'
 
-export { commandMethod, waitForAcceptedRunStart }
+export { commandMethod }
 
 export const DOCX_SKILL_SLUG = 'docx-document'
 export const SCRIPTED_PROVIDER = 'e2e_scripted'
@@ -149,11 +150,28 @@ export async function sendMessage(page: Page, text: string): Promise<void> {
   await sendButton.click()
 }
 
-/**
- * Sends an initial chat message and returns the run id accepted by its `run.start`
- * command. This avoids relying on the transient active-run state for runs that can
- * complete or fail before active-run polling begins.
- */
+/** Match only the selected transport and return the run created by this user action. */
+export async function waitForAcceptedRunStart(
+  page: Page,
+  conversationId: string,
+  action: () => Promise<void>,
+): Promise<string> {
+  if (process.env.NEXT_PUBLIC_CHAT_RUNTIME !== 'ag_ui') {
+    return waitForV3RunStart(page, conversationId, action)
+  }
+  const [response] = await Promise.all([
+    page.waitForResponse(
+      (response) => {
+        const input = readAgUiRunInput(response.request(), conversationId)
+        return input !== null && !input.resume?.length
+      },
+      { timeout: CHAT_COMPOSER_TIMEOUT_MS },
+    ),
+    action(),
+  ])
+  return acceptedPhysicalRun(page.request, response)
+}
+
 export async function sendMessageForRun(
   page: Page,
   conversationId: string,
@@ -279,9 +297,38 @@ export async function approveExecuteInSkill(page: Page): Promise<string> {
       intervals: [250, 500, 1000],
     })
     .toBeGreaterThan(0)
+  const agUi = process.env.NEXT_PUBLIC_CHAT_RUNTIME === 'ag_ui'
+  const threadId = agUi
+    ? await page
+        .locator('[data-testid="approval-approve-button"]:visible:enabled')
+        .last()
+        .evaluate(
+          (button) =>
+            button.closest<HTMLElement>('[data-chat-selection-thread]')?.dataset
+              .chatSelectionThread,
+        )
+    : undefined
   const responsePromise = page.waitForResponse(
     (response) => {
       const request = response.request()
+      if (agUi) {
+        const input = readAgUiRunInput(request, threadId)
+        return (
+          input?.messages.length === 0 &&
+          input.resume?.some((entry) => {
+            const payload: unknown = entry.payload
+            return (
+              entry.status === 'resolved' &&
+              Boolean(entry.interruptId.trim()) &&
+              isRecord(payload) &&
+              Array.isArray(payload.decisions) &&
+              payload.decisions.some(
+                (choice: unknown) => isRecord(choice) && choice.type === 'approve',
+              )
+            )
+          }) === true
+        )
+      }
       return (
         request.method() === 'POST' &&
         /\/api\/conversations\/[^/]+\/langgraph\/threads\/[^/]+\/commands$/.test(
@@ -313,9 +360,10 @@ export async function approveExecuteInSkill(page: Page): Promise<string> {
       .last()
       .waitFor({ state: 'visible', timeout: 15_000 })
       .then(() => {
-        throw new Error('Approval UI rejected the resume before sending input.respond')
+        throw new Error('Approval UI rejected the resume command')
       }),
   ])
+  if (agUi) return acceptedPhysicalRun(page.request, response)
   const runId = await response.headerValue('X-Run-Id')
   if (!response.ok() || !runId) {
     const body = await response.text().catch(() => '<unavailable>')

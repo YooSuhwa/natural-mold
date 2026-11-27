@@ -1,6 +1,8 @@
 import type { Request } from '@playwright/test'
 
 import { API_BASE, apiDeleteOk, apiJson, expect, isRecord, test } from './fixtures'
+import { readAgUiRunInput } from './helpers/ag-ui-run-receipt'
+import { commandMethod } from './helpers/run-start'
 import { retireSeededRun } from './helpers/seeded-run-cleanup'
 import {
   beginPersistedEnqueue,
@@ -172,11 +174,9 @@ test.describe('Server-backed chat message queue', () => {
     const expectedAssistant = 'E2E scripted document model is ready.'
     const runStarts: Request[] = []
     page.on('request', (value) => {
-      try {
-        const body = value.postDataJSON() as { method?: unknown }
-        if (body.method === 'run.start') runStarts.push(value)
-      } catch {
-        // Non-JSON requests are unrelated to run submission.
+      const input = readAgUiRunInput(value, setup.conversationId)
+      if ((input && !input.resume?.length) || commandMethod(value) === 'run.start') {
+        runStarts.push(value)
       }
     })
     try {
@@ -213,6 +213,13 @@ test.describe('Server-backed chat message queue', () => {
       await expect.poll(() => runStarts.length, { timeout: 5_000, intervals: [250, 500] }).toBe(2)
       const secondRunStart = runStarts.at(1)
       if (!secondRunStart) throw new Error('explicit steer did not issue a second run.start')
+      if (process.env.NEXT_PUBLIC_CHAT_RUNTIME === 'ag_ui') {
+        const original = readAgUiRunInput(runStarts[0], setup.conversationId)
+        const successor = readAgUiRunInput(secondRunStart, setup.conversationId)
+        expect(original?.runId).toBeTruthy()
+        expect(successor?.runId).toBeTruthy()
+        expect(successor?.runId).not.toBe(original?.runId)
+      }
       expect(commandStrategy(secondRunStart)).toBe('interrupt')
       expect(runStartHasExactHuman(secondRunStart, expectedHuman)).toBe(true)
       expect(inputHasExactHuman(acceptedInput?.input_payload, expectedHuman)).toBe(true)
