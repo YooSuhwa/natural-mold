@@ -120,6 +120,7 @@ export async function standardCommand(
   action: () => Promise<void>,
   outcome: 'success' | 'interrupt',
   assistantText?: string,
+  inspectInterrupts?: (slots: readonly unknown[]) => void,
 ) {
   const [response] = await Promise.all([
     page.waitForResponse(
@@ -150,6 +151,7 @@ export async function standardCommand(
     outcome,
     sse: z.string().parse(await transcript.jsonValue()),
     assistantText,
+    inspectInterrupts,
   })
   return { body, verified }
 }

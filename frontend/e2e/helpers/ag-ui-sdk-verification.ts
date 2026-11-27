@@ -14,6 +14,7 @@ interface TranscriptExpectation {
   readonly request?: unknown
   readonly assistantText?: string
   readonly interruptIds?: readonly string[]
+  readonly inspectInterrupts?: (slots: readonly unknown[]) => void
   readonly forbiddenText?: readonly string[]
 }
 
@@ -81,6 +82,7 @@ export async function verifyAgUiTranscript(expected: TranscriptExpectation) {
         outcome = result.outcome
         if (result.outcome === 'interrupt') {
           interruptIds = result.interrupts.map((interrupt) => interrupt.id)
+          expected.inspectInterrupts?.(result.interrupts)
         }
       },
       onRunErrorEvent() {

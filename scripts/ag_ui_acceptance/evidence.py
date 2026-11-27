@@ -14,6 +14,12 @@ from typing import Annotated, Literal
 from uuid import UUID
 
 from approval_card_evidence import approval_card_observations
+from approval_readiness_evidence import (
+    READINESS_FILE,
+    READINESS_GROUP,
+    READINESS_REASONS,
+    verify_readiness_receipt,
+)
 from branch_evidence import branch_observation
 from goal_case_evidence import GOAL_CASE_FILE, GOAL_CASE_TITLE, goal_case_observations
 from multi_turn_evidence import multi_turn_observations
@@ -566,6 +572,12 @@ def _case(spec: dict, test: dict, owned_root: Path, group: str, performance_timi
         observed.update(
             approval_card_observations(filename, title, group, result, owned_root, _attachment_body)
         )
+        if group == READINESS_GROUP and filename == READINESS_FILE and title in READINESS_REASONS:
+            receipt, issues = verify_readiness_receipt(
+                result, READINESS_REASONS[title], owned_root, _attachment_body
+            )
+            observed.update(receipt)
+            errors.extend(issues)
         if status == "skipped":
             types = {
                 a.get("type")
@@ -665,6 +677,10 @@ def playwright_report(
         errors.append("report_totals_mismatch")
     if group == "cutover" and {c["title"] for c in cases} != set(CUTOVER_CASES):
         errors.append("missing_or_unexpected_cutover_case")
+    if group == READINESS_GROUP and (READINESS_FILE, None) in requested:
+        tested = {case["title"] for case in cases if case["file"] == READINESS_FILE}
+        if not READINESS_REASONS.keys() <= tested:
+            errors.append("missing_approval_readiness_case")
     if group.startswith("performance-") and [c["title"] for c in cases] != [PERF_TITLE]:
         errors.append("missing_or_unexpected_performance_case")
     if len({(case["file"], case["title"]) for case in cases}) != len(cases):

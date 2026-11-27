@@ -68,6 +68,11 @@ def arguments() -> argparse.Namespace:
         action="store_true",
         help="measure model emission, PostgreSQL commit, client receipt and DOM display per token",
     )
+    parser.add_argument(
+        "--verify-default",
+        action="store_true",
+        help="verify that a frontend built and started with no transport override uses AG-UI",
+    )
     parser.add_argument("--phase", choices=("smoke", "api", "browser", "full"), default="full")
     parser.add_argument("--output", type=Path, required=True, help="new local evidence directory")
     parser.add_argument(
@@ -103,6 +108,8 @@ def arguments() -> argparse.Namespace:
     args = parser.parse_args()
     if args.perf_timing and args.phase not in {"browser", "full"}:
         parser.error("--perf-timing requires a browser or full gate")
+    if args.verify_default and args.phase not in {"browser", "full"}:
+        parser.error("--verify-default requires a browser or full gate")
     for spec in (*args.extra_spec, *args.ag_ui_spec):
         if not re.fullmatch(
             r"e2e/(?:[a-zA-Z0-9_-]+/)*[a-zA-Z0-9_-]+\.spec\.ts(?::[1-9][0-9]*)?", spec
@@ -123,12 +130,14 @@ def browser_gate(
     extra_specs: list[str],
     extra_cases: list[str],
     ag_ui_specs: list[str],
+    verify_default: bool,
     probes: Path,
     record: dict,
     start_delegation_pair: Callable[[], None],
 ) -> None:
     frontend = root / "frontend"
     frontend_envs: dict[str, dict[str, str]] = {}
+    record["frontend_transport_environment"] = {}
     command("assets", ["pnpm", "run", "prepare:assets"], frontend, env, logs)
     for mode, url in modes.items():
         port = str(httpx.URL(url).port)
@@ -142,6 +151,12 @@ def browser_gate(
             "E2E_BASE_URL": url,
             "E2E_FRONTEND_PORT": port,
             "NEXT_TELEMETRY_DISABLED": "1",
+        }
+        if verify_default and mode == "ag_ui":
+            del build_env["NEXT_PUBLIC_CHAT_RUNTIME"]
+        record["frontend_transport_environment"][mode] = {
+            "build_and_start_override": build_env.get("NEXT_PUBLIC_CHAT_RUNTIME"),
+            "expected_browser_transport": mode,
         }
         command(
             f"build-{mode}",
@@ -174,7 +189,7 @@ def browser_gate(
         if cache.is_dir() and not cache.is_symlink() and cache.resolve().is_relative_to(root):
             # Next only reads its webpack cache on a subsequent compilation.
             shutil.rmtree(cache)
-        frontend_envs[mode] = build_env
+        frontend_envs[mode] = {**build_env, "NEXT_PUBLIC_CHAT_RUNTIME": mode}
         record["processes"][f"next-{mode}"] = proc.pid
     # Companion probes may now reuse the same authenticated, production-built frontends.
     env["MOLDY_AGUI_BROWSER_READY"] = "1"
@@ -545,6 +560,7 @@ def execute(args: argparse.Namespace, record: dict) -> None:
                     args.extra_spec,
                     args.extra_case,
                     args.ag_ui_spec,
+                    args.verify_default,
                     probes,
                     record,
                     start_delegation_pair,

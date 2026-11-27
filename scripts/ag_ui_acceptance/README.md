@@ -63,6 +63,8 @@ extra+=(--extra-case 'e2e/chat-langgraph-v3-regressions.spec.ts::resets token us
 
 동일 역할의 두 하위 작업 중 지정한 작업만 보충 지시를 받는지도 검사하려면 `--delegation-probe scripts/ag_ui_acceptance/delegation_parity.py`를 추가한다. 이 검사와 F05 브라우저 검수에는 일반 워커를 정리한 뒤 같은 포트에 새 워커를 띄운다. 로컬 모델 접속은 `127.0.0.1`로 제한하고 설치된 제품이나 다른 검수 스택의 설정을 바꾸지 않는다.
 
+기본 전송 방식을 변경한 커밋에서는 `--verify-default`를 추가해 재검증한다. 새 화면은 `NEXT_PUBLIC_CHAT_RUNTIME`을 생략한 상태로 빌드하고 기동한다. 롤백 화면은 `langgraph_v3`를 명시한다. 두 브라우저가 실제로 사용한 통신은 전환 테스트의 요청 기록으로 확인하며, `stack.json`의 `frontend_transport_environment`에 각 빌드에 전달한 환경값이 남는다.
+
 ### 공식 어댑터와 승인 응답 비교
 
 `compare_approval.py`는 Moldy에서 실제 수집한 요청과 이벤트 두 건을 별도 환경의 공식 어댑터에 대조한다. 준비된 환경이 있으면 그 Python을 `REF_PY`로 지정한다. 새로 준비하려면 아래 세 패키지를 고정한다. 이 설치는 검수용이며 제품 의존성 변경과 별개다.
