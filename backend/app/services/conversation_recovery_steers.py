@@ -10,13 +10,13 @@ from uuid import UUID
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.agent_runtime.chat_steer_protocol import uses_steer_channel, valid_stored_steer
 from app.agent_runtime.model_input_receipt import text_digest
 from app.agent_runtime.protocol_events import StoredProtocolEvent
 from app.agent_runtime.recovery_stream import RecoveryOutputStarted
 from app.authz.org_context import OrgContext
 from app.authz.scoping import private_scope_predicate
 from app.models.conversation_run_steer import ConversationRunSteer
-from app.services.conversation_run_steer_events import uses_steer_channel, valid_stored_steer
 
 
 @dataclass(slots=True)

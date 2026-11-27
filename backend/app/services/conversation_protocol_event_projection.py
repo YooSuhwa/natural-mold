@@ -5,6 +5,7 @@ from dataclasses import dataclass
 
 from pydantic import TypeAdapter
 
+from app.agent_runtime.chat_steer_protocol import uses_steer_channel, valid_stored_steer
 from app.agent_runtime.protocol_egress import project_and_redact_protocol_data
 from app.agent_runtime.protocol_events import (
     StoredProtocolEvent,
@@ -17,7 +18,6 @@ from app.services.conversation_protocol_legacy_projection import (
     LegacyEventProjectionRequest,
     protocol_events_from_legacy_sse,
 )
-from app.services.conversation_run_steer_events import uses_steer_channel, valid_stored_steer
 
 _JSON = TypeAdapter(JsonValue)
 

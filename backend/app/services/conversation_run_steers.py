@@ -41,6 +41,7 @@ from app.services.conversation_run_queue_mutations import (
     lock_owned_conversation,
     require_queue_executable,
 )
+from app.services.conversation_run_steer_events import RunSteerReceiptFeed
 
 
 @dataclass(frozen=True, slots=True)
@@ -471,3 +472,12 @@ async def _completed_rollover_resume(
     return len(rows) == len({row.parent_run_id for row in rows}) and any(
         row.status == "completed" for row in rows
     )
+
+
+class ConversationSteerStore:
+    claim = staticmethod(claim_steers_for_model)
+    confirm = staticmethod(confirm_applied_steers)
+    receipt_feed = staticmethod(RunSteerReceiptFeed.for_chat)
+
+
+CONVERSATION_STEERS = ConversationSteerStore()

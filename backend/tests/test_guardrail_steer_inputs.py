@@ -22,7 +22,7 @@ from app.guardrails.rules import Rule, RuleSet
 from app.models.conversation import Conversation
 from app.schemas.conversation_graph_input import STEER_INPUT_MARKER
 from app.services import conversation_run_service
-from app.services.conversation_run_steers import admit_steer
+from app.services.conversation_run_steers import CONVERSATION_STEERS, admit_steer
 from app.tenancy.checkpoint_audit import run_configurable
 from tests.authz.unit_scope_fixture import unit_context
 from tests.conftest import TEST_USER_ID
@@ -83,7 +83,7 @@ async def test_blocked_steer_never_earns_delivery_and_a_fresh_run_can_continue(
         model,
         [],
         "research",
-        middleware=[steer.RunSteerMiddleware()],
+        middleware=[steer.RunSteerMiddleware(CONVERSATION_STEERS)],
         guard=Guard(INPUT_ONLY, context.tenant_id),
         checkpointer=saver,
     )

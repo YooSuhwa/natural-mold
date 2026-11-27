@@ -10,6 +10,7 @@ from langgraph.types import Command
 
 from app.agent_runtime import langgraph_event_projection as projection
 from app.agent_runtime import langgraph_stream_ingestion
+from app.agent_runtime.chat_steer_protocol import SteerReceiptFeed, uses_steer_channel
 from app.agent_runtime.event_broker import EventBroker
 from app.agent_runtime.langgraph_compaction_start import SummaryStart, with_compaction_starts
 from app.agent_runtime.langgraph_event_delivery import ProtocolEventDelivery
@@ -45,7 +46,6 @@ from app.agent_runtime.streaming import (
 from app.chat_recovery.fence import current_run_fence
 from app.config import settings
 from app.models.conversation_run import RUN_TERMINAL_STATUSES
-from app.services.conversation_run_steer_events import RunSteerReceiptFeed, uses_steer_channel
 
 _compaction_history_id = projection.compaction_history_id
 _annotate_session_consent_eligibility = projection.annotate_session_consent_eligibility
@@ -76,7 +76,7 @@ async def stream_agent_response_langgraph(
     excluded_capabilities: list[dict[str, str]] | None = None,
     session_consent_tools: list[str] | None = None,
     run_metrics: RunMetricsAccumulator | None = None,
-    steer_receipts: RunSteerReceiptFeed | None = None,
+    steer_receipts: SteerReceiptFeed | None = None,
 ) -> AsyncGenerator[str, None]:
     msg_id = run_id or str(uuid.uuid4())
     thread_id = langgraph_stream_ingestion.thread_id_from_config(config, msg_id)

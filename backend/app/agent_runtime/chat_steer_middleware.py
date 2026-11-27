@@ -38,9 +38,9 @@ from app.agent_runtime.prepared_run_write_capability import (
 from app.config import settings
 from app.database import SessionTenant, tenant_session
 from app.schemas.conversation_graph_input import STEER_INPUT_MARKER, STEER_RECEIPTS_CHANNEL
-from app.services import conversation_run_steers
 
 if TYPE_CHECKING:
+    from app.agent_runtime.chat_steer_protocol import ChatSteerStore
     from app.agent_runtime.runtime_config import AgentConfig
 
 logger = logging.getLogger(__name__)
@@ -94,8 +94,11 @@ def _root_run() -> _Run | None:
 class RunSteerMiddleware(AgentMiddleware[RunSteerState]):
     state_schema = RunSteerState
 
-    def __init__(self, capability: PreparedRunWriteCapability | None = None) -> None:
+    def __init__(
+        self, store: ChatSteerStore, capability: PreparedRunWriteCapability | None = None
+    ) -> None:
         super().__init__()
+        self._store = store
         self._capability = capability
         # Only an optimization: a fresh worker always consults the durable saver.
         self._confirmed: set[UUID] = set()
@@ -119,7 +122,7 @@ class RunSteerMiddleware(AgentMiddleware[RunSteerState]):
         seen = [UUID(raw) for raw in receipt["ids"]]
         try:
             async with tenant_session(SessionTenant(run.tenant_id)) as db:
-                rows = await conversation_run_steers.claim_steers_for_model(
+                rows = await self._store.claim(
                     db,
                     conversation_id=run.conversation_id,
                     run_id=run.run_id,
@@ -184,7 +187,7 @@ class RunSteerMiddleware(AgentMiddleware[RunSteerState]):
             return
         try:
             async with tenant_session(SessionTenant(run.tenant_id)) as db:
-                await conversation_run_steers.confirm_applied_steers(
+                await self._store.confirm(
                     db, conversation_id=run.conversation_id, run_id=run.run_id, steer_ids=proven
                 )
                 await db.commit()
@@ -203,6 +206,7 @@ def root_steer_middleware(
 ) -> tuple[RunSteerMiddleware, ...]:
     if (
         settings.chat_steer_enabled
+        and cfg.steer_store is not None
         and run_id is not None
         and cfg.run_path == "chat"
         and cfg.runtime_profile == "standard"
@@ -220,5 +224,5 @@ def root_steer_middleware(
                     output_root=prepared_output_root,
                 )
             )
-        return (RunSteerMiddleware(capability),)
+        return (RunSteerMiddleware(cfg.steer_store, capability),)
     return ()

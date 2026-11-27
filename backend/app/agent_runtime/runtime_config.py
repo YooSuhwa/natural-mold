@@ -16,6 +16,7 @@ from app.config import settings
 
 if TYPE_CHECKING:
     from app.agent_runtime.attachment_inputs import AttachmentInputs
+    from app.agent_runtime.chat_steer_protocol import ChatSteerStore
     from app.authz.runtime_access_planner import RuntimeAccessPlan
     from app.guardrails.rules import RuleSet
     from app.guardrails.tool_risk import ToolRiskPolicy
@@ -64,6 +65,9 @@ class AgentConfig:
     runtime_policy: ResolvedRuntimePolicy = field(
         default=LEGACY_RUNTIME_POLICY,
         kw_only=True,
+    )
+    steer_store: ChatSteerStore | None = field(
+        default=None, kw_only=True, repr=False, compare=False
     )
     goal_context: str | None = field(default=None, kw_only=True)
     goal_followup: bool = field(default=False, kw_only=True)

@@ -18,6 +18,7 @@ from sqlalchemy.engine import make_url
 
 from app.agent_runtime.chat_steer_middleware import RunSteerMiddleware
 from app.schemas.conversation_graph_input import STEER_RECEIPTS_CHANNEL
+from app.services.conversation_run_steers import CONVERSATION_STEERS
 from app.tenancy.checkpoint_audit import run_configurable
 
 
@@ -43,7 +44,7 @@ async def write_checkpoint(conversation: UUID, run: UUID, tenant: UUID, boundary
         await saver.setup()
         graph = create_deep_agent(
             model=ObservedModel(responses=[AIMessage(content="found it")]),
-            middleware=[RunSteerMiddleware()],
+            middleware=[RunSteerMiddleware(CONVERSATION_STEERS)],
             checkpointer=saver,
         )
         config: RunnableConfig = {

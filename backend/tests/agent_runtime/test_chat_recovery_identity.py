@@ -27,8 +27,10 @@ from app.chat_recovery.identity import (
     recovery_runtime_digest,
     verify_prepared_recovery_inputs,
 )
+from app.config import settings
 from app.guardrails.tool_risk import ToolRiskPolicy
 from app.services.conversation_run_fence import RunFence, run_fence_scope
+from app.services.conversation_run_steers import ConversationSteerStore
 
 
 def _config() -> AgentConfig:
@@ -55,6 +57,18 @@ def _config() -> AgentConfig:
         resolved_model_credential_id=str(uuid.uuid4()),
         guardrail_resolved=True,
     )
+
+
+def test_recovery_pin_survives_steer_store_rebinding(monkeypatch: pytest.MonkeyPatch) -> None:
+    cfg = _config()
+    monkeypatch.setattr(settings, "chat_steer_enabled", False)
+    legacy = recovery_runtime_digest(cfg)
+    assert legacy is not None
+    monkeypatch.setattr(settings, "chat_steer_enabled", True)
+    original = replace(cfg, steer_store=ConversationSteerStore())
+    replacement = replace(original, steer_store=ConversationSteerStore())
+    assert recovery_runtime_digest(original) == recovery_runtime_digest(replacement) == legacy
+    assert recovery_runtime_digest(cfg) != legacy
 
 
 def test_config_pin_tracks_effective_authority_and_ignores_the_resume_cursor() -> None:

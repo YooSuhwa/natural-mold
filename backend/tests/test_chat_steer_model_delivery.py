@@ -21,7 +21,7 @@ from app.agent_runtime.chat_steer_checkpoint import confirmed_steer_ids
 from app.authz.conversation_scope import require_conversation_agent_id
 from app.models.conversation import Conversation
 from app.services import conversation_run_service, conversation_run_steer_rollover
-from app.services.conversation_run_steers import admit_steer
+from app.services.conversation_run_steers import CONVERSATION_STEERS, admit_steer
 from app.tenancy.checkpoint_audit import run_configurable
 from tests.authz.unit_scope_fixture import unit_context
 from tests.conftest import TEST_USER_ID
@@ -97,7 +97,7 @@ async def test_only_steers_seen_by_the_model_get_durable_delivery_receipts(
     saver = InMemorySaver()
     graph = create_deep_agent(
         model=RecordingModel(responses=[AIMessage(content="answer")]),
-        middleware=[steer.RunSteerMiddleware(), DownstreamMiddleware()],
+        middleware=[steer.RunSteerMiddleware(CONVERSATION_STEERS), DownstreamMiddleware()],
         checkpointer=saver,
     )
     config: RunnableConfig = {

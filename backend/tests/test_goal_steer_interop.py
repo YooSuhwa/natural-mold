@@ -24,7 +24,10 @@ from app.services import conversation_run_service as runs
 from app.services.conversation_goal_worker import reconcile_goal_run
 from app.services.conversation_run_queue_claim import claim_next_input
 from app.services.conversation_run_steer_rollover import reconcile_terminal_steers
-from app.services.conversation_run_steers import get_conversation_steer_watermarks
+from app.services.conversation_run_steers import (
+    CONVERSATION_STEERS,
+    get_conversation_steer_watermarks,
+)
 from app.tenancy.checkpoint_audit import run_configurable
 from tests.artifact_test_helpers import seed_artifact_conversation
 from tests.authz.unit_scope_fixture import unit_context
@@ -52,7 +55,9 @@ async def _deliver_at_model_boundary(
     model = RecordingModel(responses=[AIMessage(content="최신 견적을 다시 확인하겠습니다.")])
     saver = InMemorySaver()
     graph = create_deep_agent(
-        model=model, middleware=[chat_steer_middleware.RunSteerMiddleware()], checkpointer=saver
+        model=model,
+        middleware=[chat_steer_middleware.RunSteerMiddleware(CONVERSATION_STEERS)],
+        checkpointer=saver,
     )
     config: RunnableConfig = {
         "configurable": run_configurable(str(run.conversation_id), run.id, tenant_id)

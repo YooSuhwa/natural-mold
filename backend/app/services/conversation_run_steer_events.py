@@ -22,44 +22,6 @@ from app.models.conversation_run_steer import ConversationRunSteer
 logger = logging.getLogger(__name__)
 
 
-def uses_steer_channel(event: StoredProtocolEvent) -> bool:
-    if event["method"] != "custom" or not isinstance(event["data"], dict):
-        return False
-    names = (event_names.RUN_STEER, f"custom:{event_names.RUN_STEER}")
-    data = event["data"]
-    return data.get("name") in names or data.get("channel") in names
-
-
-def valid_stored_steer(event: StoredProtocolEvent, *, conversation_id: UUID, run_id: str) -> bool:
-    """Only a canonical receipt can occupy the reserved channel in historical traces."""
-    data = event["data"]
-    if event["namespace"] or data.keys() != {"name", "payload"}:
-        return False
-    payload = data["payload"]
-    if data["name"] != event_names.RUN_STEER or not isinstance(payload, dict):
-        return False
-    if payload.keys() != {"conversation_id", "run_id", "steer_id", "status"}:
-        return False
-    steer_id = payload["steer_id"]
-    if not isinstance(steer_id, str) or payload["status"] not in (
-        "pending",
-        "applied",
-        "queued",
-        "needs_review",
-    ):
-        return False
-    try:
-        if str(UUID(steer_id)) != steer_id:
-            return False
-    except ValueError:
-        return False
-    return (
-        payload["conversation_id"] == event["thread_id"] == str(conversation_id)
-        and payload["run_id"] == event["run_id"] == run_id
-        and event["id"] == event["upstream_event_id"] == f"{steer_id}:steer:{payload['status']}"
-    )
-
-
 class RunSteerReceiptFeed:
     def __init__(self, context: OrgContext, conversation_id: UUID, run_id: UUID) -> None:
         self.context = context

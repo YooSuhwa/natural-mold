@@ -30,6 +30,7 @@ from app.agent_runtime.runtime_snapshot_catalog import (
 )
 from app.agent_runtime.stream_retry_policy import stream_retry_enabled
 from app.chat_recovery.fence import current_run_fence, lock_run_fence, open_run_session
+from app.config import settings
 from app.guardrails.pinning import _snapshot
 from app.security import key_provider
 
@@ -102,6 +103,8 @@ _SEPARATE_FIELDS = frozenset(
         "memory_search_scopes",
         "memory_recall_block",
         "recalled_memories",
+        # Implementation bound by the server; authorization runs again on every claim.
+        "steer_store",
     }
 )
 
@@ -139,6 +142,10 @@ def recovery_runtime_digest(cfg: AgentConfig) -> str | None:
         for field in fields(cfg)
         if field.name not in _SEPARATE_FIELDS
     }
+    # A missing delivery backend changes an eligible graph. Preserve existing pins
+    # for real chats, which have always had the database-backed implementation.
+    if settings.chat_steer_enabled and cfg.steer_store is None:
+        values["steer_delivery_unavailable"] = True
     context = cfg.org_context
     material = {
         "versions": _runtime_versions(),

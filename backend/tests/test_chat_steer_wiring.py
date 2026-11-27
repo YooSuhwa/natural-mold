@@ -28,7 +28,7 @@ from app.agent_runtime.runtime_config import RuntimeComponents
 from app.config import settings
 from app.database import tenant_session
 from app.schemas.conversation_graph_input import STEER_RECEIPTS_CHANNEL
-from app.services.conversation_run_steers import admit_steer, list_steers
+from app.services.conversation_run_steers import CONVERSATION_STEERS, admit_steer, list_steers
 from tests.authz import prepared_adapter_testkit as akit
 from tests.authz import prepared_materialization_testkit as kit
 from tests.conftest import TestSession
@@ -54,7 +54,7 @@ async def test_ordinary_compiler_wires_only_interactive_runs(
     expected: bool,
 ) -> None:
     monkeypatch.setattr(settings, "chat_steer_enabled", flag)
-    config = _cfg(thread_id=str(uuid4()), run_path=path)
+    config = _cfg(steer_store=CONVERSATION_STEERS, thread_id=str(uuid4()), run_path=path)
     run_id = str(uuid4()) if real_run else None
     compiler = Mock()
     monkeypatch.setattr(runtime_component_builder, "build_agent", compiler)
@@ -98,7 +98,12 @@ async def test_prepared_steer_gate_refuses_changed_identity_before_reading(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path, key: str
 ) -> None:
     monkeypatch.setattr(settings, "chat_steer_enabled", True)
-    config = _cfg(thread_id=str(uuid4()), agent_id=str(uuid4()), user_id=str(uuid4()))
+    config = _cfg(
+        steer_store=CONVERSATION_STEERS,
+        thread_id=str(uuid4()),
+        agent_id=str(uuid4()),
+        user_id=str(uuid4()),
+    )
     run_id = str(uuid4())
     (middleware,) = root_steer_middleware(
         config, run_id=run_id, is_trigger_mode=False, prepared_output_root=tmp_path

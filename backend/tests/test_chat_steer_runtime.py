@@ -18,7 +18,7 @@ from app.agent_runtime.chat_steer_checkpoint import confirmed_steer_ids
 from app.authz.conversation_scope import require_conversation_agent_id
 from app.models.conversation import Conversation
 from app.services import conversation_run_service
-from app.services.conversation_run_steers import admit_steer
+from app.services.conversation_run_steers import CONVERSATION_STEERS, admit_steer
 from app.tenancy.checkpoint_audit import run_configurable
 from tests.authz.unit_scope_fixture import unit_context
 from tests.conftest import TEST_USER_ID
@@ -77,7 +77,7 @@ async def test_two_inflight_steers_are_delivered_in_order_and_survive_compaction
     graph = create_deep_agent(
         model=model,
         tools=[find_suppliers],
-        middleware=[steer.RunSteerMiddleware()],
+        middleware=[steer.RunSteerMiddleware(CONVERSATION_STEERS)],
         checkpointer=saver,
     )
     config: RunnableConfig = {
@@ -138,7 +138,7 @@ async def test_two_inflight_steers_are_delivered_in_order_and_survive_compaction
     )
     fresh = create_deep_agent(
         model=InspectModel(responses=[AIMessage(content="reopened")]),
-        middleware=[steer.RunSteerMiddleware()],
+        middleware=[steer.RunSteerMiddleware(CONVERSATION_STEERS)],
         checkpointer=saver,
     )
     await fresh.ainvoke({"messages": [HumanMessage(content="resume work")]}, config)

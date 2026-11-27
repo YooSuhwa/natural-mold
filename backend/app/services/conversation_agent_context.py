@@ -34,6 +34,7 @@ from app.models.agent import AGENT_RUNTIME_PROFILE_SKILL_BUILDER
 from app.models.conversation import INDEPENDENT_JOB_SOURCE
 from app.services import chat_service
 from app.services.authorized_runtime import prepare_authorized_runtime
+from app.services.conversation_run_steers import CONVERSATION_STEERS
 from app.services.conversation_runtime_policy import snapshot_from_conversation
 from app.services.conversation_stream_protocol import stream_attr
 from app.services.runtime_links import runnable_agent
@@ -172,6 +173,7 @@ async def resolve_agent_context(
         agent_owner_user_id=str(agent.user_id),
         caller_user_id=str(user.id),
         archive_owner_user_id=str(conv.user_id),
+        steer_store=CONVERSATION_STEERS,
         credential_subject_user_id=str(identity.credential_subject_user_id),
         identity_mode=identity.identity_mode,
         agent_runtime_name=identity.runtime_name,
