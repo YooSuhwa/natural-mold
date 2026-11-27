@@ -109,6 +109,8 @@ describe('native application reads of AG-UI command responses', () => {
       }
       expect(h.reportsOf('eof')).toEqual([])
       expect(h.reportsOf('cancelled-eof')).toEqual([])
+      const expectedTerminalCount = outcome.type === 'cancelled' ? 1 : 0
+      expect(h.reportsOf('cancelled-terminal')).toHaveLength(expectedTerminalCount)
       expect(await reader.read()).toEqual({ done: true, value: undefined })
       reader.releaseLock()
       expect(h.reportsOf(expectedKind)).toEqual([
@@ -123,6 +125,7 @@ describe('native application reads of AG-UI command responses', () => {
       ])
       expect(h.reportsOf(expectedKind === 'eof' ? 'cancelled-eof' : 'eof')).toEqual([])
       h.controller.abort()
+      expect(h.reportsOf('cancelled-terminal')).toHaveLength(expectedTerminalCount)
       expect(h.reportsOf('invalid')).toEqual([])
     },
   )
@@ -167,6 +170,7 @@ describe('native application reads of AG-UI command responses', () => {
       h.write(events.map(frame).join(''))
       h.source.close()
       await h.readAll()
+      expect(h.reportsOf('cancelled-terminal')).toEqual([])
       expect(h.reportsOf('eof')).toEqual([])
       expect(h.reportsOf('cancelled-eof')).toEqual([])
     },
@@ -221,6 +225,17 @@ describe('native application reads of AG-UI command responses', () => {
       h.write(frame(start) + frame(cancelled))
       const reader = await h.reader()
       expect((await reader.read()).done).toBe(false)
+      expect(h.reportsOf('cancelled-terminal')).toEqual([
+        {
+          kind: 'cancelled-terminal',
+          document: expect.any(String),
+          secret,
+          threadId,
+          runId,
+          physicalRunId,
+        },
+      ])
+      expect(h.reportsOf('invalid')).toEqual([])
       if (operation === 'read rejection') {
         const failure = new Error('stream disconnected after terminal')
         h.source.error(failure)
@@ -235,6 +250,8 @@ describe('native application reads of AG-UI command responses', () => {
       }
       expect(h.reportsOf('eof')).toEqual([])
       expect(h.reportsOf('cancelled-eof')).toEqual([])
+      expect(h.reportsOf('cancelled-terminal')).toHaveLength(1)
+      expect(h.reportsOf('invalid')).toHaveLength(1)
     },
   )
 
