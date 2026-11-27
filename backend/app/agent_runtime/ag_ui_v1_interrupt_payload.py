@@ -8,10 +8,9 @@ from typing import Any
 
 from pydantic import ValidationError
 
-from app.agent_runtime.ag_ui_v1_memo_files import private_memo_file_call
+from app.agent_runtime.ag_ui_v1_memo_files import private_memo_file_call, redacted_file_args
 from app.agent_runtime.memory_event_projection import MEMORY_TOOL_NAMES
 from app.agent_runtime.protocol_egress import project_and_redact_protocol_data
-from app.agent_runtime.protocol_redaction import REDACTED_MEMORY_FIELD
 from app.agent_runtime.tools.ask_user import AskUserInput
 
 type JsonObject = dict[str, Any]
@@ -267,7 +266,7 @@ def _approvals(value: Mapping[str, Any]) -> JsonObject | None:
             review["session_consent_eligible"] = True
         public_configs.append(review)
         if private_file:
-            safe_args = {"file_path": REDACTED_MEMORY_FIELD}
+            safe_args = redacted_file_args(name)
         elif name == "ask_user":
             safe_args = _ask_args(args)
             if safe_args is None:

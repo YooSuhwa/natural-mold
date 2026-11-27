@@ -4,15 +4,18 @@ from __future__ import annotations
 
 import json
 from collections.abc import Sequence
-from typing import Any
+from pathlib import Path
+from typing import Any, Literal
 
 import pytest
 from ag_ui.core import BaseEvent
+from deepagents.backends.utils import format_grep_matches
 
 from app.agent_runtime.ag_ui_v1_calls import PublicToolCalls
 from app.agent_runtime.ag_ui_v1_interrupt_payload import interrupt_fields
 from app.agent_runtime.ag_ui_v1_memo_files import private_memo_file_call
 from app.agent_runtime.protocol_redaction import REDACTED_MEMORY_FIELD
+from app.agent_runtime.runtime_filesystem_secure_search import secure_grep
 
 MEMO = "/agents/00000000-0000-4000-8000-000000000001/AGENTS.md"
 OUTPUT = "/conversations/thread-a/AGENTS.md"
@@ -140,3 +143,51 @@ def test_protected_edit_approval_masks_bodies_descriptions_and_available_decisio
 def test_conflicting_historical_file_paths_do_not_establish_a_public_body() -> None:
     assert private_memo_file_call("read_file", {"file_path": OUTPUT, "path": MEMO})
     assert not private_memo_file_call("get_event", {"file_path": MEMO})
+
+
+@pytest.mark.parametrize("path", [MEMO, MEMO.rsplit("/", 1)[0], "/agents"])
+def test_explicit_memo_grep_keeps_the_pattern_and_matched_lines_private(path: str) -> None:
+    params = {"path": path, "pattern": PRIVATE, "output_mode": "content"}
+    calls = PublicToolCalls("run", lambda *_: True)
+    emitted = proposal(calls, "grep", params) + result(calls, "grep", PRIVATE)
+    assert PRIVATE not in write_wire(emitted)
+    assert REDACTED_MEMORY_FIELD in write_wire(emitted)
+    shown = interrupt_fields(
+        {
+            "action_requests": [{"name": "grep", "args": params, "description": PRIVATE}],
+            "review_configs": [
+                {"action_name": "grep", "allowed_decisions": ["approve", "reject", "edit"]}
+            ],
+        }
+    )
+    assert PRIVATE not in json.dumps(shown)
+    assert shown["metadata"]["moldy"]["action_requests"][0]["args"] == {
+        "path": REDACTED_MEMORY_FIELD
+    }
+
+
+@pytest.mark.parametrize("mode", ["files_with_matches", "count", "content"])
+def test_mixed_grep_keeps_only_ordinary_file_groups_from_native_formatter(
+    tmp_path: Path, mode: Literal["files_with_matches", "count", "content"]
+) -> None:
+    for path, body in [(MEMO, PRIVATE), (OUTPUT, PUBLIC)]:
+        file = tmp_path / path.lstrip("/")
+        file.parent.mkdir(parents=True)
+        file.write_text("found " + body + "\n", encoding="utf-8")
+    hits = secure_grep(tmp_path, "/", (), "found", None, None, frozenset())
+    matches = hits.matches or []
+    assert {hit["path"] for hit in matches} == {MEMO, OUTPUT}
+    formatted = format_grep_matches(matches, mode)
+    expected = format_grep_matches([hit for hit in matches if hit["path"] == OUTPUT], mode)
+    calls = PublicToolCalls("run", lambda *_: True)
+    proposal(calls, "grep", {"pattern": "found", "output_mode": mode})
+    [reply] = result(calls, "grep", formatted)
+    assert reply.model_dump()["content"] == expected
+
+
+def test_ordinary_grep_preserves_matched_lines_that_mention_the_memo() -> None:
+    content = OUTPUT + ":\n  1: A reference to " + MEMO
+    calls = PublicToolCalls("run", lambda *_: True)
+    proposal(calls, "grep", {"path": OUTPUT, "pattern": "reference", "output_mode": "content"})
+    [reply] = result(calls, "grep", content)
+    assert reply.model_dump()["content"] == content

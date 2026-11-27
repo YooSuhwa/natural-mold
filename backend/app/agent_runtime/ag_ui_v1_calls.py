@@ -16,7 +16,11 @@ from ag_ui.core import (
     ToolCallStartEvent,
 )
 
-from app.agent_runtime.ag_ui_v1_memo_files import private_memo_file_call
+from app.agent_runtime.ag_ui_v1_memo_files import (
+    private_memo_file_call,
+    public_grep_result,
+    redacted_file_args,
+)
 from app.agent_runtime.memory_event_projection import MEMORY_TOOL_NAMES
 from app.agent_runtime.message_utils import content_to_text
 from app.agent_runtime.protocol_egress import project_and_redact_protocol_data
@@ -265,7 +269,7 @@ class PublicToolCalls:
                     args = _ABSENT
             call.private_file |= private_memo_file_call(call.name, args)
             if call.private_file:
-                args = {"file_path": REDACTED_MEMORY_FIELD}
+                args = redacted_file_args(call.name)
             if args is not _ABSENT and args != "":
                 safe = project_and_redact_protocol_data(
                     "tools",
@@ -459,6 +463,8 @@ class PublicToolCalls:
             content = _result_content(value)
             if content is _ABSENT:
                 return events
+            if call.name == "grep":
+                content = public_grep_result(content)
             public = project_and_redact_protocol_data(
                 "tools",
                 {"name": call.name, "tool_call_id": raw_id, "content": content},
