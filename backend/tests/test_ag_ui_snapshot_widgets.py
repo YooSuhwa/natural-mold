@@ -128,7 +128,10 @@ def test_checkpoint_widget_reuses_live_id_and_emits_only_a_scoped_pointer() -> N
         method="messages",
         data=case.tool.model_dump(mode="json"),
     )
-    frames = ag_ui_v1_activities.PublicActivities().project(
+    activities = ag_ui_v1_activities.PublicActivities(
+        readable_widget_bindings=case.grants[case.physical]
+    )
+    frames = activities.project(
         event, run_id=_PUBLIC_RUN, public_message_id=_ISSUER, public_tool_call_id=call
     )
     assert len(frames) == 1 and isinstance(frames[0], ActivitySnapshotEvent)
