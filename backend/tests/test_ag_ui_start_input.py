@@ -4,7 +4,10 @@ from uuid import UUID, uuid4
 import pytest
 from ag_ui.core import RunAgentInput
 from fastapi import HTTPException
+from pydantic import TypeAdapter, ValidationError
 
+from app.schemas.conversation_graph_input import OMITTED_MEDIA_KEY, PublicGraphInput
+from app.schemas.conversation_run_input import ConversationRunInputResponse
 from app.services.ag_ui_start_input import parse_start_input, start_message_id
 
 CONVERSATION = UUID("eab59499-db09-4502-b8d0-fa89ab349801")
@@ -84,6 +87,58 @@ def test_only_moldy_handles_and_plain_text_enter_the_turn(caplog: pytest.LogCapt
         parse_start_input(request([user(parts)], {"attachmentIds": [str(uuid4())]}), CONVERSATION)
 
 
+@pytest.mark.parametrize(
+    "source",
+    [
+        {"type": "file", "provider": "elsewhere", "value": "private-handle"},
+        {"type": "url", "value": "https://example.invalid/private"},
+        {"type": "data", "value": "SEVMTE8=", "mimeType": "image/png"},
+    ],
+)
+def test_unsupported_only_media_retains_no_source_or_synthetic_user_text(
+    source: dict[str, str], caplog: pytest.LogCaptureFixture
+) -> None:
+    wire = request([user([{"type": "image", "source": source}])])
+    parsed = parse_start_input(wire, CONVERSATION)
+    public = {
+        "role": "user",
+        "id": start_message_id(CONVERSATION, wire.run_id, "local.user/1"),
+        "content": "",
+    }
+    assert parsed.attachment_ids == []
+    assert parsed.input_payload == {
+        "messages": [{**public, "additional_kwargs": {OMITTED_MEDIA_KEY: True}}]
+    }
+    response = ConversationRunInputResponse.model_construct(input_payload=parsed.input_payload)
+    assert response.model_dump(include={"input_payload"}) == {
+        "input_payload": {"messages": [public]}
+    }
+    assert "Skipping unsupported AG-UI media" in caplog.text
+    assert source["value"] not in caplog.text
+
+
+@pytest.mark.parametrize(
+    "message",
+    [
+        {"role": "user", "content": "", "additional_kwargs": {OMITTED_MEDIA_KEY: True}},
+        {"role": "user", "content": "", OMITTED_MEDIA_KEY: True},
+        {
+            "lc": 1,
+            "type": "constructor",
+            "id": ["HumanMessage"],
+            "kwargs": {"content": "", "additional_kwargs": {OMITTED_MEDIA_KEY: True}},
+        },
+    ],
+)
+def test_public_graph_clients_cannot_create_omission_metadata(message: dict[str, Any]) -> None:
+    adapter = TypeAdapter(PublicGraphInput[Any])
+    with pytest.raises(ValidationError):
+        adapter.validate_python({"messages": [message]})
+    # The appearance of the key as plain text has no protocol meaning.
+    safe = {"messages": [{"role": "user", "content": OMITTED_MEDIA_KEY}]}
+    assert adapter.validate_python(safe) == safe
+
+
 def test_attachment_only_edit_and_resource_only_send() -> None:
     uid = str(uuid4())
     edit = parse_start_input(
@@ -108,6 +163,8 @@ def test_attachment_only_edit_and_resource_only_send() -> None:
         ([user("old"), {"id": "a", "role": "assistant", "content": "not a user delta"}], {}),
         ([{**user("child"), "subagentRunId": "child"}], {}),
         ([user("")], {}),
+        ([user("hello\x00world")], {}),
+        ([user([{"type": "text", "text": "\x00"}])], {}),
         (
             [
                 user(
