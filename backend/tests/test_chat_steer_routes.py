@@ -72,10 +72,9 @@ async def test_steer_refuses_a_run_from_another_conversation(
     request = {"client_request_id": str(uuid4()), "text": "foreign scope probe"}
     foreign = f"{root}/{other_run_id}/steers"
     missing = f"{root}/{uuid4()}/steers"
-    for method in ("get", "post"):
-        kwargs = {"json": request} if method == "post" else {}
-        existing = await client.request(method, foreign, **kwargs)
-        absent = await client.request(method, missing, **kwargs)
+    for method, body in (("GET", None), ("POST", request)):
+        existing = await client.request(method, foreign, json=body)
+        absent = await client.request(method, missing, json=body)
         assert existing.status_code == absent.status_code == 404
         assert existing.json() == absent.json()
     assert (await client.get(f"/api/conversations/{conversation_id}/steers")).json() == []

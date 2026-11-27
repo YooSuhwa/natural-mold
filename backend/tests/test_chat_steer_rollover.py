@@ -4,12 +4,13 @@ from dataclasses import replace
 from uuid import uuid4
 
 import pytest
-from langgraph.checkpoint.base import empty_checkpoint
+from langgraph.checkpoint.base import ChannelVersions, empty_checkpoint
 from langgraph.checkpoint.memory import InMemorySaver
 from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.agent_runtime import checkpointer
+from app.agent_runtime.model_input_receipt import text_digest
 from app.authz.conversation_scope import require_conversation_agent_id
 from app.config import settings
 from app.models.conversation import Conversation
@@ -153,10 +154,10 @@ async def test_restart_after_checkpoint_before_ack_verifies_receipts_and_drains_
         STEER_RECEIPTS_CHANNEL: {
             "run_id": str(run.id),
             "ids": [str(proven.id)],
-            "staged_ids": [str(uncertain.id)],
+            "staged": {str(uncertain.id): text_digest(uncertain.text)},
         }
     }
-    versions = {STEER_RECEIPTS_CHANNEL: saver.get_next_version(None, None)}
+    versions: ChannelVersions = {STEER_RECEIPTS_CHANNEL: saver.get_next_version(None, None)}
     checkpoint["channel_versions"] = versions
     await saver.aput(
         {
