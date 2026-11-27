@@ -14,11 +14,8 @@ from app.authz.policies import PRIVATE, authz_policy
 from app.authz.service import AuthzService
 from app.dependencies import get_db, get_org_context, verify_csrf
 from app.error_codes import file_not_found
-from app.models.conversation import Conversation
-from app.models.conversation_goal import ConversationGoal
 from app.schemas.conversation_goal import (
     GoalActionRequest,
-    GoalDetails,
     GoalResponse,
     GoalWriteRequest,
 )
@@ -31,7 +28,7 @@ from app.services.conversation_goal_evidence import (
 from app.services.conversation_goal_service import (
     apply_goal_action,
     get_goal,
-    goal_enabled,
+    goal_response,
     ordinary_conversation,
     save_goal,
 )
@@ -41,24 +38,11 @@ from app.services.conversation_run_queue_service import require_queue_executable
 router = APIRouter(prefix="/api/conversations/{conversation_id}/goal", tags=["conversation-goals"])
 
 
-def _response(conversation: Conversation, goal: ConversationGoal | None) -> GoalResponse:
-    return GoalResponse(
-        enabled=(
-            ordinary_conversation(conversation)
-            and conversation.agent_lifecycle_state == "active"
-            and conversation.agent_id is not None
-            and goal_enabled(conversation.org_id)
-        ),
-        goal=GoalDetails.model_validate(goal) if goal else None,
-    )
-
-
-async def _executable(
+async def _require_goal_execution(
     db: AsyncSession, conversation_id: UUID, context: OrgContext, authz: AuthzService
-) -> Conversation:
+) -> None:
     agent_id = await require_queue_executable(db, conversation_id, context)
     await require_agent_run(context, agent_id, authz=authz)
-    return await lock_private_conversation(db, conversation_id, context)
 
 
 @router.get("", response_model=GoalResponse)
@@ -69,7 +53,7 @@ async def read_conversation_goal(
     context: OrgContext = Depends(get_org_context),
 ) -> GoalResponse:
     conversation = await require_private_conversation(db, conversation_id, context)
-    return _response(conversation, await get_goal(db, conversation))
+    return goal_response(conversation, await get_goal(db, conversation))
 
 
 @router.put("", response_model=GoalResponse, dependencies=[Depends(verify_csrf)])
@@ -81,8 +65,9 @@ async def put_conversation_goal(
     context: OrgContext = Depends(get_org_context),
     authz: AuthzService = Depends(bind_request_authz),
 ) -> GoalResponse:
-    conversation = await _executable(db, conversation_id, context, authz)
-    result = _response(conversation, await save_goal(db, conversation, payload))
+    await _require_goal_execution(db, conversation_id, context, authz)
+    conversation = await lock_private_conversation(db, conversation_id, context)
+    result = goal_response(conversation, await save_goal(db, conversation, payload))
     await db.commit()
     return result
 
@@ -97,10 +82,9 @@ async def change_conversation_goal_state(
     authz: AuthzService = Depends(bind_request_authz),
 ) -> GoalResponse:
     if payload.action == "resume":
-        conversation = await _executable(db, conversation_id, context, authz)
-    else:
-        conversation = await lock_private_conversation(db, conversation_id, context)
-    result = _response(conversation, await apply_goal_action(db, conversation, payload))
+        await _require_goal_execution(db, conversation_id, context, authz)
+    conversation = await lock_private_conversation(db, conversation_id, context)
+    result = goal_response(conversation, await apply_goal_action(db, conversation, payload))
     await db.commit()
     return result
 

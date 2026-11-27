@@ -22,6 +22,7 @@ from app.models.conversation import Conversation
 from app.models.conversation_goal import ConversationGoal, GoalAttempt, GoalTransitionIntent
 from app.models.conversation_run import RUN_TERMINAL_STATUSES, ConversationRun
 from app.models.conversation_run_input import ConversationRunInput
+from app.schemas.conversation_goal import GoalDetails, GoalResponse
 from app.services import conversation_run_service
 from app.tenancy.limits import Subject, UsageLimits
 
@@ -56,6 +57,18 @@ def goal_enabled(org_id: UUID) -> bool:
 
 def ordinary_conversation(conversation: Conversation) -> bool:
     return conversation.source in {"ui", "draft"} and conversation.side_chat_parent_id is None
+
+
+def goal_response(conversation: Conversation, goal: ConversationGoal | None) -> GoalResponse:
+    return GoalResponse(
+        enabled=(
+            ordinary_conversation(conversation)
+            and conversation.agent_lifecycle_state == "active"
+            and conversation.agent_id is not None
+            and goal_enabled(conversation.org_id)
+        ),
+        goal=GoalDetails.model_validate(goal) if goal is not None else None,
+    )
 
 
 def _context(conversation: Conversation) -> OrgContext:

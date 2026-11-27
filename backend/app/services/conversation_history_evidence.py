@@ -38,7 +38,9 @@ from app.agent_runtime.offload_storage_types import (
 )
 from app.agent_runtime.protocol_egress import project_and_redact_protocol_data
 from app.agent_runtime.runtime_config import runtime_data_dir
+from app.authz.conversation_scope import load_private_conversation
 from app.authz.org_context import OrgContext
+from app.error_codes import conversation_not_found
 from app.models.agent import Agent
 from app.models.conversation import Conversation
 from app.services.conversation_archive_public_text import (
@@ -445,11 +447,14 @@ async def run_history_reference(
 
 async def read_history_evidence(
     db: AsyncSession,
-    conversation: Conversation,
+    conversation_id: UUID,
     context: OrgContext,
     checkpoint_id: str,
     page: EvidencePage,
 ) -> HistoryEvidence:
+    conversation = await load_private_conversation(db, conversation_id, context)
+    if conversation is None:
+        raise conversation_not_found()
     if conversation.agent_id is None:
         raise EvidenceUnavailable
     saver = await loaded_conversation_checkpointer(conversation, context, db=db)

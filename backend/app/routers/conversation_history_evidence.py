@@ -8,9 +8,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.authz.org_context import OrgContext
 from app.authz.policies import PRIVATE, authz_policy
-from app.dependencies import get_db, get_org_context, owned_conversation
+from app.dependencies import get_db, get_org_context
 from app.error_codes import file_not_found
-from app.models.conversation import Conversation
 from app.services.conversation_history_evidence import (
     EvidenceDigestChanged,
     EvidencePage,
@@ -36,14 +35,17 @@ async def get_history_evidence(
     limit: Annotated[int, Query(ge=1, le=32)] = 10,
     expected_sha256: Annotated[str | None, Query(pattern=r"^[a-f0-9]{64}$")] = None,
     db: AsyncSession = Depends(get_db),
-    conversation: Conversation = Depends(owned_conversation),
     context: OrgContext = Depends(get_org_context),
 ) -> HistoryEvidence:
     """Read display-safe evidence at an authenticated conversation's exact checkpoint."""
     response.headers["Cache-Control"] = "private, no-store"
     try:
         return await read_history_evidence(
-            db, conversation, context, checkpoint_id, EvidencePage(offset, limit, expected_sha256)
+            db,
+            conversation_id,
+            context,
+            checkpoint_id,
+            EvidencePage(offset, limit, expected_sha256),
         )
     except EvidenceUnavailable as exc:
         raise file_not_found() from exc

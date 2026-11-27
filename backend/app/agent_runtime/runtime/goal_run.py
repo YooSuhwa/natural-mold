@@ -15,7 +15,7 @@ from langgraph.types import Command
 
 from app.agent_runtime.filesystem_permissions import UnsafeFilesystemPath, canonicalize_virtual_path
 from app.config import settings
-from app.services.artifact_paths import ArtifactPathError, validate_artifact_relative_path
+from app.storage.artifact_paths import ArtifactPathError, validate_artifact_relative_path
 
 # These are product-owned read operations selected by their factory keys, never model aliases.
 GOAL_READ_BUILTINS = frozenset(
