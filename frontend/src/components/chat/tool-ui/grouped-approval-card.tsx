@@ -4,8 +4,15 @@ import { useCallback, useMemo, useRef, useState, type ReactNode } from 'react'
 import { CheckIcon, ShieldCheckIcon } from 'lucide-react'
 import { useTranslations } from 'next-intl'
 import { useHiTL } from '@/lib/chat/hitl-context'
+import { canRespondToAction } from '@/lib/chat/hitl-readiness'
 import type { Decision } from '@/lib/types'
 import { MultiApprovalContext, type MultiApprovalContextValue } from './multi-approval-context'
+
+type GroupProps = { count: number; children: ReactNode }
+type SubmittedBatch = {
+  readonly generation: string
+  readonly slots: readonly { interruptId?: string | null; actionIndex: number }[]
+}
 
 /**
  * Groups the N `request_approval` cards of ONE multi-action interrupt into a
@@ -16,13 +23,34 @@ import { MultiApprovalContext, type MultiApprovalContextValue } from './multi-ap
  * once. Single-action interrupts never reach here (the group render passes them
  * through unwrapped), so the standalone card is unaffected.
  */
-export function GroupedApprovalCard({ count, children }: { count: number; children: ReactNode }) {
+export function GroupedApprovalCard(props: GroupProps) {
+  const hitl = useHiTL()
+  const [submitted, setSubmitted] = useState<SubmittedBatch>()
+  // A partial vote is only valid for the checkpoint that was reviewed. A fully
+  // submitted group also belongs in history when another group's approval opens.
+  const unrelated =
+    hitl?.canRespondTo &&
+    !submitted?.slots.some(({ interruptId, actionIndex }) =>
+      hitl.canRespondTo?.(interruptId, actionIndex),
+    )
+  const current = hitl?.canRespond === false ? null : hitl?.approvalGeneration
+  const generation = submitted && (!current || unrelated) ? submitted.generation : current
+  return <ApprovalGroup key={generation} {...props} retainSubmitted={setSubmitted} />
+}
+
+function ApprovalGroup({
+  count,
+  children,
+  retainSubmitted,
+}: GroupProps & { retainSubmitted: (batch: SubmittedBatch | undefined) => void }) {
   const t = useTranslations('chat.approval')
   const hitl = useHiTL()
+  const canRespond = hitl?.canRespond !== false
   // Each compact card registers its approve callback here (keyed by action index)
   // and unregisters when a row enters another decision flow, so "모두 승인"
   // only drives rows that are still eligible for automatic approval.
   const approversRef = useRef(new Map<number, () => Promise<boolean>>())
+  const [hasApprovers, setHasApprovers] = useState(false)
   const [resolvedActionIndexes, setResolvedActionIndexes] = useState<ReadonlySet<number>>(
     () => new Set(),
   )
@@ -46,11 +74,27 @@ export function GroupedApprovalCard({ count, children }: { count: number; childr
 
   const submitDecision = useCallback<MultiApprovalContextValue['submitDecision']>(
     async (actionIndex, decision, displayText, interruptId) => {
+      if (
+        !canRespondToAction(hitl, {
+          hitl_interrupt_id: interruptId,
+          hitl_action_index: actionIndex,
+        })
+      ) {
+        throw new Error('Approval is not ready')
+      }
       setBatchError(false)
       stagedRef.current.set(actionIndex, { decision, displayText, interruptId })
       if (stagedRef.current.size < count) return
 
       const batch = [...stagedRef.current.entries()].sort(([left], [right]) => left - right)
+      if (hitl?.approvalGeneration)
+        retainSubmitted({
+          generation: hitl.approvalGeneration,
+          slots: batch.map(([actionIndex, item]) => ({
+            actionIndex,
+            interruptId: item.interruptId,
+          })),
+        })
       try {
         if (hitl?.registerDecision) {
           await Promise.all(
@@ -69,6 +113,7 @@ export function GroupedApprovalCard({ count, children }: { count: number; childr
           )
         }
       } catch (error) {
+        retainSubmitted(undefined)
         stagedRef.current.clear()
         resolvedActionIndexesRef.current = new Set()
         setResolvedActionIndexes(new Set())
@@ -78,16 +123,18 @@ export function GroupedApprovalCard({ count, children }: { count: number; childr
         throw error
       }
     },
-    [count, hitl],
+    [count, hitl, retainSubmitted],
   )
 
   const contextValue = useMemo<MultiApprovalContextValue>(
     () => ({
       register: (idx, approve) => {
         approversRef.current.set(idx, approve)
+        setHasApprovers(true)
       },
       unregister: (idx) => {
         approversRef.current.delete(idx)
+        if (!approversRef.current.size) setHasApprovers(false)
       },
       resolve: (idx) => {
         const current = resolvedActionIndexesRef.current
@@ -107,14 +154,14 @@ export function GroupedApprovalCard({ count, children }: { count: number; childr
   )
 
   const approveAll = useCallback(async () => {
-    if (approvingAll || allActionsCompleted) return
+    if (!canRespond || approvingAll || allActionsCompleted) return
     setApprovingAll(true)
     const approvals = [...approversRef.current.entries()]
       .filter(([idx]) => !resolvedActionIndexes.has(idx))
       .map(([, approve]) => approve())
     await Promise.allSettled(approvals)
     setApprovingAll(false)
-  }, [allActionsCompleted, approvingAll, resolvedActionIndexes])
+  }, [allActionsCompleted, approvingAll, canRespond, resolvedActionIndexes])
 
   return (
     <MultiApprovalContext.Provider value={contextValue}>
@@ -140,7 +187,13 @@ export function GroupedApprovalCard({ count, children }: { count: number; childr
           <button
             type="button"
             onClick={() => void approveAll()}
-            disabled={approvingAll || allActionsCompleted}
+            disabled={
+              !canRespond ||
+              ((hitl?.canRespond !== undefined || hitl?.canRespondTo !== undefined) &&
+                !hasApprovers) ||
+              approvingAll ||
+              allActionsCompleted
+            }
             data-testid="approval-approve-all-button"
             data-variant="solid"
             className="moldy-action-pill moldy-status-success ml-auto disabled:opacity-50"
