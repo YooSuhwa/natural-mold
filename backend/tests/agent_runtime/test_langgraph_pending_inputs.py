@@ -351,3 +351,17 @@ async def test_fallback_does_not_expose_unrelated_raw_writes(saved: StateSnapsho
     with pytest.raises(PendingInputStateUnavailable):
         await _pinned_events(agent)
     agent.checkpointer.aget_tuple.assert_awaited_once_with(owned.config)
+
+
+async def test_pinned_raw_writes_require_the_invoked_graph_saver(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    agent = _ForkedAgent(_snapshot("ours", "run-1"))
+    monkeypatch.delattr(agent, "checkpointer")
+
+    def forbid_global_pool() -> None:
+        pytest.fail("A pinned run may only read from the invoked graph's saver")
+
+    monkeypatch.setattr("app.agent_runtime.checkpointer.get_checkpointer", forbid_global_pool)
+    with pytest.raises(PendingInputStateUnavailable):
+        await _pinned_events(agent)
