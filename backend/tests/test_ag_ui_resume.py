@@ -16,6 +16,7 @@ from app.approvals import service as approvals
 from app.authz.org_context import OrgContext
 from app.dependencies import CurrentUser
 from app.exceptions import AppError
+from app.models.agent_lifecycle import ConversationRunAgent
 from app.models.approval_request import ApprovalRequest
 from app.models.conversation import Conversation
 from app.models.conversation_run import ConversationRun
@@ -24,6 +25,7 @@ from app.routers.conversation_agent_protocol_consent import apply_session_consen
 from app.routers.conversation_agent_protocol_interrupts import ThreadInterrupt
 from app.routers.session_consent_scope import SessionConsentPayload, SessionConsentTarget
 from app.services import ag_ui_pending_checkpoint, ag_ui_resume
+from app.services.ag_ui_legacy_child_binding import LegacyChildBinding
 from app.services.ag_ui_pending_checkpoint import PendingCheckpoint
 from tests.authz.g03_support import auth_payload, seed_conversation
 from tests.authz.unit_scope_fixture import ensure_unit_scope
@@ -592,3 +594,102 @@ async def test_native_approval_edits_cannot_change_a_governed_memo(
             await waiting.verify(answer)
         assert denied.value.status == 422
         assert waiting.rows[FIRST].status == "pending"
+
+
+@pytest.mark.parametrize(
+    ("existing_record", "decision", "identity_mode"),
+    [
+        pytest.param(False, "approve", None, id="new-masked-record"),
+        pytest.param(True, "approve", None, id="existing-reject-only-record"),
+        pytest.param(False, "edit", None, id="checkpoint-disallows-edit"),
+        pytest.param(False, "approve", "per_user", id="enrolled-root-keeps-reject-only"),
+    ],
+)
+async def test_verified_legacy_delegate_can_consume_only_a_new_record_for_its_current_choice(
+    db: AsyncSession,
+    monkeypatch: pytest.MonkeyPatch,
+    existing_record: bool,
+    decision: str,
+    identity_mode: str | None,
+) -> None:
+    payload = _approval("send_email", body="dummy-private-message")
+    payload["review_configs"][0]["allowed_decisions"] = ["approve", "reject"]
+    waiting = await _pending(
+        db, monkeypatch, _slot(FIRST, payload, CHILD_NAMESPACE), recorded=False
+    )
+
+    root_id = waiting.parent.agent_id
+    assert root_id is not None
+    db.add(
+        ConversationRunAgent(
+            run_id=waiting.parent.id,
+            agent_id=root_id,
+            agent_id_snapshot=root_id,
+            role="root",
+            path=[str(root_id)],
+            identity_mode_at_accept=identity_mode,
+        )
+    )
+    await db.commit()
+
+    async def proven_legacy_delegate(
+        db: AsyncSession,
+        *,
+        conversation: Conversation,
+        context: OrgContext,
+        parent_run: ConversationRun,
+        pending: PendingCheckpoint,
+    ) -> frozenset[str]:
+        assert db is waiting.db and conversation.id == waiting.conversation.id
+        assert context == waiting.context and parent_run.id == waiting.parent.id
+        assert [(item["id"], item["ns"]) for item in pending.interrupts] == [
+            (FIRST, CHILD_NAMESPACE)
+        ]
+        pending.legacy_child_bindings[FIRST] = LegacyChildBinding(
+            f"agent_{uuid4().hex}", "native_call", "|".join(CHILD_NAMESPACE), parent_run.id
+        )
+        return frozenset({FIRST})
+
+    monkeypatch.setattr(ag_ui_resume, "require_pending_child_authority", proven_legacy_delegate)
+    if existing_record:
+        await approvals.record_pending(
+            db,
+            waiting.parent,
+            [approvals.PendingInterrupt(FIRST, payload, CHILD_NAMESPACE)],
+            origin=approvals.RunOrigin(),
+            secret_values=None,
+        )
+        await db.commit()
+
+    answer: dict[str, Any] = {"type": decision}
+    if decision == "edit":
+        answer["edited_action"] = {"args": {"body": "Edited"}}
+    lookup = select(ApprovalRequest).where(
+        ApprovalRequest.run_id == waiting.parent.id, ApprovalRequest.interrupt_id == FIRST
+    )
+    if existing_record or decision == "edit" or identity_mode is not None:
+        with pytest.raises(AppError) as denied:
+            await waiting.verify(_resolved(FIRST, answer))
+        assert denied.value.status == 422
+        saved = await db.scalar(lookup)
+        if existing_record or identity_mode is not None:
+            assert saved is not None
+            assert (saved.status, saved.decision_no, saved.resumed_run_id) == ("pending", 0, None)
+            assert saved.actions[0]["allowed_decisions"] == ["reject"]
+            assert saved.actions[0]["name"] == saved.actions[0]["args"] == "<redacted>"
+        else:
+            assert saved is None
+        return
+
+    verified = await waiting.verify(_resolved(FIRST, answer))
+    row = await db.scalar(lookup)
+    assert row is not None and verified.reconstructed_legacy_rows == {row.id}
+    assert row.status == "pending" and row.actions[0]["allowed_decisions"] == ["reject"]
+    assert row.actions[0]["name"] == row.actions[0]["args"] == "<redacted>"
+    child = await waiting.child()
+    await waiting.claim(verified, child)
+    await db.commit()
+    await db.refresh(row)
+    assert (row.status, row.decisions, row.resumed_run_id) == ("approved", ["approve"], child.id)
+    assert row.actions[0]["allowed_decisions"] == ["approve"]
+    assert row.actions[0]["name"] == row.actions[0]["args"] == "<redacted>"
