@@ -48,3 +48,4 @@ class ChildTaskPage(BaseModel):
     items: list[ChildTaskResponse]
     next_offset: int | None
     enabled: bool
+    allow_legacy_details: bool

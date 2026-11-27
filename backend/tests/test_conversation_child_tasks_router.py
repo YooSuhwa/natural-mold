@@ -7,13 +7,14 @@ from uuid import UUID, uuid4
 import pytest
 from fastapi import FastAPI
 from httpx import AsyncClient
-from sqlalchemy import delete, update
+from sqlalchemy import delete, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.authz.org_context import OrgContext
 from app.config import settings
 from app.dependencies import get_org_context
 from app.models.agent import Agent
+from app.models.agent_lifecycle import ConversationRunAgent
 from app.models.agent_subagent import AgentSubAgentLink
 from app.models.conversation import Conversation
 from app.models.conversation_child_task import ConversationChildTask
@@ -314,6 +315,76 @@ async def test_child_page_prioritizes_actionable_work_and_returns_each_item_once
     assert item["checkpointed"] is True and item["brief"] == "Child 사례 검토"
 
 
+async def test_legacy_detail_access_uses_immutable_root_in_this_conversation(
+    db: AsyncSession,
+    client: AsyncClient,
+    delegation: Delegation,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    ctx = delegation.context
+    captured_root = (
+        await db.scalars(
+            select(ConversationRunAgent).where(
+                ConversationRunAgent.run_id == delegation.run_id,
+                ConversationRunAgent.role == "root",
+            )
+        )
+    ).one()
+    assert captured_root.identity_mode_at_accept is not None and captured_root.agent_id is not None
+
+    # Simulate retained history from before child controls captured the root identity.
+    history = Conversation(
+        agent_id=captured_root.agent_id,
+        user_id=ctx.user_id,
+        org_id=ctx.org_id,
+        tenant_id=ctx.tenant_id,
+        agent_name_snapshot="Root",
+        last_activity_at=datetime.now(UTC),
+    )
+    db.add(history)
+    await db.flush()
+    historical_run = ConversationRun(
+        conversation_id=history.id,
+        agent_id=captured_root.agent_id,
+        user_id=ctx.user_id,
+        org_id=ctx.org_id,
+        tenant_id=ctx.tenant_id,
+        source="chat",
+        status="completed",
+    )
+    db.add(historical_run)
+    await db.flush()
+    db.add(
+        ConversationRunAgent(
+            run_id=historical_run.id,
+            agent_id=captured_root.agent_id,
+            agent_id_snapshot=captured_root.agent_id_snapshot,
+            role="root",
+            identity_mode_at_accept=None,
+            path=[],
+        )
+    )
+    # Removing current child material must not reopen an obsolete detail route.
+    await db.execute(
+        delete(ConversationChildTask).where(ConversationChildTask.run_id == delegation.run_id)
+    )
+    await db.execute(
+        delete(AgentSubAgentLink).where(AgentSubAgentLink.parent_agent_id == captured_root.agent_id)
+    )
+    await db.commit()
+    history_url = f"/api/conversations/{history.id}/child-tasks"
+    enabled_history = await client.get(history_url)
+    assert enabled_history.status_code == 200
+    assert enabled_history.json()["allow_legacy_details"] is False
+    monkeypatch.setattr(settings, "child_tasks_enabled", False)
+    new_history = await client.get(delegation.base)
+    old_history = await client.get(history_url)
+    assert new_history.status_code == old_history.status_code == 200
+    assert new_history.json()["items"] == old_history.json()["items"] == []
+    assert new_history.json()["allow_legacy_details"] is False
+    assert old_history.json()["allow_legacy_details"] is True
+
+
 async def test_task_id_in_another_org_is_indistinguishable_from_unknown(
     db: AsyncSession,
     client: AsyncClient,
@@ -352,7 +423,12 @@ async def test_task_id_in_another_org_is_indistinguishable_from_unknown(
     other_context = OrgContext(tenant_id=ctx.tenant_id, org_id=other.id, user_id=ctx.user_id)
     monkeypatch.setitem(test_app.dependency_overrides, get_org_context, lambda: other_context)
     base = f"/api/conversations/{own.id}/child-tasks"
-    assert (await client.get(base)).json() == {"items": [], "enabled": True, "next_offset": None}
+    assert (await client.get(base)).json() == {
+        "items": [],
+        "enabled": True,
+        "next_offset": None,
+        "allow_legacy_details": False,
+    }
     known = await client.post(f"{base}/{delegation.child_id}/cancel")
     unknown = await client.post(f"{base}/{uuid4()}/cancel")
     assert known.status_code == unknown.status_code == 404

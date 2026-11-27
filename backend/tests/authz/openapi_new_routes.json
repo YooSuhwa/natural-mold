@@ -35261,6 +35261,10 @@
     },
     "ChildTaskPage": {
       "properties": {
+        "allow_legacy_details": {
+          "title": "Allow Legacy Details",
+          "type": "boolean"
+        },
         "enabled": {
           "title": "Enabled",
           "type": "boolean"
@@ -35287,7 +35291,8 @@
       "required": [
         "items",
         "next_offset",
-        "enabled"
+        "enabled",
+        "allow_legacy_details"
       ],
       "title": "ChildTaskPage",
       "type": "object"

@@ -13,6 +13,7 @@ from app.authz.org_context import OrgContext
 from app.authz.run_decisions import open_request_memo
 from app.config import settings
 from app.exceptions import AppError, ConflictError, NotFoundError
+from app.models.agent_lifecycle import ConversationRunAgent
 from app.models.conversation_child_task import ConversationChildInstruction, ConversationChildTask
 from app.models.conversation_run import ConversationRun
 from app.schemas.conversation_child_task import (
@@ -71,6 +72,25 @@ def _in_conversation(
     )
 
 
+async def _allow_legacy_details(
+    db: AsyncSession, conversation_id: UUID, context: OrgContext
+) -> bool:
+    # The immutable root pin also covers runs that never launched a child. Filtering
+    # on child rows here would expose the existence of a currently inaccessible task.
+    accepted_root = (
+        select(ConversationRunAgent.id)
+        .join(ConversationRun, ConversationRun.id == ConversationRunAgent.run_id)
+        .where(
+            ConversationRun.conversation_id == conversation_id,
+            ConversationRun.run_source == "CHAT",
+            private_run_predicate(context),
+            ConversationRunAgent.role == "root",
+            ConversationRunAgent.identity_mode_at_accept.is_not(None),
+        )
+    )
+    return not await db.scalar(select(accepted_root.exists()))
+
+
 async def list_child_tasks(
     db: AsyncSession,
     conversation_id: UUID,
@@ -80,6 +100,8 @@ async def list_child_tasks(
     offset: int = 0,
 ) -> ChildTaskPage:
     await require_private_conversation(db, conversation_id, context)
+    enabled = settings.child_tasks_enabled
+    allow_legacy = not enabled and await _allow_legacy_details(db, conversation_id, context)
     child_ids = (
         await db.scalars(
             _in_conversation(conversation_id, context)
@@ -109,7 +131,8 @@ async def list_child_tasks(
     return ChildTaskPage(
         items=result,
         next_offset=offset + limit if len(child_ids) > limit else None,
-        enabled=settings.child_tasks_enabled,
+        enabled=enabled,
+        allow_legacy_details=allow_legacy,
     )
 
 
