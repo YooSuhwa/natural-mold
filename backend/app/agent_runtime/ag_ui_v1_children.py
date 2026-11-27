@@ -93,9 +93,17 @@ class PublicChildren:
             for call_id, ns, _ in self.visibility.bindings
             if call_id == tool_id and ns in self.visibility.namespaces and ns
         ]
-        if len(matches) != 1:
+        historical = {
+            ns
+            for call_id, ns in self.visibility.historical_bindings
+            if call_id == tool_id and ns in self.visibility.namespaces and ns
+        }
+        # Keep duplicate durable rows ambiguous. An independently proven
+        # historical relation permits replay only for this same call and scope.
+        scopes = set(matches) | historical
+        if len(matches) > 1 or len(scopes) != 1:
             return False
-        child = matches[0]
+        child = next(iter(scopes))
         # LangGraph may insert structural graph segments between two actual
         # subagents. Only an independently authorized child row denotes an issuer.
         parent = next(
@@ -107,6 +115,13 @@ class PublicChildren:
             (),
         )
         return self.owner(parent) == owner
+
+    def historical_only(self, namespace: Namespace) -> bool:
+        if self.visibility.allow_legacy_details or not namespace:
+            return False
+        return any(ns == namespace for _, ns in self.visibility.historical_bindings) and not any(
+            ns == namespace for _, ns, _ in self.visibility.bindings
+        )
 
     def visible(self, namespace: Namespace) -> bool:
         if not namespace or self.visibility.allow_legacy_details:
@@ -143,7 +158,10 @@ class PublicChildren:
             }
             if len(matches) == 1:
                 self._task_handles[owner] = matches.pop()
-            elif not self.visibility.allow_legacy_details:
+            elif not (
+                self.visibility.allow_legacy_details
+                or (not matches and (cause, namespace) in self.visibility.historical_bindings)
+            ):
                 # Independent grants for this call and this namespace do not
                 # establish that the former actually spawned the latter.
                 public_call = None

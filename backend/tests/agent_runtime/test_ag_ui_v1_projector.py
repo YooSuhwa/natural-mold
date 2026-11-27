@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 from collections.abc import Sequence
+from pathlib import Path
 from typing import Any
 
 import pytest
@@ -293,3 +294,90 @@ def test_checkpoint_only_child_receives_lifecycle_and_authoritative_expiry(legac
     assert result[2]["outcome"]["interruptIds"] == ["verified"]
     assert slot["expiresAt"] == "2026-11-28T14:00:00Z"
     assert bool(slot["metadata"]["moldy"].get("legacyInterruptAccess")) is legacy
+
+
+def test_archived_delegation_restores_its_issued_call_without_a_child_task_handle() -> None:
+    fixture = Path(__file__).parent / "fixtures/delegated_chat_0_7_32.jsonl"
+    rows: list[StoredProtocolEvent] = [
+        json.loads(line) for line in fixture.read_text().splitlines()
+    ]
+    ns = next(tuple(row["namespace"]) for row in rows if row["namespace"])
+    raw_call = "call-research"
+    policy = ChildVisibility(
+        False,
+        frozenset({raw_call}),
+        frozenset({ns}),
+        historical_bindings=frozenset({(raw_call, ns)}),
+    )
+    stream = AgUiV1Projector(
+        thread_id=rows[0]["thread_id"], run_id=rows[0]["run_id"], child_visibility=policy
+    )
+    frames = wire([frame for row in rows for frame in stream.project(row)])
+    [call] = [f for f in frames if f["type"] == "TOOL_CALL_START"]
+    [child] = [f for f in frames if f["type"] == "SUBAGENT_STARTED"]
+    [result] = [f for f in frames if f["type"] == "TOOL_CALL_RESULT"]
+    assert child["parentToolCallId"] == result["toolCallId"] == call["toolCallId"]
+    assert child["parentMessageId"] == call["parentMessageId"]
+    assert child["subagentRunId"] == stream.owner_for(ns)
+    assert stream.owner_for((*ns, "other-child")) is None
+    assert stream.child_task_handles == {}
+    assert "legacyInterruptAccess" not in json.dumps(frames)
+
+
+def test_ambiguous_historical_call_and_current_slot_never_create_actions() -> None:
+    policy = ChildVisibility(
+        False,
+        frozenset({"call"}),
+        frozenset({CHILD, HIDDEN}),
+        historical_bindings=frozenset({("call", CHILD), ("call", HIDDEN)}),
+    )
+    stream = projector(policy=policy)
+    assert (
+        stream.project(
+            event(
+                "messages",
+                {
+                    "id": "issuer",
+                    "type": "ai",
+                    "tool_calls": [
+                        {"id": "call", "name": "task", "args": {"description": "private"}}
+                    ],
+                },
+            )
+        )
+        == []
+    )
+    [_, started] = wire(
+        stream.project(
+            event(
+                "lifecycle",
+                {
+                    "event": "started",
+                    "namespace": list(CHILD),
+                    "cause": {"type": "toolCall", "tool_call_id": "call"},
+                },
+            )
+        )
+    )
+    assert "parentToolCallId" not in started
+    assert stream.child_task_handles == {}
+    approval = {"type": "ask_user", "question": "Old private request?"}
+    # The original journal can repeat this slot on a root values frame first.
+    stream.project(event("values", {"__interrupt__": [{"id": "spent-slot", "value": approval}]}))
+    stream.project(
+        event("input.requested", {"interrupt_id": "spent-slot", "payload": approval}, CHILD)
+    )
+    [closed] = wire(
+        stream.project(event("lifecycle", {"event": "interrupted", "namespace": list(CHILD)}))
+    )
+    assert closed["outcome"] == {"type": "suspended", "interruptIds": []}
+    final = wire(
+        stream.finish(
+            "interrupted",
+            interrupts=[{"id": "spent-slot", "ns": [], "value": approval}],
+            legacy_child_ids={"spent-slot"},
+        )
+    )
+    assert final[-1]["code"] == "pending_input_unavailable"
+    assert "spent-slot" not in json.dumps(final)
+    assert "Old private request" not in json.dumps(final)
