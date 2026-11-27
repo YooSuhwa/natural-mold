@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import replace
+from uuid import uuid4
 
 import pytest
 
@@ -116,3 +117,23 @@ def test_key_rotation_accepts_retained_issuer_and_rejects_retired_issuer(
     with pytest.raises(cursors.InvalidReadCursor):
         cursors.parse_cursor(old, _SCOPE)
     assert cursors.parse_cursor(new, _SCOPE).frame == 13
+
+
+def test_swapping_two_historical_issuers_invalidates_the_reader_cursor() -> None:
+    from app.agent_runtime.ag_ui_visibility import ChildVisibility
+    from app.models.conversation import Conversation
+    from app.services.ag_ui_read_target import cursor_scope_for
+
+    room, run = Conversation(id=uuid4()), uuid4()
+    calls, scopes = frozenset({"a", "b"}), frozenset({("one",), ("two",)})
+    prior = ChildVisibility(
+        False, calls, scopes, historical_bindings=frozenset({("a", ("one",)), ("b", ("two",))})
+    )
+    changed = ChildVisibility(
+        False, calls, scopes, historical_bindings=frozenset({("a", ("two",)), ("b", ("one",))})
+    )
+    original = cursor_scope_for(room, "public", run, "1", None, prior, frozenset(), None, ())
+    replacement = cursor_scope_for(room, "public", run, "1", None, changed, frozenset(), None, ())
+    cursor = cursors.frame_cursor(original, ordinal=3, frame=0, source_id="digest", generation="row")
+    with pytest.raises(cursors.InvalidReadCursor):
+        cursors.parse_cursor(cursor, replacement)
