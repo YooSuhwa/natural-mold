@@ -63,6 +63,43 @@ function stream(frames: readonly object[], runId = publicRunId) {
   })
 }
 
+function primaryResponse(runId = publicRunId, workerId?: string) {
+  let body!: ReadableStreamDefaultController<Uint8Array>
+  const response = new Response(
+    new ReadableStream<Uint8Array>({
+      start(controller) {
+        body = controller
+      },
+    }),
+    {
+      headers: {
+        'Content-Type': 'text/event-stream',
+        'X-Run-Id': runId,
+        ...(workerId
+          ? { 'X-Moldy-Run-Id': workerId }
+          : {
+              'X-Moldy-Input-Id': 'pending-input',
+              'X-Moldy-Input-Status': 'pending',
+              'X-Moldy-Input-Position': '2',
+              'X-Moldy-Input-Revision': '1',
+            }),
+      },
+    },
+  )
+  const send = (frames: readonly object[]) =>
+    body.enqueue(new TextEncoder().encode(encodeFrames(frames)))
+  return {
+    response,
+    start: () => send([begin(runId)]),
+    finish: () => {
+      if (body.desiredSize !== null) {
+        send(answer(runId).slice(1))
+        body.close()
+      }
+    },
+  }
+}
+
 type RequestLog = { url: URL; init: RequestInit; method: string; headers: Headers }
 
 function intercept(reply: (request: RequestLog, index: number) => Response | Promise<Response>) {
@@ -479,20 +516,33 @@ describe('MoldyAgUiAgent HTTP contract', () => {
     },
   )
 
-  it('delivers a standard first-event error without requiring a start frame or creating another run', async () => {
-    const observer = vi.fn()
-    const calls = intercept(() =>
-      stream([{ type: 'RUN_ERROR', message: 'The run could not be started.', code: 'REJECTED' }]),
-    )
-    const agent = new MoldyAgUiAgent({ conversationId: threadId, onPublicEvent: observer })
-    agent.messages = [message]
-    await agent.runAgent({ runId: publicRunId }).catch(() => undefined)
-    expect(observer).toHaveBeenCalledWith(
-      expect.objectContaining({ type: 'RUN_ERROR', code: 'REJECTED' }),
-      { source: 'run' },
-    )
-    expect(calls).toHaveLength(1)
-  })
+  it.each(['run', 'attach'] as const)(
+    'correlates a standalone error with its public %s source',
+    async (source) => {
+      const observer = vi.fn()
+      const calls = intercept(({ url }) =>
+        url.pathname === `${base}/snapshot`
+          ? Response.json(snapshot(publicRunId))
+          : stream([
+              { type: 'RUN_ERROR', message: 'The run could not be started.', code: 'REJECTED' },
+            ]),
+      )
+      const agent = new MoldyAgUiAgent({ conversationId: threadId, onPublicEvent: observer })
+      agent.messages = [message]
+      const result =
+        source === 'run'
+          ? agent.runAgent({ runId: publicRunId })
+          : agent.connectAgent({ runId: 'generated-by-sdk' })
+      await result.catch(() => undefined)
+      expect(observer).toHaveBeenCalledWith(
+        expect.objectContaining({ type: 'RUN_ERROR', code: 'REJECTED' }),
+        { source, runId: publicRunId },
+      )
+      expect(calls.map(({ method }) => method)).toEqual(
+        source === 'run' ? ['POST'] : ['GET', 'GET'],
+      )
+    },
+  )
 
   it('declines a stale reconnect when the public selection changed', async () => {
     const calls = intercept(() => Response.json(snapshot(nextRunId)))
@@ -537,6 +587,180 @@ describe('MoldyAgUiAgent HTTP contract', () => {
       finishOrgSwitch()
     }
   })
+
+  it.each([false, true])(
+    'publishes one pinned claim after a primary run starts (preceding worker read: %s)',
+    async (readPrecedingWorker) => {
+      const pending = primaryResponse()
+      const calls = intercept(({ method, url }) => {
+        if (method === 'POST') return pending.response
+        if (!url.searchParams.has('runId')) return Response.json(snapshot(nextRunId))
+        return Response.json({ ...snapshot(publicRunId), runId: publicRunId })
+      })
+      const onAccepted = vi.fn()
+      const onRunClaimed = vi.fn()
+      const onPublicEvent = vi.fn()
+      const agent = new MoldyAgUiAgent({
+        conversationId: threadId,
+        onAccepted,
+        onRunClaimed,
+        onPublicEvent,
+      })
+      agent.messages = [message]
+      const result = agent.runAgent({ runId: publicRunId })
+      await vi.waitFor(() => expect(onAccepted).toHaveBeenCalledOnce())
+      expect(onAccepted).toHaveBeenCalledWith(
+        expect.objectContaining({ publicRunId, physicalRunId: null }),
+      )
+      expect(onRunClaimed).not.toHaveBeenCalled()
+      expect(onPublicEvent).not.toHaveBeenCalled()
+      expect(calls).toHaveLength(1)
+
+      if (readPrecedingWorker) {
+        expect((await agent.readSnapshot()).activeRunId).toBe(nextRunId)
+        expect(onRunClaimed).not.toHaveBeenCalled()
+      }
+      pending.start()
+      await vi.waitFor(() => expect(onRunClaimed).toHaveBeenCalledOnce())
+      expect(onRunClaimed).toHaveBeenCalledWith({ publicRunId, physicalRunId })
+      pending.finish()
+      await result
+      expect(calls.map(({ method, url }) => [method, url.pathname, [...url.searchParams]])).toEqual(
+        [
+          ['POST', `${base}/runs`, []],
+          ...(readPrecedingWorker ? [['GET', `${base}/snapshot`, []]] : []),
+          ['GET', `${base}/snapshot`, [['runId', publicRunId]]],
+        ],
+      )
+      expect(onAccepted).toHaveBeenCalledOnce()
+      expect(onRunClaimed).toHaveBeenCalledOnce()
+      expect(onPublicEvent).toHaveBeenCalledTimes(answer().length)
+      for (const frame of answer()) {
+        expect(onPublicEvent).toHaveBeenCalledWith(expect.objectContaining(frame), {
+          source: 'run',
+          runId: publicRunId,
+        })
+      }
+    },
+  )
+
+  it.each([
+    ['another snapshot', { runId: nextRunId }],
+    ['another active run', { activeRunId: nextRunId }],
+    ['an idle conversation', { activeRunId: null }],
+    ['a worker that has not claimed the run', { physicalRunId: null }],
+  ] as const)('ignores a queued claim snapshot for %s', async (_label, fields) => {
+    const pending = primaryResponse()
+    const calls = intercept(({ method }) =>
+      method === 'POST'
+        ? pending.response
+        : Response.json({ ...snapshot(publicRunId), runId: publicRunId, ...fields }),
+    )
+    const onRunClaimed = vi.fn()
+    const agent = new MoldyAgUiAgent({ conversationId: threadId, onRunClaimed })
+    agent.messages = [message]
+    const result = agent.runAgent({ runId: publicRunId })
+    pending.start()
+    await vi.waitFor(() => expect(calls.map(({ method }) => method)).toEqual(['POST', 'GET']))
+    pending.finish()
+    await result
+    expect(onRunClaimed).not.toHaveBeenCalled()
+  })
+
+  it('ignores an old primary start after the next primary receipt has arrived', async () => {
+    const pending = primaryResponse()
+    const replacement = primaryResponse(nextRunId, 'worker-2')
+    const calls = intercept(({ method }, index) => {
+      if (method === 'GET') return Response.json({ ...snapshot(publicRunId), runId: publicRunId })
+      return index === 1 ? pending.response : replacement.response
+    })
+    const onAccepted = vi.fn()
+    const onRunClaimed = vi.fn()
+    const agent = new MoldyAgUiAgent({ conversationId: threadId, onAccepted, onRunClaimed })
+    agent.messages = [message]
+    const oldStarted = vi.fn()
+    const oldResult = agent
+      .clone()
+      .runAgent({ runId: publicRunId }, { onRunStartedEvent: oldStarted })
+    await vi.waitFor(() => expect(onAccepted).toHaveBeenCalledOnce())
+    const replacementResult = agent.runAgent({ runId: nextRunId })
+    await vi.waitFor(() =>
+      expect(onAccepted).toHaveBeenCalledWith(
+        expect.objectContaining({
+          publicRunId: nextRunId,
+          physicalRunId: 'worker-2',
+        }),
+      ),
+    )
+
+    pending.start()
+    await vi.waitFor(() => expect(oldStarted).toHaveBeenCalledOnce())
+    expect(calls.map(({ method }) => method)).toEqual(['POST', 'POST'])
+    pending.finish()
+    await oldResult
+    replacement.start()
+    replacement.finish()
+    await replacementResult
+    expect(onRunClaimed).not.toHaveBeenCalled()
+    expect(calls.map(({ method }) => method)).toEqual(['POST', 'POST'])
+  })
+
+  it.each(['disposal', 'terminal event', 'a newer run'] as const)(
+    'ignores a delayed worker claim after %s',
+    async (transition) => {
+      const pending = primaryResponse()
+      const replacement = primaryResponse(nextRunId, 'worker-2')
+      const delayedSnapshot = Promise.withResolvers<Response>()
+      const calls = intercept(({ method }, index) => {
+        if (method === 'GET') return delayedSnapshot.promise
+        if (index === 1) return pending.response
+        return replacement.response
+      })
+      const onRunClaimed = vi.fn()
+      const onPublicEvent = vi.fn()
+      const agent = new MoldyAgUiAgent({ conversationId: threadId, onRunClaimed, onPublicEvent })
+      agent.messages = [message]
+      const reader = agent.clone()
+      const result = reader.runAgent({ runId: publicRunId }).catch((error: unknown) => {
+        if (transition !== 'disposal') throw error
+      })
+      pending.start()
+      await vi.waitFor(() => expect(calls[1]?.url.searchParams.get('runId')).toBe(publicRunId))
+      if (transition === 'disposal') agent.dispose()
+      if (transition === 'terminal event') {
+        pending.finish()
+        await result
+      }
+      const replacementResult =
+        transition === 'a newer run' ? agent.runAgent({ runId: nextRunId }) : null
+      if (replacementResult) {
+        replacement.start()
+        await vi.waitFor(() =>
+          expect(onPublicEvent).toHaveBeenCalledWith(expect.objectContaining(begin(nextRunId)), {
+            source: 'run',
+            runId: nextRunId,
+          }),
+        )
+        onPublicEvent.mockClear()
+      }
+
+      delayedSnapshot.resolve(Response.json({ ...snapshot(publicRunId), runId: publicRunId }))
+      await new Promise((resolve) => setTimeout(resolve, 0))
+      expect(onRunClaimed).not.toHaveBeenCalled()
+      if (transition !== 'terminal event') {
+        pending.finish()
+        await result
+      }
+      if (replacementResult) {
+        // Any remaining frames from the old clone retain their original public ID.
+        for (const [, context] of onPublicEvent.mock.calls) {
+          expect(context).toEqual({ source: 'run', runId: publicRunId })
+        }
+        replacement.finish()
+        await replacementResult
+      }
+    },
+  )
 
   it('returns a pending queue receipt without creating a placeholder answer or cancelling a run', async () => {
     const closeStream = vi.fn()
