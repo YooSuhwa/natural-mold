@@ -75,9 +75,7 @@ async def _share_roundtrip(
     route = f"/api/conversations/{cid}/share"
     link = await gate.owner_a.json("POST", route)
     token = link["share_token"]
-    async with httpx.AsyncClient(
-        base_url=gate.owner_b.client.base_url, trust_env=False
-    ) as visitor:
+    async with httpx.AsyncClient(base_url=gate.owner_b.client.base_url, trust_env=False) as visitor:
         public = f"/api/shares/{token}"
         try:
             current = await gate.owner_b.json("GET", route)
@@ -86,13 +84,9 @@ async def _share_roundtrip(
                 "share token not durable on other worker",
             )
             denied = await gate.other_b.send("POST", route)
-            require(
-                denied.status_code == 404, "foreign owner can publish the conversation"
-            )
+            require(denied.status_code == 404, "foreign owner can publish the conversation")
             view = await visitor.get(public)
-            require(
-                view.status_code == 200, "anonymous visitor could not open the share"
-            )
+            require(view.status_code == 200, "anonymous visitor could not open the share")
             public_messages = view.json()["messages"]
             _message_id(public_messages, "assistant", message)
             require(
@@ -100,8 +94,7 @@ async def _share_roundtrip(
                 "private feedback leaked into the public view",
             )
             require(
-                (await visitor.get(f"/api/conversations/{cid}/artifacts")).status_code
-                == 401,
+                (await visitor.get(f"/api/conversations/{cid}/artifacts")).status_code == 401,
                 "anonymous visitor could open the owner's artifact route",
             )
             public_files = await visitor.get(f"{public}/artifacts")
@@ -111,8 +104,7 @@ async def _share_roundtrip(
             )
             visible = [a for a in public_files.json() if a["id"] == artifact_id]
             require(
-                len(visible) == 1
-                and visible[0]["preview_url"].startswith(f"{public}/artifacts/"),
+                len(visible) == 1 and visible[0]["preview_url"].startswith(f"{public}/artifacts/"),
                 "public artifact does not have its token-scoped preview URL",
             )
             preview = await visitor.get(visible[0]["preview_url"])
@@ -130,9 +122,7 @@ async def _share_roundtrip(
                     (await visitor.get(other_public)).status_code == 200,
                     "second share failed",
                 )
-                denied = await visitor.get(
-                    f"{other_public}/artifacts/{artifact_id}/content"
-                )
+                denied = await visitor.get(f"{other_public}/artifacts/{artifact_id}/content")
                 require(
                     denied.status_code == 404,
                     "a valid token served a different chat's file",
@@ -149,8 +139,7 @@ async def _share_roundtrip(
             "revoked share still served by worker B",
         )
         require(
-            (await visitor.get(f"{public}/artifacts/{artifact_id}/content")).status_code
-            == 404,
+            (await visitor.get(f"{public}/artifacts/{artifact_id}/content")).status_code == 404,
             "revoked share still serves a public file",
         )
 
@@ -189,9 +178,7 @@ async def _agent_api(gate: Gate, aid: str) -> None:
         base_url=gate.owner_b.client.base_url, trust_env=False, timeout=90
     ) as ext:
         try:
-            start = await ext.post(
-                "/v1/threads", headers=auth, json={"agent_id": public_id}
-            )
+            start = await ext.post("/v1/threads", headers=auth, json={"agent_id": public_id})
             expect_status(start, 201)
             tid = start.json()["id"]
             reply = await ext.post(
@@ -199,16 +186,13 @@ async def _agent_api(gate: Gate, aid: str) -> None:
                 headers=auth,
                 json={
                     "agent_id": public_id,
-                    "input": {
-                        "messages": [{"role": "user", "content": SCRIPTED_QUESTION}]
-                    },
+                    "input": {"messages": [{"role": "user", "content": SCRIPTED_QUESTION}]},
                 },
             )
             expect_status(reply, 200)
             result = reply.json()
             require(
-                result["status"] == "succeeded"
-                and result["output"]["answer"] == SCRIPTED_ANSWER,
+                result["status"] == "succeeded" and result["output"]["answer"] == SCRIPTED_ANSWER,
                 "external API did not produce its existing native run result",
             )
             require(
@@ -239,13 +223,9 @@ async def _agent_api(gate: Gate, aid: str) -> None:
                 )
                 expect_status(foreign_read, 404)
             finally:
-                await gate.other_b.json(
-                    "POST", f"/api/agent-api/keys/{foreign['id']}/revoke"
-                )
+                await gate.other_b.json("POST", f"/api/agent-api/keys/{foreign['id']}/revoke")
         finally:
-            await gate.owner_a.json(
-                "POST", f"/api/agent-api/keys/{created['id']}/revoke"
-            )
+            await gate.owner_a.json("POST", f"/api/agent-api/keys/{created['id']}/revoke")
         expect_status(await ext.get(read, headers=auth), 401)
 
 
@@ -260,8 +240,7 @@ async def _assistant_panel(gate: Gate, aid: str) -> None:
     require(
         bool(rows)
         and all(
-            r["provider"] == "e2e_scripted"
-            and r["model_name"] == "document-artifact-scripted"
+            r["provider"] == "e2e_scripted" and r["model_name"] == "document-artifact-scripted"
             for r in rows
         ),
         "Assistant requires a local scripted text_primary role",
@@ -281,9 +260,7 @@ async def _assistant_panel(gate: Gate, aid: str) -> None:
         if line.startswith("data:")
     ]
     endings = [
-        r
-        for r in records
-        if r.get("status") == "completed" and r.get("content") == SCRIPTED_ANSWER
+        r for r in records if r.get("status") == "completed" and r.get("content") == SCRIPTED_ANSWER
     ]
     require(
         len(endings) == 1 and "event: message_end" in response.text,
@@ -292,9 +269,7 @@ async def _assistant_panel(gate: Gate, aid: str) -> None:
     require("event: error" not in response.text, "Assistant emitted an error")
 
 
-async def _legacy_branch_roundtrip(
-    gate: Gate, cid: str, original: dict[str, Any]
-) -> None:
+async def _legacy_branch_roundtrip(gate: Gate, cid: str, original: dict[str, Any]) -> None:
     # An edit creates a sibling leaf. Selecting an ancestor alone follows its newest leaf.
     base = f"/api/conversations/{cid}/messages"
     selected = original["active_checkpoint_id"]
@@ -323,16 +298,13 @@ async def _legacy_branch_roundtrip(
     for expected in (original, fork, original):
         checkpoint = expected["active_checkpoint_id"]
         expect_status(
-            await gate.owner_b.send(
-                "POST", base + "/switch-branch", {"checkpoint_id": checkpoint}
-            ),
+            await gate.owner_b.send("POST", base + "/switch-branch", {"checkpoint_id": checkpoint}),
             204,
         )
         actual = await gate.owner_a.json("GET", base)
         require(
             actual["active_checkpoint_id"] == checkpoint
-            and [m["id"] for m in actual["messages"]]
-            == [m["id"] for m in expected["messages"]],
+            and [m["id"] for m in actual["messages"]] == [m["id"] for m in expected["messages"]],
             "switching branch selected the wrong message IDs or duplicated a turn",
         )
     after = await gate.sql(statement, (UUID(cid),))
@@ -372,13 +344,9 @@ async def check_compatibility(gate: Gate) -> dict[str, object]:
             "comment": private_comment,
         },
     )
-    require(
-        rating["message_id"] == message_id, "feedback attached to a different message"
-    )
+    require(rating["message_id"] == message_id, "feedback attached to a different message")
     files = await gate.owner_a.json("GET", base + "/artifacts")
-    (artifact,) = [
-        f for f in files if f["display_name"] == FILE_NAME and f["status"] == "ready"
-    ]
+    (artifact,) = [f for f in files if f["display_name"] == FILE_NAME and f["status"] == "ready"]
     require(
         artifact["version_number"] >= 2,
         "scripted write and edit must both have persisted",
@@ -393,9 +361,7 @@ async def check_compatibility(gate: Gate) -> dict[str, object]:
             "threadId": cid,
             "runId": modern_run,
             "protocolVersion": "1.0",
-            "messages": [
-                {"role": "user", "id": str(uuid4()), "content": SCRIPTED_QUESTION}
-            ],
+            "messages": [{"role": "user", "id": str(uuid4()), "content": SCRIPTED_QUESTION}],
             "state": {},
             "context": [],
             "tools": [],
@@ -426,11 +392,7 @@ async def check_compatibility(gate: Gate) -> dict[str, object]:
     )
     for content, ui_id in ((FILE_TEXT, message_id), (SCRIPTED_ANSWER, current_id)):
         public_message_id = _message_id(snap["messages"], "assistant", content)
-        match = [
-            link
-            for link in snap["messageLinks"]
-            if link["messageId"] == public_message_id
-        ]
+        match = [link for link in snap["messageLinks"] if link["messageId"] == public_message_id]
         require(
             len(match) == 1 and match[0]["uiMessageId"] == ui_id,
             "public AG-UI message no longer maps to its protected message and feedback ID",
@@ -440,9 +402,7 @@ async def check_compatibility(gate: Gate) -> dict[str, object]:
         old_rating["id"] == rating["id"] and old_rating["comment"] == private_comment,
         "historical message feedback changed",
     )
-    artifact_after = await gate.owner_b.json(
-        "GET", base + f"/artifacts/{artifact['id']}"
-    )
+    artifact_after = await gate.owner_b.json("GET", base + f"/artifacts/{artifact['id']}")
     require(
         (artifact_after["version_id"], artifact_after["sha256"])
         == (artifact["version_id"], hash_value),

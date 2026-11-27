@@ -61,9 +61,7 @@ def local_origin(value: str) -> httpx.URL:
         or url.raw_path != b"/"
         or url.fragment
     ):
-        raise ValueError(
-            "API replicas must have plain loopback HTTP origins with explicit ports"
-        )
+        raise ValueError("API replicas must have plain loopback HTTP origins with explicit ports")
     return url
 
 
@@ -126,11 +124,7 @@ class ReplicaRouter:
         selection = [value for name, value in headers if name.lower() == SELECTOR]
         worker = selection[0] if selection else b"a"
         target = scope["raw_path"]
-        if (
-            len(selection) > 1
-            or worker not in self.origins
-            or not target.startswith(b"/")
-        ):
+        if len(selection) > 1 or worker not in self.origins or not target.startswith(b"/"):
             await reject(send, 400)
             return
         if scope["query_string"]:
@@ -177,9 +171,7 @@ class ReplicaRouter:
             url,
             headers=outbound,
             content=content,
-            extensions={
-                "timeout": {"connect": 5, "pool": 5, "write": 30, "read": None}
-            },
+            extensions={"timeout": {"connect": 5, "pool": 5, "write": 30, "read": None}},
         )
 
         async def until_disconnect() -> None:
@@ -229,9 +221,7 @@ class ReplicaRouter:
                     }
                 )
                 async for chunk in upstream.aiter_raw():
-                    await send(
-                        {"type": "http.response.body", "body": chunk, "more_body": True}
-                    )
+                    await send({"type": "http.response.body", "body": chunk, "more_body": True})
                 await send({"type": "http.response.body", "body": b""})
             finally:
                 await upstream.aclose()

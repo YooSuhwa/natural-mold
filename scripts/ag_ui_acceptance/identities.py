@@ -42,9 +42,7 @@ def _me(client: httpx.Client) -> tuple[dict[str, Any], dict[str, Any]]:
     if len(active) != 1 or active[0]["tenant_status"] != "active":
         raise ValueError("fixture account did not resolve to one active organization")
     if active[0]["capabilities_enforced"] is not True:
-        raise ValueError(
-            "organization capability enforcement must be active on both workers"
-        )
+        raise ValueError("organization capability enforcement must be active on both workers")
     return me, active[0]
 
 
@@ -54,11 +52,7 @@ def _login(
     result = client.post("/api/auth/login", json={"email": email, "password": password})
     result.raise_for_status()
     csrf = result.json()["csrf_token"]
-    if (
-        not csrf
-        or csrf != client.cookies.get("moldy_csrf")
-        or not client.cookies.get("moldy_at")
-    ):
+    if not csrf or csrf != client.cookies.get("moldy_csrf") or not client.cookies.get("moldy_at"):
         raise ValueError("fixture did not receive an authenticated cookie + CSRF pair")
     client.headers["X-CSRF-Token"] = csrf
     me, org = _me(client)
@@ -87,9 +81,7 @@ def provision_identities(
         ):
             raise ValueError("operator is not in the reserved E2E fixture company")
         settings = primary.get("/api/system-llm-settings").raise_for_status().json()
-        text_primary = next(
-            (row for row in settings if row["role"] == "text_primary"), {}
-        )
+        text_primary = next((row for row in settings if row["role"] == "text_primary"), {})
         if (
             text_primary.get("provider") != "e2e_scripted"
             or text_primary.get("model_name") != "document-artifact-scripted"
@@ -121,9 +113,7 @@ def provision_identities(
             or primary_org["tenant_id"] == other_org["tenant_id"]
             or primary_user["id"] == other_user["id"]
         ):
-            raise ValueError(
-                "fixtures require distinct users, organizations and companies"
-            )
+            raise ValueError("fixtures require distinct users, organizations and companies")
         if other.cookies["moldy_at"] == primary.cookies["moldy_at"]:
             raise ValueError("two independent accounts received the same access cookie")
         operator_only = other.get("/api/system-llm-settings")
@@ -144,9 +134,7 @@ def provision_identities(
                 or foreign.json() != absent.json()
                 or absent.status_code != 404
             ):
-                raise ValueError(
-                    "foreign organization differs from an absent organization"
-                )
+                raise ValueError("foreign organization differs from an absent organization")
             actual = other.get(f"{url}/api/auth/me").raise_for_status().json()
             if actual["id"] != other_user["id"]:
                 raise ValueError("secondary identity did not survive a worker change")
@@ -174,9 +162,7 @@ def provision_identities(
             "org_id": str(UUID(org["id"])),
             "tenant_id": str(UUID(org["tenant_id"])),
         }
-        variables.update(
-            {f"MOLDY_AGUI_{tag}_{key.upper()}": value for key, value in ids.items()}
-        )
+        variables.update({f"MOLDY_AGUI_{tag}_{key.upper()}": value for key, value in ids.items()})
         subjects[tag.lower()] = {**ids, "operator": user["is_super_user"]}
     return IdentityFixture(
         variables,

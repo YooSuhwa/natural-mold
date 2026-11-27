@@ -71,9 +71,7 @@ async def check_termination(gate: Gate) -> dict[str, object]:
         "restored cancel outcome changed",
     )
     require(
-        not "".join(e.get("delta", "") for e in read).endswith(
-            "visual stream fixture complete."
-        ),
+        not "".join(e.get("delta", "") for e in read).endswith("visual stream fixture complete."),
         "worker continued publishing the final scripted answer after a cancellation",
     )
 
@@ -118,9 +116,7 @@ async def check_termination(gate: Gate) -> dict[str, object]:
         not any("E2E scripted model error simulation" in str(e) for e in failed),
         "raw provider exception was disclosed",
     )
-    read_failed = checked_sse(
-        await gate.owner_b.send("GET", f"{base}/runs/{broken}/stream")
-    )
+    read_failed = checked_sse(await gate.owner_b.send("GET", f"{base}/runs/{broken}/stream"))
     require(read_failed[-1]["type"] == "RUN_ERROR", "retained error outcome changed")
     states = await gate.sql(
         "SELECT status FROM conversation_runs WHERE conversation_id=%s ORDER BY created_at",

@@ -15,9 +15,7 @@ from typing import Any
 from unittest.mock import patch
 
 _MARKER = re.compile(r"\bE2E_AGUI_PERF_([a-f0-9]{8}(?:-[a-f0-9]{4}){3}-[a-f0-9]{12})\b")
-_COSTS: ContextVar[dict[str, int] | None] = ContextVar(
-    "ag_ui_test_read_costs", default=None
-)
+_COSTS: ContextVar[dict[str, int] | None] = ContextVar("ag_ui_test_read_costs", default=None)
 _SERVICES = (
     "require_read_conversation",
     "resolve_read_target",
@@ -120,24 +118,18 @@ def observe_read_durations(ledger: Path) -> Iterator[None]:
         for stop in range(start + 1, len(SLOW_STREAM_PARTS) + 1)
     }
     with ExitStack() as stack:
-        fd = os.open(
-            ledger, os.O_WRONLY | os.O_APPEND | os.O_CREAT | os.O_NOFOLLOW, 0o600
-        )
+        fd = os.open(ledger, os.O_WRONLY | os.O_APPEND | os.O_CREAT | os.O_NOFOLLOW, 0o600)
         stack.callback(os.close, fd)
         for name in _SERVICES:
             fn = getattr(ag_ui_read, name, None)
             if fn is None:
                 continue
-            stack.enter_context(
-                patch.object(ag_ui_read, name, _measure_service(fn, name))
-            )
+            stack.enter_context(patch.object(ag_ui_read, name, _measure_service(fn, name)))
         for name in ("poll", "check_delivery", "wait_for_change"):
             fn = getattr(ag_ui_read._Reader, name, None)
             if fn is None:
                 continue
             stack.enter_context(
-                patch.object(
-                    ag_ui_read._Reader, name, _measure_reader(fn, name, fd, parts)
-                )
+                patch.object(ag_ui_read._Reader, name, _measure_reader(fn, name, fd, parts))
             )
         yield
