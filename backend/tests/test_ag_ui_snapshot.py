@@ -8,8 +8,8 @@ from unittest.mock import AsyncMock
 from uuid import UUID, uuid4
 
 import pytest
-from ag_ui.core import AssistantMessage
-from langchain_core.messages import AIMessage, HumanMessage, SystemMessage
+from ag_ui.core import ActivityMessage, AssistantMessage
+from langchain_core.messages import AIMessage, HumanMessage, SystemMessage, ToolMessage
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.agent_runtime.ag_ui_visibility import ChildVisibility
@@ -83,7 +83,13 @@ def case(monkeypatch: pytest.MonkeyPatch) -> Case:
         complete=True,
     )
     target = SimpleNamespace(
-        run=run, scope=scope, input_id=None, input_status=None, revision=None, position=None
+        run=run,
+        scope=scope,
+        widget_bindings=frozenset(),
+        input_id=None,
+        input_status=None,
+        revision=None,
+        position=None,
     )
     resolve = AsyncMock(return_value=target)
     pending = AsyncMock(return_value=CurrentReadInterrupts())
@@ -309,7 +315,7 @@ async def test_explicit_historical_receipt_keeps_its_own_physical_identity(
     replay = AsyncMock(side_effect=[case.replay, later_replay])
     monkeypatch.setattr(api, "replay_snapshot_run", replay)
     first = case.resolve.return_value
-    last = SimpleNamespace(run=later, scope=later_scope)
+    last = SimpleNamespace(run=later, scope=later_scope, widget_bindings=frozenset())
     case.resolve.side_effect = [first, first, last]
     view = await case.load(public_run_id="public-r")
     assert (view.run_id, view.run_status, view.selected_physical_run_id) == (
@@ -322,3 +328,76 @@ async def test_explicit_historical_receipt_keeps_its_own_physical_identity(
         str(later.id),
         str(later.id),
     )
+
+
+@pytest.mark.asyncio
+async def test_checkpoint_widget_uses_final_physical_binding_and_public_issuer(
+    case: Case,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    call, binding = "raw-weather-call", str(uuid4())
+    physical = str(case.run.id)
+    issuer = AIMessage(
+        id="weather-question",
+        content="",
+        tool_calls=[{"name": "show_weather", "id": call, "args": {}}],
+    )
+    result = ToolMessage(
+        id="weather-result",
+        name="show_weather",
+        tool_call_id=call,
+        content="Weather",
+        artifact={
+            "mcp_app": {
+                "version": 1,
+                "binding_id": binding,
+                "run_id": physical,
+                "resource_uri": "ui://private/weather",
+                "tool_meta": {},
+            },
+            "structured_content": {"privateData": "private weather payload"},
+        },
+    )
+    history = SnapshotHistory(
+        "result-cp",
+        (
+            SnapshotMessageRef(issuer, 0, "issuer-cp", None),
+            SnapshotMessageRef(result, 1, "result-cp", "issuer-cp"),
+        ),
+        "checkpoint",
+        ("issuer-cp", "result-cp"),
+        checkpoint_run_ids={"issuer-cp": case.run.id, "result-cp": case.run.id},
+    )
+    monkeypatch.setattr(api, "load_snapshot_history", AsyncMock(return_value=history))
+    case.selection.message_runs.update(
+        {"weather-question": case.run.id, "weather-result": case.run.id}
+    )
+    case.replay.messages = []
+    case.replay.complete = False
+    case.resolve.return_value.widget_bindings = frozenset({(call, binding)})
+
+    view = await case.load()
+    cards = [m for m in view.messages if isinstance(m, ActivityMessage)]
+    assert len(cards) == 1
+    card = cards[0]
+    author = next(m for m in view.messages if isinstance(m, AssistantMessage))
+    assert author.tool_calls
+    public_call = author.tool_calls[0].id
+    assert call != public_call
+    assert card.activity_type == "moldy.mcp_app"
+    assert card.content["run_id"] == physical and card.content["binding_id"] == binding
+    assert (card.content["tool_call_id"], card.content["public_tool_call_id"]) == (
+        call,
+        public_call,
+    )
+    pointer = next(link for link in view.message_links if link.message_id == card.id)
+    assert (pointer.parent_message_id, pointer.parent_tool_call_id) == (author.id, public_call)
+    assert (
+        "private weather payload" not in view.model_dump_json()
+        and "ui://private" not in view.model_dump_json()
+    )
+
+    case.resolve.return_value.widget_bindings = frozenset()
+    withdrawn = await case.load()
+    assert not any(isinstance(m, ActivityMessage) for m in withdrawn.messages)
+    assert binding not in withdrawn.model_dump_json()

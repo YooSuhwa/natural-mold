@@ -37,6 +37,7 @@ from app.services.ag_ui_snapshot_legacy import read_unlinked_legacy_transcript
 from app.services.ag_ui_snapshot_legacy_assembly import insert_legacy_transcript
 from app.services.ag_ui_snapshot_messages import public_checkpoint_message
 from app.services.ag_ui_snapshot_runs import SnapshotRuns, snapshot_runs
+from app.services.ag_ui_snapshot_widgets import restore_snapshot_widgets
 from app.services.chat.secrets import collect_conversation_secret_values
 from app.services.partial_model_output import (
     PARTIAL_OUTPUT_KEY,
@@ -335,13 +336,6 @@ async def load_ag_ui_snapshot(
                 partial = read_partial_output(
                     (failed.metadata_json or {}).get(PARTIAL_OUTPUT_KEY), secrets
                 )
-        # Public cursors identify frames actually represented on the chosen branch. An
-        # incoming cursor may refer to a retired chunk generation or an old selection.
-        watermark = None
-        if chosen and not queued and chosen.id not in merged.unreliable_run_ids:
-            recovered = evidence[chosen.id]
-            if recovered.complete:
-                watermark = recovered.cursor
         root_todos = merged.todos_by_owner.get(None, [])
         known_checkpoints = {
             key for key, owner in history.checkpoint_run_ids.items() if owner in accepted
@@ -377,7 +371,50 @@ async def load_ag_ui_snapshot(
                         for item in slots
                     )
             children.append(row)
-        snapshot = AgUiSnapshot.model_validate(
+        current = await require_private_conversation(db, conversation.id, context)
+        if current.active_branch_checkpoint_id != selection:
+            raise snapshot_required()
+        widget_bindings: dict[UUID, frozenset[tuple[str, str]]] = {}
+        for ident, recovered in evidence.items():
+            final_target = await resolve_read_target(db, current, context, runs.public_ids[ident])
+            final_run = final_target.run
+            if (
+                final_target.scope != recovered.scope
+                or final_run is None
+                or (final_run.status, final_run.is_active) != observed_status[ident]
+            ):
+                raise snapshot_required()
+            if final_target.widget_bindings:
+                widget_bindings[ident] = final_target.widget_bindings
+        if queued and target and public_run_id:
+            latest_target = await resolve_read_target(db, current, context, public_run_id)
+            if latest_target.run is not None or (
+                latest_target.input_status,
+                latest_target.revision,
+                latest_target.position,
+            ) != (target.input_status, target.revision, target.position):
+                raise snapshot_required()
+        if pending_proof is not None and latest:
+            fresh = await read_proven_interrupts(
+                db, current, context, latest, checkpoint_id=history.checkpoint_id
+            )
+            if fresh != pending_proof:
+                raise snapshot_required()
+        restore_snapshot_widgets(
+            conversation_id=conversation.id,
+            history=history,
+            merged=merged,
+            public_run_ids={ident: runs.public_ids[ident] for ident in full_runs},
+            widget_bindings=widget_bindings,
+        )
+        # Public cursors identify frames actually represented on the chosen branch. An
+        # incoming cursor may refer to a retired chunk generation or an old selection.
+        watermark = None
+        if chosen and not queued and chosen.id not in merged.unreliable_run_ids:
+            recovered = evidence[chosen.id]
+            if recovered.complete:
+                watermark = recovered.cursor
+        return AgUiSnapshot.model_validate(
             {
                 "threadId": str(conversation.id),
                 "checkpointId": history.checkpoint_id if leaf_allowed else None,
@@ -412,30 +449,3 @@ async def load_ag_ui_snapshot(
                 "cursor": watermark,
             }
         )
-        current = await require_private_conversation(db, conversation.id, context)
-        if current.active_branch_checkpoint_id != selection:
-            raise snapshot_required()
-        for ident, recovered in evidence.items():
-            final_target = await resolve_read_target(db, current, context, runs.public_ids[ident])
-            final_run = final_target.run
-            if (
-                final_target.scope != recovered.scope
-                or final_run is None
-                or (final_run.status, final_run.is_active) != observed_status[ident]
-            ):
-                raise snapshot_required()
-        if queued and target and public_run_id:
-            latest_target = await resolve_read_target(db, current, context, public_run_id)
-            if latest_target.run is not None or (
-                latest_target.input_status,
-                latest_target.revision,
-                latest_target.position,
-            ) != (target.input_status, target.revision, target.position):
-                raise snapshot_required()
-        if pending_proof is not None and latest:
-            fresh = await read_proven_interrupts(
-                db, current, context, latest, checkpoint_id=history.checkpoint_id
-            )
-            if fresh != pending_proof:
-                raise snapshot_required()
-        return snapshot
