@@ -33,6 +33,7 @@ export interface ApprovalResult {
 export interface ResolvedInterruptToolCall {
   readonly toolCall: ToolCallInfo
   readonly result: ApprovalResult
+  readonly userMessageId?: string
   /** Original action (unredacted name/args) — lets the raw-pill strip match the
    * underlying model tool call even when the synthetic tool_args are redacted. */
   readonly action?: ActionRequest
@@ -163,29 +164,6 @@ function withNamespace(
   return { ...payload, namespace }
 }
 
-function upsertPayload(
-  byId: Map<string, StandardInterruptPayload>,
-  order: string[],
-  payload: StandardInterruptPayload,
-): void {
-  if (!byId.has(payload.interrupt_id)) order.push(payload.interrupt_id)
-  const existing = byId.get(payload.interrupt_id)
-  if (existing?.namespace && !payload.namespace) return
-  // G-05: reload state and a replayed stream may disagree on an auth re-ask; the newer wins.
-  if (existing && (authRequiredAttempt(existing) ?? 0) > (authRequiredAttempt(payload) ?? 0)) return
-  byId.set(payload.interrupt_id, payload)
-}
-
-function orderedPayloads(
-  byId: ReadonlyMap<string, StandardInterruptPayload>,
-  order: readonly string[],
-): StandardInterruptPayload[] {
-  return order.flatMap((interruptId) => {
-    const payload = byId.get(interruptId)
-    return payload ? [payload] : []
-  })
-}
-
 export function standardPayloadFromInterrupt(
   interrupt: LangGraphInterruptLike,
   index = 0,
@@ -219,13 +197,23 @@ export function standardPayloadFromInterrupt(
 export function standardPayloadsFromInterrupts(
   interrupts: readonly LangGraphInterruptLike[],
 ): StandardInterruptPayload[] {
-  const byId = new Map<string, StandardInterruptPayload>()
-  const order: string[] = []
+  const byRequest = new Map<string, StandardInterruptPayload>()
   for (const [index, interrupt] of interrupts.entries()) {
     const payload = standardPayloadFromInterrupt(interrupt, index)
-    if (payload) upsertPayload(byId, order, payload)
+    if (!payload) continue
+    // Older checkpoints reused their first interrupt ID on every auth attempt.
+    // A retry in current LangGraph carries its request ID and a new ID for respond().
+    const requestId = payload.auth_request_id ?? payload.interrupt_id
+    const existing = byRequest.get(requestId)
+    if (existing) {
+      const previousAttempt = authRequiredAttempt(existing) ?? 0
+      const attempt = authRequiredAttempt(payload) ?? 0
+      if (previousAttempt > attempt) continue
+      if (previousAttempt === attempt && existing.namespace && !payload.namespace) continue
+    }
+    byRequest.set(requestId, payload)
   }
-  return orderedPayloads(byId, order)
+  return [...byRequest.values()]
 }
 
 function hasToolCallId(message: BaseMessage, ids: ReadonlySet<string>): boolean {

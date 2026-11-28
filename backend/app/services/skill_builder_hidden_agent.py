@@ -16,7 +16,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.authz.org_context import OrgContext
-from app.authz.organization_execution_gateway import require_execution_prefix
+from app.authz.organization_execution_gateway import acquire_execution_proof
 from app.authz.private_actor import PrivateResourceActor, resolve_private_actor
 from app.authz.scoping import private_scope_predicate
 from app.models.agent import AGENT_RUNTIME_PROFILE_SKILL_BUILDER, Agent
@@ -36,30 +36,39 @@ _PLACEHOLDER_PROMPT = (
 )
 
 
-async def get_or_create_skill_builder_agent(db: AsyncSession, context: OrgContext) -> Agent:
-    """사용자의 히든 빌더 에이전트를 반환한다 (없으면 생성, flush까지만)."""
+async def get_or_create_skill_builder_agent(
+    db: AsyncSession, context: OrgContext
+) -> tuple[Agent, bool]:
+    """Return the scoped hidden agent and whether this transaction created it."""
 
     await resolve_private_actor(
         db, PrivateResourceActor(context.user_id, context.org_id, context.tenant_id)
     )
-    result = await db.execute(
+    scoped_agent = (
         select(Agent)
         .where(
             private_scope_predicate(Agent, context),
             Agent.runtime_profile == AGENT_RUNTIME_PROFILE_SKILL_BUILDER,
         )
-        # 동시 시드로 중복이 생겨도 항상 같은 row를 고르도록 결정적 정렬.
+        # Older installations can already have several randomly identified agents.
         .order_by(Agent.created_at.asc(), Agent.id.asc())
         .limit(1)
     )
-    existing = result.scalar_one_or_none()
+    existing = await db.scalar(scoped_agent)
     if existing is not None:
-        return existing
+        return existing, False
 
-    # Parent creation gate before the hidden Agent insert (archived org denies).
-    await require_execution_prefix(db, context)
+    # First creators in this scope lock the same future agent. The gateway checks
+    # active membership before the lifecycle lock, which lasts through session commit.
+    agent_id = uuid.uuid5(context.org_id, f"moldy/skill-builder/{context.user_id}")
+    await acquire_execution_proof(db, context, root_agent_id=agent_id)
+    existing = await db.scalar(scoped_agent.where(Agent.id == agent_id))
+    if existing is not None:
+        return existing, False
+
     resolved = await resolve_system_model(db, "text_primary")
     agent = Agent(
+        id=agent_id,
         user_id=context.user_id,
         org_id=context.org_id,
         tenant_id=context.tenant_id,
@@ -71,7 +80,7 @@ async def get_or_create_skill_builder_agent(db: AsyncSession, context: OrgContex
     )
     db.add(agent)
     await db.flush()
-    return agent
+    return agent, True
 
 
 async def _seed_model_id(db: AsyncSession, model_name: str) -> uuid.UUID:

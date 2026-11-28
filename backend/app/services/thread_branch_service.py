@@ -296,6 +296,7 @@ async def build_fork_overwrite_input(
     *,
     append: list[BaseMessage] | None = None,
     drop_trailing_assistant: bool = False,
+    track_attachment_input: bool = False,
 ) -> dict[str, Any]:
     """Build the agent input dict for fork-edit / regenerate.
 
@@ -319,7 +320,12 @@ async def build_fork_overwrite_input(
     if drop_trailing_assistant:
         pre_msgs = without_trailing_assistant_messages(pre_msgs)
     value: list[BaseMessage] = [*pre_msgs, *(append or [])]
-    return {"messages": Overwrite(value=value)}
+    result: dict[str, Any] = {"messages": Overwrite(value=value)}
+    if track_attachment_input:
+        from app.agent_runtime.attachment_inputs import FORK_APPEND_COUNT
+
+        result[FORK_APPEND_COUNT] = len(append or [])
+    return result
 
 
 def without_trailing_assistant_messages(messages: list[BaseMessage]) -> list[BaseMessage]:

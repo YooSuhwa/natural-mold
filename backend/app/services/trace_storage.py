@@ -16,15 +16,18 @@ from __future__ import annotations
 
 import logging
 import uuid
-from collections.abc import Sequence
+from collections.abc import Collection, Sequence
 from datetime import UTC, datetime
 from typing import Any, Literal
 
-from sqlalchemy import select
+from sqlalchemy import ColumnElement, and_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm.attributes import set_committed_value
 
+from app.agent_runtime.journal_continuity import JOURNAL_GAP_BEFORE
 from app.agent_runtime.message_utils import parse_msg_id
+from app.authz.org_context import OrgContext
+from app.models.conversation import INDEPENDENT_JOB_SOURCE, Conversation
 from app.models.message_event import MessageEvent, MessageEventChunk
 
 # Status enum for message_events.status — DB CHECK 제약과 일치.
@@ -56,6 +59,16 @@ def _resolve_linked_ids(
     return [str(parse_msg_id(raw, conversation_id, idx)) for idx, raw in enumerate(raw_msg_ids)]
 
 
+def _turn_chunks(record: MessageEvent | type[MessageEvent]) -> ColumnElement[bool]:
+    # Older schemas have three independent references. Validate all three
+    # before using a chunk as either this turn's text or its durable watermark.
+    return and_(
+        MessageEventChunk.message_event_id == record.id,
+        MessageEventChunk.conversation_id == record.conversation_id,
+        MessageEventChunk.assistant_msg_id == record.assistant_msg_id,
+    )
+
+
 async def append_events(
     db: AsyncSession,
     *,
@@ -74,7 +87,7 @@ async def append_events(
     Behavior:
     - row가 없으면 INSERT. Parent ``events`` 는 legacy 호환용으로 비워둔다.
     - row가 있으면 payload는 ``message_event_chunks`` 에 append-only insert.
-    - ``last_event_id`` = ``events_chunk[-1]["id"]`` (chunk 비면 no-op).
+    - ``last_event_id`` tracks the last newly stored ID. Replayed input cannot rewind it.
     - ``status`` 는 caller가 명시. 기본 'streaming'.
     - ``updated_at`` 은 model의 ``onupdate=now()`` 가 자동 갱신
       (INSERT 시도 server_default 적용).
@@ -92,20 +105,28 @@ async def append_events(
     if not events_chunk:
         return None
 
-    last_id = events_chunk[-1].get("id") if events_chunk else None
-    last_event_id = last_id if isinstance(last_id, str) and last_id else None
-
-    existing = await db.execute(
-        select(MessageEvent).where(MessageEvent.assistant_msg_id == assistant_msg_id)
+    previous_end = (
+        select(MessageEventChunk.seq_end)
+        .where(_turn_chunks(MessageEvent))
+        .order_by(MessageEventChunk.seq_start.desc())
+        .limit(1)
+        .scalar_subquery()
     )
-    record = existing.scalar_one_or_none()
+    existing = (
+        await db.execute(
+            select(MessageEvent, previous_end).where(
+                MessageEvent.assistant_msg_id == assistant_msg_id,
+                MessageEvent.conversation_id == conversation_id,
+            )
+        )
+    ).one_or_none()
+    record, tail = existing if existing is not None else (None, 0)
 
     if record is None:
         record = MessageEvent(
             conversation_id=conversation_id,
             assistant_msg_id=assistant_msg_id,
             events=[],
-            last_event_id=last_event_id,
             status=status,
             # completed_at은 finalize_turn에서 set. streaming 동안은 None.
         )
@@ -123,12 +144,12 @@ async def append_events(
         if not (isinstance(evt.get("id"), str) and evt.get("id") in existing_ids)
     ]
 
-    if not new_events and last_event_id == record.last_event_id and record.status == status:
-        # Nothing changed — skip UPDATE to avoid useless WAL write.
-        return record
-
     if new_events:
-        seq_start = len(existing_ids) + 1
+        seq_start = max(len(record.events or []), tail or 0) + 1
+        if any(evt.get(JOURNAL_GAP_BEFORE) is True for evt in new_events):
+            # An evicted retry prefix has unknown length. One missing ordinal
+            # makes readers restore a snapshot before claiming a contiguous suffix.
+            seq_start += 1
         seq_end = seq_start + len(new_events) - 1
         event_ids = [
             str(evt.get("id"))
@@ -145,11 +166,16 @@ async def append_events(
                 first_event_id=event_ids[0] if event_ids else None,
                 last_event_id=event_ids[-1] if event_ids else None,
                 event_ids=event_ids,
-                events=list(new_events),
+                events=[
+                    {key: value for key, value in evt.items() if key != JOURNAL_GAP_BEFORE}
+                    if JOURNAL_GAP_BEFORE in evt
+                    else evt
+                    for evt in new_events
+                ],
             )
         )
-    if last_event_id:
-        record.last_event_id = last_event_id
+        if event_ids:
+            record.last_event_id = event_ids[-1]
     record.status = status
     # ``onupdate=`` 가 ORM flush 시 updated_at을 갱신.
     return record
@@ -180,7 +206,7 @@ async def _load_existing_event_ids(db: AsyncSession, record: MessageEvent) -> se
     }
     result = await db.execute(
         select(MessageEventChunk.event_ids)
-        .where(MessageEventChunk.message_event_id == record.id)
+        .where(_turn_chunks(record))
         .order_by(MessageEventChunk.seq_start)
     )
     for chunk_ids in result.scalars().all():
@@ -207,7 +233,7 @@ async def load_events(db: AsyncSession, record: MessageEvent) -> list[dict[str, 
     events: list[dict[str, Any]] = list(record.events or [])
     result = await db.execute(
         select(MessageEventChunk.events)
-        .where(MessageEventChunk.message_event_id == record.id)
+        .where(_turn_chunks(record))
         .order_by(MessageEventChunk.seq_start, MessageEventChunk.created_at)
     )
     for chunk_events in result.scalars().all():
@@ -234,6 +260,7 @@ async def load_events_many(
         return {}
     result = await db.execute(
         select(MessageEventChunk.message_event_id, MessageEventChunk.events)
+        .join(MessageEvent, _turn_chunks(MessageEvent))
         .where(MessageEventChunk.message_event_id.in_(by_record.keys()))
         .order_by(MessageEventChunk.seq_start, MessageEventChunk.created_at)
     )
@@ -361,15 +388,48 @@ async def record_turn(
     return record
 
 
-async def get_traces_for_conversation(
-    db: AsyncSession, conversation_id: uuid.UUID
-) -> list[MessageEvent]:
-    """Return all turn traces for a conversation, oldest-first."""
-    result = await db.execute(
-        select(MessageEvent)
-        .where(MessageEvent.conversation_id == conversation_id)
-        .order_by(MessageEvent.created_at)
+async def independent_trace_ids(
+    db: AsyncSession, conversation_id: uuid.UUID, trace_ids: Collection[str], context: OrgContext
+) -> set[str]:
+    """The managed worker persists each turn under the canonical UUID of its run."""
+    from app.services.independent_job_runs import readable_independent_child_run_ids
+
+    candidates: set[uuid.UUID] = set()
+    for trace_id in trace_ids:
+        try:
+            run_id = uuid.UUID(trace_id)
+        except ValueError:
+            continue
+        if str(run_id) == trace_id:
+            candidates.add(run_id)
+    visible = await readable_independent_child_run_ids(
+        db, conversation_id=conversation_id, run_ids=candidates, context=context
     )
+    return {str(run_id) for run_id in visible}
+
+
+async def get_readable_conversation_traces(
+    db: AsyncSession, conversation: Conversation, context: OrgContext
+) -> list[MessageEvent]:
+    if conversation.source != INDEPENDENT_JOB_SOURCE:
+        return await get_traces_for_conversation(db, conversation.id)
+    trace_ids = await db.scalars(
+        select(MessageEvent.assistant_msg_id).where(MessageEvent.conversation_id == conversation.id)
+    )
+    visible = await independent_trace_ids(db, conversation.id, trace_ids.all(), context)
+    if not visible:
+        return []
+    return await get_traces_for_conversation(db, conversation.id, trace_ids=visible)
+
+
+async def get_traces_for_conversation(
+    db: AsyncSession, conversation_id: uuid.UUID, *, trace_ids: Collection[str] | None = None
+) -> list[MessageEvent]:
+    """Return turn traces for a conversation, oldest-first."""
+    query = select(MessageEvent).where(MessageEvent.conversation_id == conversation_id)
+    if trace_ids is not None:
+        query = query.where(MessageEvent.assistant_msg_id.in_(trace_ids))
+    result = await db.execute(query.order_by(MessageEvent.created_at))
     records = list(result.scalars().all())
     for record in records:
         set_committed_value(record, "events", await load_events(db, record))

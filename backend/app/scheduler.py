@@ -743,8 +743,12 @@ APPROVAL_SWEEP_JOB_ID = "approval_sweep"
 async def sweep_approvals() -> None:
     """Approval inbox (순번 13): expiring notices, then expired requests end as rejected."""
     from app.approvals.inbox import sweep
+    from app.services.independent_job_notifications import recover_independent_job_approvals
 
-    await sweep()
+    try:
+        await sweep()
+    finally:
+        await recover_independent_job_approvals()
 
 
 def register_approval_sweep_job() -> None:
@@ -909,6 +913,21 @@ def cleanup_skill_runtime_roots() -> None:
     skill_runtime.cleanup_skill_runtime_roots(
         retention_seconds=_SKILL_RUNTIME_RETENTION_SECONDS,
     )
+
+
+def register_goal_sandbox_maintenance_job() -> None:
+    """Keep draining old workspaces when new persistent runs have been disabled."""
+    scheduler = get_scheduler()
+    if scheduler.running:
+        scheduler.add_job(
+            _leader_job_runner(),
+            IntervalTrigger(seconds=30),
+            id=LeaderSchedulerJobId.GOAL_SANDBOX_MAINTENANCE.value,
+            args=[LeaderSchedulerJobId.GOAL_SANDBOX_MAINTENANCE],
+            replace_existing=True,
+            coalesce=True,
+            max_instances=1,
+        )
 
 
 def register_skill_runtime_cleanup_job() -> None:

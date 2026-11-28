@@ -135,6 +135,22 @@ def test_runner_writes_canonical_static_receipt_to_stdout(exit_code: int, status
 
 
 def test_runner_cleans_root_on_sigint(tmp_path: Path) -> None:
+    # Mirror a small source tree so the readiness deadline measures child startup
+    # independently of the size of the application checkout.
+    repo = tmp_path / "source"
+    (repo / "backend").mkdir(parents=True)
+    (repo / "frontend/node_modules").mkdir(parents=True)
+    (repo / "frontend/package.json").write_text("{}")
+    scripts = repo / "scripts"
+    scripts.mkdir()
+    for name in (
+        RUNNER.name,
+        "cleanup-isolated-root.py",
+        "prepare-isolated-run.py",
+        "isolated-manifest.py",
+    ):
+        (scripts / name).symlink_to(RUNNER.with_name(name))
+
     # Given: a child that reports readiness through an inherited POSIX pipe.
     manifest = tmp_path / "cleanup.json"
     receipt = tmp_path / "child-root.txt"
@@ -148,9 +164,22 @@ def test_runner_cleans_root_on_sigint(tmp_path: Path) -> None:
     process: subprocess.Popen[str] | None = None
     try:
         process = subprocess.Popen(
-            [BASH, str(RUNNER), "--cwd", "backend", "--", sys.executable, "-c", code],
-            cwd=REPO_ROOT,
-            env={**os.environ, "MOLDY_CLEANUP_MANIFEST": str(manifest)},
+            [
+                BASH,
+                str(scripts / RUNNER.name),
+                "--cwd",
+                "backend",
+                "--",
+                sys.executable,
+                "-c",
+                code,
+            ],
+            cwd=repo,
+            env={
+                **os.environ,
+                "MOLDY_GATE_PYTHON": sys.executable,
+                "MOLDY_CLEANUP_MANIFEST": str(manifest),
+            },
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
             text=True,

@@ -49,6 +49,33 @@ describe('OrganizationSettingsContent governance sections (S08)', () => {
     )
   })
 
+  it.each([
+    { savedConsent: undefined, expected: true },
+    { savedConsent: true, expected: false },
+  ])('updates workspace consent from $savedConsent to $expected with the version', async ({
+    savedConsent,
+    expected,
+  }) => {
+    const org = makeOrgView()
+    if (savedConsent !== undefined) org.settings.goal_sandbox_enabled = savedConsent
+    orgAdminApi.get.mockResolvedValue(org)
+    orgAdminApi.update.mockResolvedValue(makeOrgView())
+    render(<OrganizationSettingsContent />)
+
+    const workspace = await screen.findByRole('switch', { name: '목표별 작업환경 재사용 허용' })
+    expect(workspace).toHaveAttribute('aria-checked', String(savedConsent ?? false))
+    const save = screen.getByRole('button', { name: '정책 저장' })
+    expect(save).toBeDisabled()
+    await userEvent.click(workspace)
+    await userEvent.click(save)
+
+    expect(orgAdminApi.update).toHaveBeenCalledWith(
+      'org-1',
+      { settings: expect.objectContaining({ goal_sandbox_enabled: expected }) },
+      VERSION,
+    )
+  })
+
   it('previews deletions before a shorter retention is saved, then confirms', async () => {
     api.putRetention
       .mockResolvedValueOnce({
@@ -190,6 +217,10 @@ describe('OrganizationSettingsContent governance sections (S08)', () => {
     render(<OrganizationSettingsContent />)
 
     expect(await screen.findByRole('switch', { name: '대화 공개 링크 허용' })).toHaveAttribute(
+      'aria-disabled',
+      'true',
+    )
+    expect(screen.getByRole('switch', { name: '목표별 작업환경 재사용 허용' })).toHaveAttribute(
       'aria-disabled',
       'true',
     )

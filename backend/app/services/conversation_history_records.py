@@ -1,16 +1,18 @@
 from __future__ import annotations
 
+from collections import defaultdict
+from collections.abc import Iterable
 from uuid import UUID
 
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.mcp_app_invocation import McpAppInvocationBinding
-from app.models.message_event import MessageEvent
+from app.models.message_event import MessageEvent, MessageEventChunk
 from app.schemas.conversation_history import JsonValue
 from app.services import trace_storage
 from app.services.conversation_history_projection import (
-    canonical_payload_sha256,
+    retained_event_sha256,
     sanitize_event_payloads,
 )
 from app.services.conversation_history_types import EventProjection
@@ -26,17 +28,62 @@ async def build_event_projections(
             .order_by(MessageEvent.created_at, MessageEvent.assistant_msg_id)
         )
     )
+    # Group positions once. The legacy history loader already handles inline
+    # prefixes and deduplicates retried IDs; keep its data and sanitation policy.
+    positions: dict[tuple[UUID, str], list[tuple[int, int, int]]] = defaultdict(list)
+    chunk = MessageEventChunk
+    parts = await db.execute(
+        select(
+            chunk.message_event_id,
+            chunk.assistant_msg_id,
+            chunk.seq_start,
+            chunk.seq_end,
+            func.json_array_length(chunk.events),
+        )
+        .where(chunk.conversation_id == conversation_id)
+        .order_by(chunk.seq_start, chunk.created_at, chunk.id)
+    )
+    for parent, run, first, last, count in parts:
+        positions[parent, run].append((first, last, count))
     rows: list[EventProjection] = []
     for record in records:
         events = sanitize_event_payloads(await trace_storage.load_events(db, record), secrets)
-        rows.append(
-            EventProjection(
-                record.assistant_msg_id,
-                events,
-                canonical_payload_sha256(events),
-            )
+        spans = _retained_spans(
+            len(record.events or []), positions[record.id, record.assistant_msg_id], len(events)
         )
+        offset = 0
+        for start, length in spans:
+            retained = events[offset : offset + length]
+            rows.append(
+                EventProjection(
+                    record.assistant_msg_id, retained, retained_event_sha256(retained, start), start
+                )
+            )
+            offset += length
     return rows
+
+
+def _retained_spans(
+    prefix_size: int, chunks: Iterable[tuple[int, int, int]], event_count: int
+) -> list[tuple[int, int]]:
+    """Preserve zero-based source offsets when a failed flush left a hole."""
+    spans = [(0, prefix_size)] if prefix_size else []
+    previous_end = prefix_size
+    for first, last, count in chunks:
+        if first <= previous_end or count < 1 or count != last - first + 1:
+            # The old history payload remains readable, but no cursor may
+            # replay an overlap or inconsistent source as a contiguous turn.
+            return [(1, event_count)]
+        if spans and first == previous_end + 1:
+            start, length = spans[-1]
+            spans[-1] = (start, length + count)
+        else:
+            spans.append((first - 1, count))
+        previous_end = last
+    if sum(length for _, length in spans) != event_count:
+        # A historical retry with duplicate IDs was removed by load_events.
+        return [(1, event_count)]
+    return spans or [(0, 0)]
 
 
 async def build_retained_trace(

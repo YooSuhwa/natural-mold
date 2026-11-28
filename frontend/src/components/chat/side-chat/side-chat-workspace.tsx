@@ -8,10 +8,12 @@ import { SideChatContext, type QuoteDelivery, type SideChatContextValue } from '
 import { SelectionActions } from './selection-actions'
 
 export function SideChatWorkspace({
+  disabled = false,
   conversationId,
   title,
   children,
 }: {
+  readonly disabled?: boolean
   readonly conversationId: string | null
   readonly title: string
   readonly children: ReactNode
@@ -90,6 +92,7 @@ export function SideChatWorkspace({
     ],
   )
 
+  if (disabled) return children
   return (
     <SideChatContext.Provider value={value}>
       <div ref={rootRef} className="contents">

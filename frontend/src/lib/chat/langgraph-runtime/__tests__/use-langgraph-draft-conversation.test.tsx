@@ -1,5 +1,5 @@
 import { StrictMode, type ReactNode } from 'react'
-import { renderHook, waitFor } from '@testing-library/react'
+import { act, renderHook, waitFor } from '@testing-library/react'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { useLangGraphDraftConversation } from '../use-langgraph-draft-conversation'
 
@@ -16,6 +16,8 @@ vi.mock('@/lib/api/conversations', () => ({
     delete: mocks.delete,
   },
 }))
+
+const draftModes = ['langgraph_v3', 'ag_ui'] as const
 
 describe('useLangGraphDraftConversation', () => {
   beforeEach(() => {
@@ -70,7 +72,7 @@ describe('useLangGraphDraftConversation', () => {
     expect(onConversationId).toHaveBeenCalledWith('conversation-v3')
   })
 
-  it('does not create a conversation outside LangGraph v3 draft mode', () => {
+  it('leaves legacy drafts and existing conversations untouched', () => {
     const onConversationId = vi.fn()
 
     renderHook(() =>
@@ -86,6 +88,15 @@ describe('useLangGraphDraftConversation', () => {
         agentId: 'agent-1',
         isDraftConversation: false,
         runtimeMode: 'langgraph_v3',
+        onConversationId,
+      }),
+    )
+
+    renderHook(() =>
+      useLangGraphDraftConversation({
+        agentId: 'agent-1',
+        isDraftConversation: false,
+        runtimeMode: 'ag_ui',
         onConversationId,
       }),
     )
@@ -127,7 +138,7 @@ describe('useLangGraphDraftConversation', () => {
     expect(secondCallback).toHaveBeenCalledWith('cancelled-conversation')
   })
 
-  it('does not create duplicate conversations during StrictMode effect replay', async () => {
+  it.each(draftModes)('creates one %s draft in StrictMode', async (runtimeMode) => {
     const onConversationId = vi.fn()
     const wrapper = ({ children }: { readonly children: ReactNode }) => (
       <StrictMode>{children}</StrictMode>
@@ -138,7 +149,7 @@ describe('useLangGraphDraftConversation', () => {
         useLangGraphDraftConversation({
           agentId: 'agent-1',
           isDraftConversation: true,
-          runtimeMode: 'langgraph_v3',
+          runtimeMode,
           onConversationId,
         }),
       { wrapper },
@@ -171,6 +182,38 @@ describe('useLangGraphDraftConversation', () => {
     expect(result.current.isBootstrapping).toBe(false)
     expect(result.current.conversationId).toBeNull()
     expect(onConversationId).not.toHaveBeenCalled()
+  })
+
+  it('retries a failed AG-UI draft once and promotes only the successful attempt', async () => {
+    const failure = new Error('network unavailable')
+    mocks.createDraft.mockRejectedValueOnce(failure).mockResolvedValueOnce({ id: 'retried-draft' })
+    const onConversationId = vi.fn()
+    const { result, unmount } = renderHook(() =>
+      useLangGraphDraftConversation({
+        agentId: 'agent-1',
+        isDraftConversation: true,
+        runtimeMode: 'ag_ui',
+        onConversationId,
+      }),
+    )
+
+    await waitFor(() => expect(result.current.error).toBe(failure))
+    expect(mocks.createDraft).toHaveBeenCalledTimes(1)
+    expect(onConversationId).not.toHaveBeenCalled()
+
+    await act(async () => {
+      result.current.retry()
+      result.current.retry()
+    })
+    await waitFor(() => expect(result.current.conversationId).toBe('retried-draft'))
+    expect(result.current.error).toBeNull()
+    expect(mocks.createDraft).toHaveBeenCalledTimes(2)
+    expect(mocks.create).not.toHaveBeenCalled()
+    expect(onConversationId).toHaveBeenCalledExactlyOnceWith('retried-draft')
+    expect(result.current.commitDraftConversation()).toBe('retried-draft')
+
+    await act(async () => unmount())
+    expect(mocks.delete).not.toHaveBeenCalled()
   })
 
   it('creates a fresh conversation when the same agent re-enters a v3 draft route', async () => {
@@ -249,11 +292,11 @@ describe('useLangGraphDraftConversation', () => {
     rerender({ isDraftConversation: false })
 
     await waitFor(() => {
-      expect(mocks.delete).toHaveBeenCalledWith('conversation-v3')
+      expect(mocks.delete).toHaveBeenCalledWith('conversation-v3', { onlyIfDraft: true })
     })
   })
 
-  it('keeps a committed draft conversation when leaving the draft route', async () => {
+  it.each(draftModes)('retains committed %s drafts on navigation', async (runtimeMode) => {
     const onConversationId = vi.fn()
 
     const { result, rerender } = renderHook(
@@ -261,7 +304,7 @@ describe('useLangGraphDraftConversation', () => {
         useLangGraphDraftConversation({
           agentId: 'agent-1',
           isDraftConversation,
-          runtimeMode: 'langgraph_v3',
+          runtimeMode,
           onConversationId,
         }),
       { initialProps: { isDraftConversation: true } },
@@ -272,7 +315,7 @@ describe('useLangGraphDraftConversation', () => {
     })
 
     expect(result.current.commitDraftConversation()).toBe('conversation-v3')
-    rerender({ isDraftConversation: false })
+    await act(async () => rerender({ isDraftConversation: false }))
 
     expect(mocks.delete).not.toHaveBeenCalled()
   })
@@ -296,7 +339,7 @@ describe('useLangGraphDraftConversation', () => {
     })
 
     expect(result.current.retainDraftConversation()).toBe('conversation-v3')
-    rerender({ isDraftConversation: false })
+    await act(async () => rerender({ isDraftConversation: false }))
 
     expect(mocks.delete).not.toHaveBeenCalled()
   })

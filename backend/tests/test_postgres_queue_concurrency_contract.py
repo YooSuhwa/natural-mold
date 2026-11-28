@@ -13,7 +13,7 @@ from postgres_runner_contract import build_lane_dsns  # noqa: E402
 from postgres_runner_runtime import run_test_child  # noqa: E402
 
 
-def test_queue_concurrency_runner_selects_only_reviewed_file(
+def test_queue_concurrency_runner_selects_reviewed_queue_and_steering_cases(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     # Given a disposable-lane environment and command capture.
@@ -39,7 +39,7 @@ def test_queue_concurrency_runner_selects_only_reviewed_file(
     # When the named queue lane resolves its child command.
     exit_code, _output = run_test_child(environment, "queue-concurrency")
 
-    # Then exactly the queue lock test file is selected.
+    # Then queue locks, steering races and cross-process recovery run together.
     assert exit_code == 0
     assert commands == [
         [
@@ -48,6 +48,13 @@ def test_queue_concurrency_runner_selects_only_reviewed_file(
             "-p",
             "tests.postgres_execution_plugin",
             "tests/integration/test_conversation_queue_concurrency.py",
+            "tests/integration/test_chat_steer_concurrency.py",
+            "tests/integration/test_ag_ui_v1_read_faults_postgres.py",
+            "tests/integration/test_steer_recovery.py",
+            (
+                "tests/test_chat_steer_checkpoint.py"
+                "::test_new_process_recovers_consumed_receipt_and_leaves_prepared_row_unconfirmed"
+            ),
             "-m",
             "integration",
         ]

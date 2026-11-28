@@ -18,7 +18,7 @@
 
 [Features](#features) · [Quick start](#quick-start) · [Local development](#local-development) · [Configuration](#configuration) · [Architecture](#architecture) · [Testing](#testing) · [Docs](#documentation)
 
-<!-- project-current-source: migration=i09_token_usage_credential_scope; deepagents=0.7.11; ruff=0.16.5; refreshed=2026-10-21 -->
+<!-- project-current-source: migration=i52_ag_ui_queue_claim_guard; deepagents=0.7.42; ruff=0.16.5; refreshed=2026-11-27 -->
 
 </div>
 
@@ -40,8 +40,8 @@ original owner checks to an OpenFGA model.
 |---|---|
 | Frontend | Next.js 16 (App Router), React 19, TailwindCSS v4, shadcn/ui, assistant-ui, TanStack Query, Jotai, next-intl |
 | Backend | FastAPI, SQLAlchemy 2.0 async, Alembic, APScheduler, Python 3.12 |
-| Agent runtime | LangChain 1.x, LangGraph 1.x, `deepagents` 0.7.11 (`create_deep_agent`), LangGraph `AsyncPostgresSaver` |
-| Data | PostgreSQL 16, Alembic head `i09_token_usage_credential_scope` |
+| Agent runtime | LangChain 1.x, LangGraph 1.2.24, `deepagents` 0.7.42 (`create_deep_agent`), LangGraph `AsyncPostgresSaver` |
+| Data | PostgreSQL 16, Alembic head `i52_ag_ui_queue_claim_guard` |
 | Authorization | Owner checks (legacy) or OpenFGA (shadow / enforce), optional PostgreSQL row-level security |
 | License | MIT |
 
@@ -49,9 +49,14 @@ original owner checks to an OpenFGA model.
 
 ### Chat
 
-- **Streaming runs.** The v3 chat starts runs with an agent-protocol `run.start`
-  command and streams events over SSE. A dropped stream resumes from its event
-  cursor, and messages typed during a run are queued.
+- **Streaming runs.** Ordinary and side chats use AG-UI 1.0 with assistant-ui.
+  The browser can reopen a running conversation and recover its saved messages,
+  tool results and pending approvals without starting another run. Messages
+  typed during a run can be queued.
+- **Goals and background work.** With the relevant settings enabled, set a
+  goal with completion criteria, send instructions to a running agent or a
+  specific subagent, and hand off a task that can finish after the parent reply.
+  Completion notifications reopen the result and can link to a specific file version.
 - **Branching.** Editing a user message or regenerating a reply forks the
   LangGraph checkpoint; `<N/M>` arrows switch between sibling branches.
 - **Human-in-the-loop.** Approval cards for risky tool calls let you approve,
@@ -60,9 +65,9 @@ original owner checks to an OpenFGA model.
   questions (`ask_user`).
 - **Generative UI.** Tool results can render as tables, charts, stat tiles or
   terminal output instead of raw JSON.
-- **Attachments.** Uploaded files show as thumbnails on the message and in the
-  conversation file list. Text files are given to the model as context; images
-  are displayed but not yet sent to the model.
+- **Attachments.** Uploaded files appear in messages and in the conversation
+  file list. Text files provide model context. Organizations can configure a
+  separate vision model to describe image attachments for text-only chat models.
 - **Find, export and retry.** Ctrl/Cmd+F searches the conversation,
   conversations export to Markdown or JSON, and a failed run shows the error
   with a retry button.
@@ -315,7 +320,7 @@ docker compose up -d postgres
 cd backend
 cp .env.example .env            # set ENCRYPTION_KEYS and JWT_SECRET
 uv sync
-uv run alembic upgrade head     # head: i09_token_usage_credential_scope
+uv run alembic upgrade head     # head: i52_ag_ui_queue_claim_guard
 uv run uvicorn app.main:app --reload --reload-dir app --port 8001
 
 # Frontend (http://localhost:3000), in another terminal
@@ -337,6 +342,20 @@ keep the frontend port, backend port, `CORS_ALLOWED_ORIGINS` and
 `NEXT_PUBLIC_API_BASE_URL` matched, and fix the port with
 `pnpm dev -- --port <port>`. Several backends on one database can run scheduled
 jobs twice.
+
+### Chat transport and rollback
+
+Apply the backend migrations through `i52_ag_ui_queue_claim_guard` when upgrading
+an existing installation. For a frontend rollback against the upgraded backend,
+rebuild with the previous transport:
+
+```bash
+NEXT_PUBLIC_CHAT_RUNTIME=langgraph_v3 docker compose up -d --build frontend
+```
+
+For a standalone frontend, pass the same value to `pnpm build`. Both
+transports use the same stored conversations, so the existing database serves
+either frontend.
 
 ## Configuration
 
@@ -362,6 +381,11 @@ important settings:
 | `TENANT_PURGE_ENABLED` | `false` | Daily job that permanently deletes companies whose deletion grace period has ended. Scheduling and cancelling a deletion work either way. |
 | `CORS_ALLOWED_ORIGINS` | `http://localhost:3000,...` | Must include every frontend origin. |
 | `NEXT_PUBLIC_API_BASE_URL` | `http://localhost:8001` | Frontend; inlined into the bundle at build time. |
+| `NEXT_PUBLIC_CHAT_RUNTIME` | `ag_ui` | Ordinary and side chat transport. Set `langgraph_v3` at build time to use the previous transport. |
+| `CONVERSATION_GOAL_ORG_IDS` | `[]` | JSON array of organization UUIDs that can use goals with completion criteria. |
+| `CHAT_STEER_ENABLED`, `NEXT_PUBLIC_CHAT_STEER_ENABLED` | `false`, `false` | Enable instructions during a chat run in the backend and frontend build. |
+| `INDEPENDENT_CHAT_JOBS_ENABLED`, `CHAT_WORK_NOTIFICATIONS_ENABLED` | `false`, `false` | Enable independent child work and inbox notifications for chat work. |
+| `OPENAI_PROMPT_CACHE_ORG_IDS` | `[]` | JSON array of organization UUIDs opting in to per-conversation prompt cache routing on the official OpenAI API. |
 | `SKILL_SANDBOX_ENABLED` | `false` (`true` in the Docker stack) | Run each skill script in a throwaway OpenSandbox sandbox. No fallback to the host when the server is down. |
 | `SKILL_SANDBOX_DOMAIN`, `SKILL_SANDBOX_API_KEY` | `127.0.0.1:18080`, empty | Sandbox server address and key. The Docker stack sets both (`opensandbox:8090`, a generated key). |
 | `SKILL_SANDBOX_USE_SERVER_PROXY` | `false` (`true` in the Docker stack) | Reach the sandboxes through the server; needed when the backend runs in a container. |
@@ -396,8 +420,8 @@ flowchart LR
 - Backend layers: `routers/` (HTTP and permission policy) → `services/`
   (business logic) → `models/` (SQLAlchemy).
 - `agent_runtime/` assembles models, tools, skills, memory, subagents and
-  middleware, runs them with `create_deep_agent`, and turns LangGraph events
-  into SSE.
+  middleware and runs them with `create_deep_agent`. The chat service projects
+  the saved LangGraph run events as AG-UI over SSE.
 - Authorization data lives in PostgreSQL; OpenFGA holds a derived copy kept in
   sync through an outbox.
 - Frontend: `lib/api/` → TanStack Query hooks → components; client state in

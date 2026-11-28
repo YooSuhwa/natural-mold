@@ -111,6 +111,34 @@ describe('SubagentTeamStrip', () => {
     })
   })
 
+  it('selects the exact projected run when separate delegations reuse the same tool call id', async () => {
+    const user = userEvent.setup()
+    const children = ['first', 'second'].map((label) => ({
+      ...snapshot({ id: 'shared-call', name: label, taskInput: `brief-${label}` }),
+      subagentRunId: `run-${label}`,
+      parentMessageId: `message-${label}`,
+      outcome: 'running' as const,
+      transcript: [],
+      tools: [],
+    }))
+    snapshotsMock.current = children
+    const store = createStore()
+    renderStrip(store)
+
+    for (const child of children) {
+      await user.click(screen.getByRole('button', { name: `chipLabel(${child.name})` }))
+      expect(store.get(chatRightRailAtom)).toEqual({
+        mode: 'subagent',
+        subagent: {
+          conversationId: 'conv-1',
+          toolCallId: 'shared-call',
+          subagentRunId: child.subagentRunId,
+          agentName: '',
+        },
+      })
+    }
+  })
+
   it('서브의 서브(depth≥2)만 ↳ 마커를 붙인다 — 직접 위임(depth 1)은 마커 없음', () => {
     snapshotsMock.current = [
       snapshot({ id: 'c1', name: 'agent_parent', depth: 1 }),

@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import logging
 import uuid as _uuid
+from functools import partial
 from typing import Any
 
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -20,6 +21,7 @@ from app.agent_runtime.runtime.shared_memo import (
 )
 from app.agent_runtime.runtime_config import AgentConfig
 from app.agent_runtime.runtime_hydration_guard import assert_pre_marker
+from app.authz.org_context import OrgContext
 
 logger = logging.getLogger(__name__)
 
@@ -73,12 +75,11 @@ def _profile_briefs(lines: Any) -> list[dict[str, Any]]:
     return briefs
 
 
-def recall_session(cfg: AgentConfig) -> Any:
-    """Recall's own session (tests swap it): the prepared adapter's locked transaction
-    must not commit (5.4-4)."""
+def recall_session(context: OrgContext) -> Any:
+    """Scoped ranking session. For prepared runs the owner persists the selected recall."""
     from app.database import async_session, tenant_session
 
-    return tenant_session(cfg.org_context, maker=async_session)
+    return tenant_session(context, maker=async_session)
 
 
 MEMORY_USE_RULES = (
@@ -171,12 +172,14 @@ async def _user_memory_context_in(
     briefs = _profile_briefs(profile.lines)
     if cfg.memory_run_id:
         recall = await memory_service.run_recall(
-            lambda: recall_session(cfg),
+            partial(recall_session, cfg.org_context),
             context=cfg.org_context,
             run_id=cfg.memory_run_id,
             scopes=scopes,
             agent_id=agent_uuid,
             exclude=profile.source_ids,
+            owner=db,
+            local_only=cfg.independent_job,
         )
         cfg.memory_recall_block = recall.block or None
         briefs.extend(_recalled_memory_briefs(list(recall.records)))

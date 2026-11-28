@@ -9,6 +9,7 @@ const mocks = vi.hoisted(() => ({
   state: {
     thread: { isRunning: true },
     message: {
+      id: 'current-message',
       metadata: { custom: { isStreamingMessage: true as boolean | undefined } } as
         | { custom: { isStreamingMessage: boolean | undefined } }
         | undefined,
@@ -302,7 +303,7 @@ describe('StreamingMessageLoadingIndicator', () => {
       />,
     )
 
-    expect(mocks.useSubagentProgressSummary).toHaveBeenCalledWith(['tc-current'])
+    expect(mocks.useSubagentProgressSummary).toHaveBeenCalledWith(['tc-current'], 'current-message')
     expect(screen.getByText('서브 에이전트 1/1 완료')).toBeInTheDocument()
     expect(screen.queryByText('서브 에이전트 2/2 완료')).not.toBeInTheDocument()
   })

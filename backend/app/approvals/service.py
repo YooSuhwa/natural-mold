@@ -24,14 +24,17 @@ from typing import Any, Final
 from sqlalchemy import ColumnElement, and_, func, or_, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.agent_runtime.protocol_redaction import redact_protocol_data
+from app.agent_runtime.protocol_redaction import REDACTED_SENSITIVE_FIELD, redact_protocol_data
+from app.approvals.recorded_interrupts import recorded_approval_displays
 from app.authz import registration
 from app.authz.audit_actions import (
     APPROVAL_DECIDED,
     APPROVAL_EXPIRED,
     APPROVAL_REQUESTED,
 )
+from app.authz.execution_lock_cursor import LockClass
 from app.authz.org_context import OrgContext
+from app.authz.organization_execution_locks import lock_query
 from app.config import settings
 from app.models.approval_request import ApprovalRequest
 from app.models.conversation_run import ConversationRun
@@ -99,9 +102,23 @@ def _allowed(payload: Mapping[str, Any], index: int, name: Any) -> list[str]:
     return [str(d) for d in decisions] if isinstance(decisions, list) else []
 
 
-def _view(payload: Mapping[str, Any], secret_values: Iterable[str]) -> list[dict[str, Any]]:
+def _view(payload: Mapping[str, Any], secret_values: Iterable[str] | None) -> list[dict[str, Any]]:
     """The actions as the decider sees them: names, masked arguments, allowed decisions."""
     actions = approval_actions(payload) or []
+    if secret_values is None:
+        # A restarted worker no longer has the original run's pinned credentials.
+        # Keep display values private; the digest still authenticates the real args.
+        return [
+            {
+                "name": REDACTED_SENSITIVE_FIELD,
+                "args": REDACTED_SENSITIVE_FIELD,
+                "description": None,
+                "allowed_decisions": [
+                    d for d in _allowed(payload, index, action.get("name")) if d == "reject"
+                ],
+            }
+            for index, action in enumerate(actions)
+        ]
     masked = redact_protocol_data(
         "input",
         [dict(action) for action in actions],
@@ -110,9 +127,11 @@ def _view(payload: Mapping[str, Any], secret_values: Iterable[str]) -> list[dict
     )
     return [
         {
-            "name": str(action.get("name") or ""),
+            "name": str(shown.get("name") or "") if isinstance(shown, Mapping) else "",
             "args": shown.get("args") if isinstance(shown, Mapping) else None,
-            "description": str(action.get("description") or "")[:2000] or None,
+            "description": (str(shown.get("description") or "")[:2000] or None)
+            if isinstance(shown, Mapping)
+            else None,
             "allowed_decisions": _allowed(payload, index, action.get("name")),
         }
         for index, (action, shown) in enumerate(zip(actions, masked, strict=True))
@@ -160,12 +179,23 @@ async def record_pending(
     interrupts: Iterable[PendingInterrupt],
     *,
     origin: RunOrigin,
-    secret_values: Iterable[str] = (),
+    secret_values: Iterable[str] | None = (),
 ) -> list[ApprovalRequest]:
     """One pending row per approval interrupt of ``run`` (idempotent per interrupt)."""
     if run.tenant_id is None:
         return []
-    secrets = list(secret_values)
+    # Multiple inbox, worker and recovery producers share (run, interrupt) keys.
+    # Serialize before looking for existing rows so unrelated new approvals in
+    # the same checkpoint are not rolled back by a duplicate insert.
+    locked_run = await lock_query(
+        db,
+        LockClass.RUN,
+        select(ConversationRun).where(ConversationRun.id == run.id).with_for_update(),
+    )
+    if locked_run is None:
+        return []
+    secrets = list(secret_values) if secret_values is not None else None
+    displays = await recorded_approval_displays(db, run) if secrets is None else {}
     parent = await _inherited(db, run) if run.parent_run_id is not None else None
     source = (
         (parent.source if parent is not None else None)
@@ -200,6 +230,15 @@ async def record_pending(
                 ApprovalRequest.args_digest == hashed,
             )
         )
+        display = displays.get(interrupt.interrupt_id)
+        if (
+            display is not None
+            and args_digest(display) == hashed
+            and display.get("review_configs") == interrupt.payload.get("review_configs")
+        ):
+            actions = _view(display, ())
+        else:
+            actions = _view(interrupt.payload, secrets)
         row = ApprovalRequest(
             tenant_id=run.tenant_id,
             org_id=run.org_id,
@@ -218,7 +257,7 @@ async def record_pending(
             subject_user_id=run.user_id,
             requester_user_id=run.on_behalf_of_user_id or run.user_id,
             decider_user_id=run.user_id,
-            actions=_view(interrupt.payload, secrets),
+            actions=actions,
             args_digest=hashed,
             attempt=int(earlier or 0) + 1,
             policy_version=run.runtime_policy_version,
@@ -424,7 +463,10 @@ async def _mine(db: AsyncSession, context: OrgContext) -> ColumnElement[bool]:
     A registration request has no one decider (tool-governance-plan G9): company
     administrators see the company's, an organization's administrators see theirs.
     """
+    from app.approvals.independent_visibility import readable_approval
+
     own = and_(
+        await readable_approval(db, context),
         ApprovalRequest.kind != "registration",
         ApprovalRequest.decider_user_id == context.user_id,
         or_(ApprovalRequest.org_id == context.org_id, ApprovalRequest.org_id.is_(None)),

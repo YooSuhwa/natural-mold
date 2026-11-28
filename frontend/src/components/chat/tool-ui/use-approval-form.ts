@@ -4,6 +4,7 @@ import { useState } from 'react'
 import { useTranslations } from 'next-intl'
 import { toApprove, toReject } from '@/lib/chat/decision-mappers'
 import { useHiTL } from '@/lib/chat/hitl-context'
+import { canRespondToAction } from '@/lib/chat/hitl-readiness'
 
 export type ApprovalDecision = 'approved' | 'revision' | null
 
@@ -39,16 +40,16 @@ export function useApprovalForm(options: UseApprovalFormOptions): ApprovalFormSt
   const [revision, setRevision] = useState('')
   const [submitted, setSubmitted] = useState<ApprovalDecision>(null)
   const isRunning = !isComplete
-  const isLocked = !!submitted || !isRunning
+  const isLocked = !!submitted || !isRunning || !canRespondToAction(hitl, undefined)
 
   const handleApprove = async () => {
-    if (submitted) return
+    if (isLocked) return
     setSubmitted('approved')
     await hitl?.onResumeDecisions([toApprove()], approveDisplay)
   }
 
   const handleRevision = async () => {
-    if (submitted) return
+    if (isLocked) return
     const msg = revision.trim() || revisionFallback
     setSubmitted('revision')
     await hitl?.onResumeDecisions([toReject(msg)], msg)

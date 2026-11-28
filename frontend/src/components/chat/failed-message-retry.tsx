@@ -1,6 +1,7 @@
 'use client'
 
 import { createContext, useCallback, useContext, useRef, useState, type ReactNode } from 'react'
+import type { PartialModelOutput } from '@/lib/chat/langgraph-runtime/partial-model-output'
 import type { ChatCommandActions } from '@/lib/chat/commands/chat-command-types'
 import { reportClientWarning } from '@/lib/logging/client-logger'
 
@@ -13,12 +14,14 @@ export interface FailedMessageRetryContextValue {
    * provider at all: its terminal failure bubbles must remain unavailable.
    */
   readonly failedRunId?: string
+  readonly partialOutput?: PartialModelOutput | null
   readonly retryAction: RetryAction
 }
 
 type FailedMessageRetryResolution =
   | { readonly kind: 'legacy' }
   | { readonly kind: 'unavailable' }
+  | { readonly kind: 'partial'; readonly output: PartialModelOutput }
   | { readonly kind: 'available'; readonly retryAction: NonNullable<RetryAction> }
 
 const FailedMessageRetryContext = createContext<FailedMessageRetryContextValue | null>(null)
@@ -52,10 +55,17 @@ export function useFailedMessageRetryAction(
   const context = useContext(FailedMessageRetryContext)
   if (!context) return { kind: 'legacy' }
   const failedRunId = failedRunIdFromTerminalMessageId(messageId)
-  if (!failedRunId || failedRunId !== context.failedRunId || !context.retryAction) {
+  if (!failedRunId || failedRunId !== context.failedRunId) {
     return { kind: 'unavailable' }
   }
-  return { kind: 'available', retryAction: context.retryAction }
+  if (context.partialOutput !== undefined) {
+    return context.partialOutput
+      ? { kind: 'partial', output: context.partialOutput }
+      : { kind: 'unavailable' }
+  }
+  return context.retryAction
+    ? { kind: 'available', retryAction: context.retryAction }
+    : { kind: 'unavailable' }
 }
 
 export function FailedMessageRetryButton({

@@ -153,3 +153,25 @@ async def test_reload_returns_the_pending_auth_interrupt_with_its_current_attemp
     assert pending["value"]["type"] == "auth_required"
     assert pending["value"]["attempt"] == 2
     assert pending["value"]["allowed_decisions"] == ["respond"]
+
+
+async def test_restored_auth_request_id_does_not_authorize_a_superseded_answer(
+    client: AsyncClient, db: AsyncSession
+) -> None:
+    conversation = await seed_conversation(db)
+    renewed = {**auth_payload(2), "auth_request_id": "first-slot"}
+    await seed_interrupted(db, conversation, renewed, iid="second-slot")
+
+    state = await client.get(
+        f"/api/conversations/{conversation.id}/langgraph/threads/{conversation.id}/state"
+    )
+    (task,) = state.json()["tasks"]
+    (pending,) = task["interrupts"]
+    assert pending["id"] == "second-slot"
+    assert pending["value"]["auth_request_id"] == "first-slot"
+
+    for slot, attempt in [("first-slot", 2), ("second-slot", 1)]:
+        answer = {"decisions": [{"type": "respond", "message": "retry", "attempt": attempt}]}
+        rejected = await client.post(commands_url(conversation), json=respond_command(answer, slot))
+        assert rejected.json()["error"]["code"] == "STALE_INTERRUPT"
+    assert await resume_runs(db, conversation) == []

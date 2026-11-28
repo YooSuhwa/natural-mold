@@ -66,6 +66,7 @@ def canonical_digest_bytes(material: PreparedRunDigestMaterial) -> bytes:
             "run_id": str(binding.run_id),
             "thread_id": binding.thread_id,
             "participant_paths": sorted(binding.participant_paths),
+            **({"independent_job": True} if binding.independent_job else {}),
         },
         "versions": _strings("versions", material.versions),
         "snapshot_digests": _strings("snapshot_digests", material.snapshot_digests),

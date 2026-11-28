@@ -11,6 +11,8 @@ export const CHAT_MIN_WIDTH_PX = 520
 export type RightRailMode = 'none' | 'subagent' | 'tool-result' | 'outline' | 'artifacts'
 
 export interface SubagentPayload {
+  subagentRunId?: string
+  childTaskId?: string
   conversationId?: string | null
   toolCallId: string
   agentName: string

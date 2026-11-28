@@ -2,11 +2,13 @@ from __future__ import annotations
 
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
+from datetime import datetime
 from typing import NotRequired, TypedDict
+from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field
 
-from app.schemas.conversation_refs import ConversationRefSource, JsonValue, conversation_ref
+from app.schemas.conversation_refs import ConversationRefSource, JsonValue
 
 
 class ThreadCheckpoint(BaseModel):
@@ -45,6 +47,7 @@ class RunMetadata(TypedDict):
     status: str
     error_code: NotRequired[str]
     error_message: NotRequired[str]
+    partial_output: NotRequired[dict[str, JsonValue]]
 
 
 class ThreadStateMetadata(TypedDict):
@@ -65,6 +68,15 @@ class ThreadStateResponse(TypedDict):
     metadata: ThreadStateMetadata
     created_at: str
     parent_checkpoint: Mapping[str, JsonValue] | None
+
+
+class _ThreadStateIdentity(BaseModel):
+    model_config = ConfigDict(from_attributes=True, frozen=True)
+
+    id: UUID
+    agent_id: UUID | None
+    active_branch_checkpoint_id: str | None
+    updated_at: datetime
 
 
 @dataclass(frozen=True, slots=True)
@@ -89,6 +101,8 @@ def _run_metadata_json(metadata: RunMetadata) -> dict[str, JsonValue]:
         value["error_code"] = metadata["error_code"]
     if "error_message" in metadata:
         value["error_message"] = metadata["error_message"]
+    if "partial_output" in metadata:
+        value["partial_output"] = metadata["partial_output"]
     return value
 
 
@@ -96,7 +110,7 @@ def build_state_response(
     conversation: ConversationRefSource,
     request: ThreadStateResponseInput,
 ) -> ThreadStateResponse:
-    conversation = conversation_ref(conversation)
+    identity = _ThreadStateIdentity.model_validate(conversation)
     state_values = dict(request.values or {})
     state_values.setdefault("messages", [])
     runtime_state: dict[str, JsonValue] = {}
@@ -106,10 +120,10 @@ def build_state_response(
         runtime_state["latest_run"] = _run_metadata_json(request.latest_run)
     if runtime_state:
         state_values["__moldy_runtime"] = runtime_state
-    resolved_checkpoint_id = request.checkpoint_id or conversation.active_branch_checkpoint_id
+    resolved_checkpoint_id = request.checkpoint_id or identity.active_branch_checkpoint_id
     checkpoint = (
         ThreadCheckpointPayload(
-            thread_id=str(conversation.id),
+            thread_id=str(identity.id),
             checkpoint_id=resolved_checkpoint_id,
             checkpoint_ns=request.checkpoint_ns,
         )
@@ -117,8 +131,8 @@ def build_state_response(
         else None
     )
     metadata = ThreadStateMetadata(
-        conversation_id=str(conversation.id),
-        agent_id=str(conversation.agent_id),
+        conversation_id=str(identity.id),
+        agent_id=str(identity.agent_id) if identity.agent_id is not None else None,
         source=request.metadata_source,
         checkpoint_by_message_id=dict(request.checkpoint_by_message_id or {}),
         parent_checkpoint_by_message_id=dict(request.parent_checkpoint_by_message_id or {}),
@@ -133,7 +147,7 @@ def build_state_response(
         tasks=request.tasks or [],
         checkpoint=checkpoint,
         metadata=metadata,
-        created_at=request.created_at or conversation.updated_at.isoformat(),
+        created_at=request.created_at or identity.updated_at.isoformat(),
         parent_checkpoint=request.parent_checkpoint,
     )
 

@@ -20,6 +20,17 @@ describe('messageAnchorExists / jumpToMessage', () => {
     document.body.innerHTML = ''
   })
 
+  it('keeps a saved or quoted wire ID jumpable after restoring its public message UUID', () => {
+    const anchor = document.createElement('div')
+    anchor.dataset.moldyMessageId = '2c9e786f-83e8-4d3c-818d-22eaf9622008'
+    anchor.dataset.moldyWireMessageId = 'provider-id'
+    document.body.append(anchor)
+    expect(messageAnchorExists(anchor.dataset.moldyMessageId)).toBe(true)
+    expect(jumpToMessage('provider-id')).toBe(true)
+    expect(scrollIntoView).toHaveBeenCalledTimes(1)
+    anchor.remove()
+  })
+
   it('detects whether a message anchor is in the loaded transcript', () => {
     const anchor = document.createElement('div')
     anchor.setAttribute('data-moldy-message-id', 'msg-1')

@@ -1,29 +1,128 @@
 'use client'
 
+import { Fragment, useId } from 'react'
 import { Minimize2Icon } from 'lucide-react'
+import { hashKey } from '@tanstack/react-query'
 import { useTranslations } from 'next-intl'
+import { Button } from '@/components/ui/button'
+import {
+  useCompactionDisclosure,
+  useConversationHistoryEvidence,
+  type CompactionEvidenceTarget,
+} from '@/lib/hooks/use-conversation-history-evidence'
 import { cn } from '@/lib/utils'
+import { useMoldyAgUiActivities } from '@/lib/ag-ui/activity-context'
 
 interface CompactionSummaryProps {
   readonly className?: string
+  readonly evidence?: CompactionEvidenceTarget
 }
 
-/**
- * Permanent inline marker shown on the assistant turn whose context was
- * auto-compacted. The opaque history id remains message metadata until an
- * authenticated history resolver and viewer exist; it is intentionally neither
- * rendered nor copied to the clipboard.
- */
-export function CompactionSummary({ className }: CompactionSummaryProps) {
+export function HistoryEvidencePanel({ target }: { readonly target: CompactionEvidenceTarget }) {
   const t = useTranslations('chat.compaction')
+  const query = useConversationHistoryEvidence(target)
+  if (query.isPending) return <p role="status">{t('loading')}</p>
+  if (query.isError) return <p role="status">{t('unavailable')}</p>
 
+  const pages = query.data.pages
+  return (
+    <div className="space-y-2">
+      {pages.every((page) => page.excerpts.length === 0) && <p>{t('empty')}</p>}
+      <dl className="space-y-2">
+        {pages.map((page, index) => (
+          <Fragment key={index === 0 ? 0 : pages[index - 1].next_offset}>
+            {page.excerpts.map((excerpt, entry) => (
+              <div key={entry}>
+                <dt className="font-medium">{t(excerpt.role)}</dt>
+                <dd className="whitespace-pre-wrap break-words text-foreground">
+                  {excerpt.text}
+                  {excerpt.truncated && '…'}
+                </dd>
+              </div>
+            ))}
+          </Fragment>
+        ))}
+      </dl>
+      {query.hasNextPage && (
+        <Button
+          type="button"
+          variant="outline"
+          size="xs"
+          disabled={query.isFetchingNextPage}
+          onClick={() => void query.fetchNextPage()}
+        >
+          {t('more')}
+        </Button>
+      )}
+    </div>
+  )
+}
+
+export function CompactionSummary(props: CompactionSummaryProps) {
+  const scope = useMoldyAgUiActivities()
+  const target =
+    !scope || scope.conversationId === props.evidence?.conversationId ? props.evidence : undefined
+  const origin =
+    target &&
+    hashKey([
+      Boolean(scope),
+      target.conversationId,
+      target.activityId,
+      target.messageId,
+      target.historyId,
+      target.cutoffIndex,
+    ])
+  return (
+    <CompactionDisclosure
+      key={origin}
+      className={props.className}
+      evidence={target}
+      standardHistory={Boolean(scope)}
+    />
+  )
+}
+
+function CompactionDisclosure({
+  className,
+  evidence,
+  standardHistory,
+}: CompactionSummaryProps & { readonly standardHistory: boolean }) {
+  const t = useTranslations('chat.compaction')
+  const panelId = useId()
+  const { expanded, checkpointId, unavailable, toggle } = useCompactionDisclosure(
+    evidence,
+    standardHistory,
+  )
   return (
     <div
-      className={cn('flex items-center gap-1.5 text-xs text-muted-foreground', className)}
+      className={cn('space-y-2 text-xs text-muted-foreground', className)}
       data-testid="compaction-summary"
     >
-      <Minimize2Icon className="size-3.5 shrink-0" aria-hidden />
-      <span>{t('summary')}</span>
+      <div className="flex flex-wrap items-center gap-1.5">
+        <Minimize2Icon className="size-3.5 shrink-0" aria-hidden />
+        <span>{t('summary')}</span>
+        {evidence && (
+          <Button
+            type="button"
+            variant="ghost"
+            size="xs"
+            aria-expanded={expanded}
+            aria-controls={panelId}
+            onClick={toggle}
+          >
+            {t(expanded ? 'hide' : 'view')}
+          </Button>
+        )}
+      </div>
+      {evidence && (
+        <div id={panelId} hidden={!expanded} className="moldy-muted-panel p-3">
+          {checkpointId ? (
+            <HistoryEvidencePanel target={{ ...evidence, checkpointId }} />
+          ) : expanded ? (
+            <p role="status">{t(unavailable ? 'unavailable' : 'loading')}</p>
+          ) : null}
+        </div>
+      )}
     </div>
   )
 }

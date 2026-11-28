@@ -16,6 +16,8 @@ from deepagents.backends import StateBackend
 from deepagents.middleware import subagents as installed_subagents
 from deepagents.middleware.filesystem import FilesystemPermission
 from deepagents.middleware.subagents import SUBAGENT_RESPONSE_FORMAT_CONFIG_KEY as FORMAT_KEY
+from langchain.agents.middleware import ModelCallLimitMiddleware
+from langchain_core.exceptions import ModelRefusalError
 from langchain_core.messages import AIMessage
 
 from app.agent_runtime.lease_bound_tool import LeaseBoundToolMiddleware
@@ -60,9 +62,16 @@ def _compiled_tools(runnable: Any) -> list[str]:
     return sorted(runnable.nodes["tools"].bound.tools_by_name)
 
 
-def test_children_match_the_installed_stack_and_compiled_tools(monkeypatch) -> None:
-    root_model = model(AIMessage(content="done"))
-    researcher: Any = {"name": "researcher", "description": "r", "system_prompt": "s"}
+@pytest.mark.asyncio
+async def test_children_match_the_installed_stack_and_compiled_tools(monkeypatch) -> None:
+    root_model = model(AIMessage(content_blocks=[{"type": "refusal", "refusal": "test refusal"}]))
+    researcher: Any = {
+        "name": "researcher",
+        "description": "r",
+        "system_prompt": "s",
+        "skills": SKILLS,
+        "middleware": [ModelCallLimitMiddleware(run_limit=2)],
+    }
     stock: dict[str, Any] = {}
     original = installed_subagents.create_sub_agent
 
@@ -108,6 +117,9 @@ def test_children_match_the_installed_stack_and_compiled_tools(monkeypatch) -> N
         assert _shape(prepared[name]) == _shape(stock_spec)
         prepared_runnable = runnables[(f"root/{name}", "default")]
         assert _compiled_tools(prepared_runnable) == _compiled_tools(stock_runnable)
+        for child in (stock_runnable, prepared_runnable):
+            with pytest.raises(ModelRefusalError, match="test refusal"):
+                await child.ainvoke({"messages": [("user", "Hi")]})
     assert "write_file" in _compiled_tools(runnables[("root/general-purpose", "default")])
     assert set(prepared["general-purpose"]["interrupt_on"]) >= {"echo", "write_file"}
 

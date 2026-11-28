@@ -23,6 +23,7 @@ interface ReadinessPanelProps {
   readonly agentId: string
   readonly agentName?: string | null
   readonly readiness: AgentReadiness
+  readonly canContinue?: () => boolean
   /** After a per-user connection was made (the in-chat auth card answers `retry`). */
   readonly onConnected?: () => void
 }
@@ -32,6 +33,7 @@ export function ReadinessPanel({
   agentId,
   agentName,
   readiness,
+  canContinue,
   onConnected,
 }: ReadinessPanelProps) {
   const t = useTranslations('readiness.panel')
@@ -40,6 +42,7 @@ export function ReadinessPanel({
   const [request, setRequest] = useState<RequestAction | null>(null)
 
   const run = (action: ReadinessItemAction) => {
+    if (canContinue?.() === false) return
     if (action.type === 'bind') setBinding(action)
     else if (action.type === 'request') setRequest(action)
     else if (action.type === 'notify') {
@@ -75,6 +78,7 @@ export function ReadinessPanel({
           onOpenChange={(open) => !open && setBinding(null)}
           target={binding}
           agentName={agentName}
+          canContinue={canContinue}
           onConnected={onConnected}
         />
       ) : null}

@@ -20,6 +20,11 @@ import {
   resolveConfiguredE2EProject,
   sanitizePlaywrightEnvironment,
 } from './scripts/e2e-lane-contract.mjs'
+import {
+  INDEPENDENT_JOB_SPEC,
+  independentJobBackendEnvironment,
+  resolveE2EChatRuntime,
+} from './scripts/e2e-lane-runtime.mjs'
 
 const selectionOnly = process.env.E2E_SELECTION_ONLY === '1'
 const configuredE2eLane = process.env.E2E_LANE
@@ -28,6 +33,7 @@ if (configuredE2eLane && e2eLane !== 'scripted' && e2eLane !== 'live') {
   throw new Error('E2E_LANE must be scripted or live.')
 }
 const e2eProject = resolveConfiguredE2EProject(e2eLane, process.env, process.argv.slice(2))
+const independentJobEnv = independentJobBackendEnvironment(e2eProject, process.argv.slice(2))
 const workerEnvironment = sanitizePlaywrightEnvironment(e2eLane, process.env, e2eProject)
 for (const name of Object.keys(process.env)) delete process.env[name]
 Object.assign(process.env, workerEnvironment)
@@ -59,7 +65,7 @@ const baseURL = process.env.E2E_BASE_URL ?? `http://localhost:${frontendPort}`
 const apiBaseURL = process.env.E2E_API_BASE_URL ?? `http://localhost:${backendPort}`
 const corsOrigins = `http://localhost:${frontendPort},http://127.0.0.1:${frontendPort}`
 const testTimeout = Number(process.env.E2E_TEST_TIMEOUT_MS ?? '60000')
-const chatRuntime = process.env.NEXT_PUBLIC_CHAT_RUNTIME === 'legacy' ? 'legacy' : 'langgraph_v3'
+const chatRuntime = resolveE2EChatRuntime(process.env.NEXT_PUBLIC_CHAT_RUNTIME)
 process.env.NEXT_PUBLIC_CHAT_RUNTIME = chatRuntime
 
 if (!selectionOnly && !skipBackend) assertIsolatedDatabaseEnvironment(e2eLane, process.env)
@@ -87,6 +93,7 @@ const runtimeWebServers = [
             backendPort,
           ),
           cwd: backendSourceRoot,
+          env: independentJobEnv,
           port: backendPort,
           reuseExistingServer: false,
           timeout: webServerTimeout,
@@ -95,6 +102,7 @@ const runtimeWebServers = [
           // Workflow runs (and other background jobs) run in the job worker, as in Compose.
           command: buildJobWorkerCommand(e2eLane),
           cwd: backendSourceRoot,
+          env: independentJobEnv,
           wait: { stderr: JOB_WORKER_READY },
           timeout: webServerTimeout,
         },
@@ -124,6 +132,10 @@ const runtimePolicyCaptureSpecGlobs = [
   '**/chat-recovery-discovery.spec.ts',
 ]
 const scriptedFullIgnore = [
+  ...(chatRuntime === 'ag_ui' ? [] : ['**/ag-ui-approval-readiness.spec.ts']),
+  ...(independentJobEnv ? [] : [`**/${path.posix.basename(INDEPENDENT_JOB_SPEC)}`]),
+  // Its runner provisions a historical skill catalog and local search providers.
+  '**/deep-research-upgrade-fallback.spec.ts',
   ...LIVE_E2E_SPEC_GLOBS,
   ...legacyCaptureSpecGlobs,
   '**/*live*.spec.ts',

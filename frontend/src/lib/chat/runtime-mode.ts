@@ -1,5 +1,6 @@
-export type ChatRuntimeMode = 'legacy' | 'langgraph_v3'
+export type ChatRuntimeMode = 'legacy' | 'langgraph_v3' | 'ag_ui'
 
 export function getChatRuntimeMode(): ChatRuntimeMode {
-  return process.env.NEXT_PUBLIC_CHAT_RUNTIME === 'legacy' ? 'legacy' : 'langgraph_v3'
+  const mode = process.env.NEXT_PUBLIC_CHAT_RUNTIME
+  return mode === 'legacy' || mode === 'langgraph_v3' ? mode : 'ag_ui'
 }

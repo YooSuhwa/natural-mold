@@ -40,6 +40,7 @@ from app.agent_runtime.lease_bound_tool import LeaseBoundToolMiddleware
 from app.agent_runtime.lease_dispatch_permit import SessionFactory
 from app.agent_runtime.lease_snapshot_backend import LeaseSnapshotBackend
 from app.agent_runtime.mcp_preparation import prepare_mcp_tools
+from app.agent_runtime.prepared_child_controls import prepared_child_controls
 from app.agent_runtime.prepared_child_launch import PreparedChildLaunchAdmission
 from app.agent_runtime.prepared_run_compile import (
     PreparedCompileError,
@@ -228,11 +229,15 @@ async def materialize_prepared_lease(
             path: LeaseBoundToolMiddleware(lease, census, session_factory=session_factory)
             for path, census in censuses.items()
         }
+        controls = prepared_child_controls(
+            inputs.child_task_agents, lease=lease, catalog=catalog, session_factory=session_factory
+        )
         trace("install_interceptors")
         runnables, _final_specs = compile_children(
             catalog,
             admission_factory=lambda: admission,
             guards=guards,
+            child_controls=controls,
             compile_child=seams.compile_child,
             guard=guard,
             tool_risk=tool_risk,
@@ -244,6 +249,7 @@ async def materialize_prepared_lease(
             admission_factory=lambda: admission,
             app_middleware=(guards[ROOT_PATH], *inputs.custom_middleware, *inputs.root_middleware),
             checkpointer=saver,
+            child_controls=controls,
             guard=guard,
             tool_risk=tool_risk,
             **root_common,
@@ -260,7 +266,9 @@ async def materialize_prepared_lease(
             configurable["checkpoint_id"] = inputs.checkpoint_id
         lease = replace(
             lease,
-            runnable=root,
+            # Later supersteps must not submit writes before the saver has
+            # received their checkpoint. LangGraph propagates this to subgraphs.
+            runnable=root.bind(durability="sync"),
             child_runnables=runnables,
             messages=inputs.messages,
             config=MappingProxyType({"configurable": configurable}),

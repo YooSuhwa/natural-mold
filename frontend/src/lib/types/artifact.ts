@@ -16,7 +16,7 @@ export type FileEventOperation = 'created' | 'updated' | 'deleted' | 'failed'
 
 export interface ArtifactSummary {
   id: string
-  agent_id: string
+  agent_id: string | null
   conversation_id: string
   assistant_msg_id: string
   run_id: string

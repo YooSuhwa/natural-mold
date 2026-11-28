@@ -7,6 +7,8 @@ import { agentQueryKeys } from '@/lib/query-keys/agents'
 import { conversationKeys } from './use-conversations'
 
 export const conversationRunKeys = {
+  partialOutput: (conversationId: string, runId: string) =>
+    ['conversations', conversationId, 'runs', runId, 'partial-output'] as const,
   active: (conversationId: string) => ['conversations', conversationId, 'runs', 'active'] as const,
   detail: (conversationId: string, runId: string) =>
     ['conversations', conversationId, 'runs', runId] as const,
@@ -23,12 +25,21 @@ export function useActiveConversationRun(conversationId: string, enabled = true)
   })
 }
 
-export function useConversationRun(conversationId: string, runId: string | null, enabled = true) {
+export function useConversationRun(
+  conversationId: string,
+  runId: string | null,
+  enabled = true,
+  options?: { staleTime: number },
+) {
   return useQuery({
     queryKey: conversationRunKeys.detail(conversationId, runId ?? 'none'),
     queryFn: () => conversationRunsApi.get(conversationId, runId ?? ''),
     enabled: enabled && !!conversationId && !!runId,
+    // The message link can be read before the worker commits its terminal status and metrics.
+    refetchInterval: ({ state }) =>
+      state.status === 'success' && isActiveRunStatus(state.data?.status) ? 1000 : false,
     refetchOnWindowFocus: false,
+    ...options,
   })
 }
 

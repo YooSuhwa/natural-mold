@@ -12,6 +12,7 @@ from app.schemas.chat_resource_context import (
     FrozenChatResourceContext,
     PublicChatResourceReference,
 )
+from app.schemas.conversation_graph_input import OMITTED_MEDIA_KEY, PublicGraphInput
 
 
 class ConversationRunInputResponse(BaseModel):
@@ -44,11 +45,27 @@ class ConversationRunInputResponse(BaseModel):
 
     @field_serializer("input_payload")
     def serialize_input_payload(self, value: dict[str, JsonValue]) -> dict[str, JsonValue]:
-        return {
+        payload = {
             key: item
             for key, item in value.items()
             if key not in {PUBLIC_RESOURCE_CONTEXT_KEY, INTERNAL_RESOURCE_CONTEXT_KEY}
         }
+        messages = payload.get("messages")
+        if isinstance(messages, list):
+            payload["messages"] = [_public_message(message) for message in messages]
+        return payload
+
+
+def _public_message(message: JsonValue) -> JsonValue:
+    if isinstance(message, dict):
+        metadata = message.get("additional_kwargs")
+        if isinstance(metadata, dict) and OMITTED_MEDIA_KEY in metadata:
+            public = {key: value for key, value in message.items() if key != "additional_kwargs"}
+            metadata = {key: value for key, value in metadata.items() if key != OMITTED_MEDIA_KEY}
+            if metadata:
+                public["additional_kwargs"] = metadata
+            return public
+    return message
 
 
 class ConversationRunInputListResponse(BaseModel):
@@ -62,7 +79,7 @@ class ConversationRunInputEditRequest(BaseModel):
     model_config = ConfigDict(frozen=True)
 
     expected_revision: int = Field(ge=1)
-    input: dict[str, JsonValue]
+    input: PublicGraphInput[JsonValue]
 
 
 class ConversationRunInputReorderRequest(BaseModel):

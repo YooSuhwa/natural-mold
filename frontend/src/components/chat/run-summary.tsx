@@ -1,13 +1,28 @@
 'use client'
 
-import { useState } from 'react'
+import { createContext, useContext, useState } from 'react'
 import { useAuiState } from '@assistant-ui/react'
 import { ChevronDownIcon, Clock3Icon, ListTreeIcon, NetworkIcon, WrenchIcon } from 'lucide-react'
 import { useTranslations } from 'next-intl'
+import { RecoveredPartialResponse } from './recovered-partial-response'
 import { useChatConversationId } from '@/components/chat/conversation-context'
 import { useMessageRunSummary } from '@/lib/hooks/use-message-run-summary'
 import { cn } from '@/lib/utils'
 import type { RunSummary, RunSummaryActivity } from '@/lib/chat/run-summary-model'
+
+export const CanceledRunSummaryContext = createContext<RunSummary | null>(null)
+
+export function CanceledRunSummary() {
+  const summary = useContext(CanceledRunSummaryContext)
+  const t = useTranslations('chat.page')
+  if (!summary) return null
+  return (
+    <div className="space-y-2">
+      <p className="text-sm text-muted-foreground">{t('canceled')}</p>
+      <RunSummaryPanel summary={summary} />
+    </div>
+  )
+}
 
 function formatRunDuration(
   elapsedMs: number | null,
@@ -66,6 +81,8 @@ function liveActivityText(
 
 export function RunSummaryPanel({ summary }: { readonly summary: RunSummary }) {
   const t = useTranslations('chat.activity')
+  const conversationId = useChatConversationId()
+  const tRecovery = useTranslations('chat.page.recovery')
   const [expanded, setExpanded] = useState(false)
   const elapsed = formatRunDuration(summary.elapsedMs, t)
   const toolTotal = completeTotal(summary.rootToolCalls, summary.descendantToolCalls)
@@ -117,6 +134,14 @@ export function RunSummaryPanel({ summary }: { readonly summary: RunSummary }) {
       </div>
       {expanded ? (
         <div className="border-t px-3 py-2">
+          {summary.recoveryError && (
+            <p className="mb-2 moldy-ui-caption text-foreground">
+              {tRecovery(summary.recoveryError)}
+            </p>
+          )}
+          {summary.recoveryError === 'recovery_output_started' && conversationId && (
+            <RecoveredPartialResponse conversationId={conversationId} runId={summary.runId} />
+          )}
           <dl className="mb-2 grid grid-cols-2 gap-x-4 gap-y-1 moldy-ui-caption text-muted-foreground">
             <div className="flex items-center justify-between gap-2">
               <dt>{t('rootTools')}</dt>
@@ -151,6 +176,13 @@ export function RunSummaryPanel({ summary }: { readonly summary: RunSummary }) {
             ) : null}
             {summary.activities.map((activity) => {
               const activityElapsed = formatRunDuration(activity.elapsedMs, t)
+              const label =
+                activity.name === activity.kind &&
+                activity.kind !== 'tool' &&
+                activity.kind !== 'subagent' &&
+                activity.kind !== 'background_subagent'
+                  ? (liveActivityText(t, activity) ?? activityName(activity))
+                  : activityName(activity)
               return (
                 <li
                   key={activity.key}
@@ -158,7 +190,7 @@ export function RunSummaryPanel({ summary }: { readonly summary: RunSummary }) {
                   data-activity-kind={activity.kind}
                 >
                   <span className="min-w-0 truncate text-foreground">
-                    {activityName(activity)}
+                    {label}
                     {activity.namespace.length > 0 ? (
                       <span className="ml-1.5 text-muted-foreground">
                         {activity.namespace.join(' / ')}
@@ -181,6 +213,7 @@ export function RunSummaryPanel({ summary }: { readonly summary: RunSummary }) {
 }
 
 export function MessageRunSummary() {
+  const canceled = useContext(CanceledRunSummaryContext)
   const conversationId = useChatConversationId()
   const messageId = useAuiState((state) => state.message?.id)
   // The link query is shared by the visible-ID batch. A thread-wide phase keeps
@@ -196,5 +229,5 @@ export function MessageRunSummary() {
     visibleMessageIds,
     threadIsRunning,
   )
-  return summary ? <RunSummaryPanel summary={summary} /> : null
+  return summary && summary.runId !== canceled?.runId ? <RunSummaryPanel summary={summary} /> : null
 }

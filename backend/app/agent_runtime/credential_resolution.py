@@ -51,8 +51,8 @@ logger = logging.getLogger(__name__)
 
 
 LlmCredentialScope = Literal["personal", "tenant"]
-_resolved_scope: ContextVar[LlmCredentialScope | None] = ContextVar(
-    "resolved_llm_credential_scope", default=None
+_resolved_credential: ContextVar[tuple[LlmCredentialScope, str] | None] = ContextVar(
+    "resolved_llm_credential", default=None
 )
 
 
@@ -63,11 +63,18 @@ def resolved_llm_credential_scope() -> LlmCredentialScope | None:
     Read right after the call; run configs copy it so token usage can tell company-key
     spend apart (plan P2 Q2).
     """
-    return _resolved_scope.get()
+    resolved = _resolved_credential.get()
+    return resolved[0] if resolved else None
+
+
+def resolved_llm_credential_id() -> str | None:
+    """The credential used, including model defaults and automatic provider matches."""
+    resolved = _resolved_credential.get()
+    return resolved[1] if resolved else None
 
 
 def _used(cred: Credential) -> None:
-    _resolved_scope.set("tenant" if cred.scope == "tenant" else "personal")
+    _resolved_credential.set(("tenant" if cred.scope == "tenant" else "personal", str(cred.id)))
 
 
 class LLMCredentialRequiredError(AppError):
@@ -108,7 +115,7 @@ async def resolve_llm_api_key_for_agent(
     backend stdout 로 진단 가능 (silent fail 회귀 방지).
     """
 
-    _resolved_scope.set(None)
+    _resolved_credential.set(None)
     subject = replace(access.context, user_id=access.identity.credential_subject_user_id)
     subject_user_id = subject.user_id
     model = getattr(agent, "model", None)

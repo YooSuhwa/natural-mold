@@ -13,7 +13,7 @@ from datetime import UTC, datetime, timedelta
 from sqlalchemy import and_, case, func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.authz.artifact_scope import private_artifact_predicate
+from app.authz.artifact_scope import readable_artifact_predicate
 from app.authz.org_context import OrgContext
 from app.authz.private_actor import (
     PrivateResourceActor,
@@ -74,7 +74,9 @@ async def list_conversation_artifacts(
             await db.execute(
                 select(ConversationArtifact)
                 .where(
-                    private_artifact_predicate(context),
+                    await readable_artifact_predicate(
+                        db, context, ConversationArtifact.conversation_id == conversation_id
+                    ),
                     ConversationArtifact.conversation_id == conversation_id,
                     ConversationArtifact.status != "deleted",
                 )
@@ -102,7 +104,9 @@ async def list_conversation_artifacts_by_message_id(
             await db.execute(
                 select(ConversationArtifact)
                 .where(
-                    private_artifact_predicate(context),
+                    await readable_artifact_predicate(
+                        db, context, ConversationArtifact.conversation_id == conversation_id
+                    ),
                     ConversationArtifact.conversation_id == conversation_id,
                     ConversationArtifact.status != "deleted",
                 )
@@ -165,10 +169,7 @@ async def list_library_artifacts(
 ) -> ArtifactLibraryPage:
     await require_private_actor(db, context)
     limit = max(1, min(limit, 100))
-    filters = [
-        private_artifact_predicate(context),
-        ConversationArtifact.status != "deleted",
-    ]
+    filters = [ConversationArtifact.status != "deleted"]
     if q:
         pattern = f"%{q.lower()}%"
         filters.append(
@@ -204,6 +205,7 @@ async def list_library_artifacts(
                 # the id tiebreaker was added.
                 filters.append(ConversationArtifact.created_at < cursor_dt)
 
+    filters.append(await readable_artifact_predicate(db, context, *filters))
     rows = (
         (
             await db.execute(
@@ -235,7 +237,9 @@ async def list_recent_artifacts(
             await db.execute(
                 select(ConversationArtifact)
                 .where(
-                    private_artifact_predicate(context),
+                    await readable_artifact_predicate(
+                        db, context, ConversationArtifact.status != "deleted"
+                    ),
                     ConversationArtifact.status != "deleted",
                 )
                 .order_by(
@@ -291,10 +295,8 @@ async def record_artifact_download(
 
 async def get_library_stats(db: AsyncSession, *, context: OrgContext) -> ArtifactLibraryStats:
     await require_private_actor(db, context)
-    filters = [
-        private_artifact_predicate(context),
-        ConversationArtifact.status != "deleted",
-    ]
+    filters = [ConversationArtifact.status != "deleted"]
+    filters.append(await readable_artifact_predicate(db, context, *filters))
     recent_cutoff = datetime.now(UTC).replace(tzinfo=None) - timedelta(days=7)
 
     total_count, total_size, favorite_count, recent_count = (
@@ -378,11 +380,11 @@ async def _get_owned_artifact(
     artifact_uuid = uuid.UUID(str(artifact_id))
     filters = [
         ConversationArtifact.id == artifact_uuid,
-        private_artifact_predicate(context),
         ConversationArtifact.status != "deleted",
     ]
     if conversation_id is not None:
         filters.append(ConversationArtifact.conversation_id == conversation_id)
+    filters.append(await readable_artifact_predicate(db, context, *filters))
     artifact = (await db.execute(select(ConversationArtifact).where(*filters))).scalar_one_or_none()
     if artifact is None:
         raise ArtifactNotFoundError("artifact not found")

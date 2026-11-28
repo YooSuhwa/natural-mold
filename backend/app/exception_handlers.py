@@ -14,6 +14,42 @@ from app.exceptions import AppError
 logger = logging.getLogger(__name__)
 
 
+_AG_UI_RUN_PATH = "/api/conversations/{conversation_id}/ag-ui/runs"
+_AG_UI_INPUT_FIELDS = frozenset(
+    {
+        "threadId",
+        "runId",
+        "protocolVersion",
+        "parentRunId",
+        "state",
+        "messages",
+        "tools",
+        "context",
+        "forwardedProps",
+        "resume",
+    }
+)
+
+
+def _ag_ui_validation_details(exc: RequestValidationError) -> list[dict[str, object]]:
+    # A union error can repeat the supplied discriminator in its message and context.
+    # A nested location may also contain a submitted object key. Expose only the
+    # public input field whose value needs correction.
+    fields: dict[tuple[str, ...], str] = {}
+    for error in exc.errors():
+        location = tuple(error.get("loc", ()))
+        if location == ("path", "conversation_id"):
+            field = location
+        elif len(location) >= 2 and location[0] == "body" and location[1] in _AG_UI_INPUT_FIELDS:
+            field = location[:2]
+        else:
+            field = ("body",)
+        fields[field] = (
+            "missing" if field == location and error.get("type") == "missing" else "invalid"
+        )
+    return [{"loc": list(field), "type": category} for field, category in fields.items()]
+
+
 def register_exception_handlers(app: FastAPI) -> None:
     @app.exception_handler(AppError)
     async def app_error_handler(request: Request, exc: AppError) -> JSONResponse:
@@ -72,9 +108,13 @@ def register_exception_handlers(app: FastAPI) -> None:
         request: Request,
         exc: RequestValidationError,
     ) -> JSONResponse:
-        details = exc.errors()
-        for error in details:
-            error.pop("input", None)
+        route = request.scope.get("route")
+        if request.method == "POST" and getattr(route, "path", None) == _AG_UI_RUN_PATH:
+            details = _ag_ui_validation_details(exc)
+        else:
+            details = exc.errors()
+            for error in details:
+                error.pop("input", None)
         return JSONResponse(
             status_code=422,
             content={

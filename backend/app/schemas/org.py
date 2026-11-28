@@ -7,6 +7,7 @@ from uuid import UUID
 from pydantic import BaseModel, ConfigDict, JsonValue, StringConstraints, field_validator
 
 from app.authz.org_control import OrgControlPermission
+from app.schemas.org_image_description import ImageDescriptionPolicy
 
 RegistrationPolicy = Literal["default_org", "invite_only", "closed"]
 DefaultMemberRole = Literal["member", "builder"]
@@ -19,14 +20,18 @@ class OrganizationSettings(BaseModel):
     model_config = ConfigDict(frozen=True)
     default_member_role: DefaultMemberRole = "member"
     allow_public_share_links: bool = True
+    goal_sandbox_enabled: bool = False
     registration_policy: RegistrationPolicy | None = None
+    image_description: ImageDescriptionPolicy | None = None
 
 
 class OrganizationSettingsPatch(BaseModel):
     model_config = ConfigDict(frozen=True, extra="forbid")
     default_member_role: DefaultMemberRole | None = None
     allow_public_share_links: bool | None = None
+    goal_sandbox_enabled: bool | None = None
     registration_policy: RegistrationPolicy | None = None
+    image_description: ImageDescriptionPolicy | None = None
 
     def update_values(self) -> dict[str, JsonValue]:
         values: dict[str, JsonValue] = {}
@@ -36,8 +41,14 @@ class OrganizationSettingsPatch(BaseModel):
             values["allow_public_share_links"] = (
                 self.allow_public_share_links if self.allow_public_share_links is not None else True
             )
+        if "goal_sandbox_enabled" in self.model_fields_set:
+            values["goal_sandbox_enabled"] = self.goal_sandbox_enabled is True
         if "registration_policy" in self.model_fields_set:
             values["registration_policy"] = self.registration_policy
+        if "image_description" in self.model_fields_set:
+            values["image_description"] = (
+                self.image_description.model_dump(mode="json") if self.image_description else None
+            )
         return values
 
 

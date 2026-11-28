@@ -26,7 +26,8 @@ from app.models.conversation import Conversation
 from app.models.message_attachment import MessageAttachment
 from app.schemas.conversation import FileItem
 from app.services.artifact_service import list_conversation_artifacts
-from app.services.chat.attachment_inputs import recorded_attachment_forms
+from app.services.chat.attachment_inputs import recorded_attachment_inputs
+from app.services.chat.image_description_files import file_image_description_uses
 
 logger = logging.getLogger(__name__)
 
@@ -256,25 +257,41 @@ async def list_conversation_files(
         .scalars()
         .all()
     )
-    forms = await recorded_attachment_forms(db, conversation_id=conversation_id, context=context)
-    items.extend(
-        FileItem(
-            source="attached",
-            id=str(att.id),
-            name=att.filename,
-            mime_type=att.mime_type,
-            extension=(Path(att.filename).suffix.lstrip(".") or None),
-            kind=None,
-            size_bytes=att.size_bytes,
-            preview_url=att.url,
-            download_url=att.url,
-            message_id=att.message_id,
-            created_at=att.created_at,
-            editable=False,
-            model_input=forms.get(str(att.id)),
-        )
-        for att in attach_rows
+    records = await recorded_attachment_inputs(db, conversation_id=conversation_id, context=context)
+    descriptions = await file_image_description_uses(
+        db,
+        context=context,
+        conversation_id=conversation_id,
+        attachments=attach_rows,
+        histories=records,
     )
+    for attachment in attach_rows:
+        key = str(attachment.id)
+        history = records.get(key)
+        uses = descriptions.get(attachment.id, [])
+        original = next(
+            (use.image_description for use in uses if use.message_id == attachment.message_id),
+            None,
+        )
+        items.append(
+            FileItem(
+                source="attached",
+                id=key,
+                name=attachment.filename,
+                mime_type=attachment.mime_type,
+                extension=(Path(attachment.filename).suffix.lstrip(".") or None),
+                kind=None,
+                size_bytes=attachment.size_bytes,
+                preview_url=attachment.url,
+                download_url=attachment.url,
+                message_id=attachment.message_id,
+                created_at=attachment.created_at,
+                editable=False,
+                model_input=history.form if history else None,
+                image_description=original,
+                image_description_uses=uses,
+            )
+        )
 
     items.sort(key=lambda f: f.created_at, reverse=True)
     return items

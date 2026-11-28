@@ -22,7 +22,7 @@ from postgres_company_suite import (  # noqa: E402
     company_selection_gaps,
 )
 from postgres_runner_contract import build_lane_dsns  # noqa: E402
-from postgres_runner_runtime import run_test_child  # noqa: E402
+from postgres_runner_runtime import QUEUE_CONCURRENCY_TARGETS, run_test_child  # noqa: E402
 
 from tests.integration_marker_scan import integration_modules, is_integration_module  # noqa: E402
 
@@ -57,14 +57,18 @@ def test_marker_scan_detects_integration_modules(path: str, source: str, expecte
     assert is_integration_module(path, source) is expected
 
 
-def test_registry_lists_every_new_integration_module_exactly_once() -> None:
+def test_named_lanes_cover_every_new_integration_module() -> None:
     baseline = set(BASELINE.read_text().splitlines())
     current = integration_modules(BACKEND_ROOT)
     new_files = current - baseline
     assert len(COMPANY_ADMINISTRATION_MODULES) == len(set(COMPANY_ADMINISTRATION_MODULES))
     assert len(COMPANY_ADMINISTRATION_TARGETS) == len(set(COMPANY_ADMINISTRATION_TARGETS))
-    missing = new_files - set(COMPANY_ADMINISTRATION_MODULES)
-    orphan = set(COMPANY_ADMINISTRATION_MODULES) - new_files
+    # Queue-specific modules run in their own named lane, including the PostgreSQL
+    # node from the mixed in-memory/PostgreSQL checkpoint module.
+    queue_modules = {target.partition("::")[0] for target in QUEUE_CONCURRENCY_TARGETS}
+    registered = set(COMPANY_ADMINISTRATION_MODULES) | (queue_modules - baseline)
+    missing = new_files - registered
+    orphan = registered - new_files
     assert (sorted(missing), sorted(orphan)) == ([], [])
     assert baseline <= current
 

@@ -17,6 +17,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.config import settings
 from app.models.skill_builder_session import SkillBuilderSession
 from app.services import skill_draft_workspace as workspace
+from app.storage.paths import ForeignTenantPathError
 from tests.authz.unit_scope_fixture import TEST_ORG_ID, TEST_TENANT_ID
 from tests.conftest import TEST_USER_ID
 
@@ -321,3 +322,35 @@ async def test_gc_abandon_days_zero_disables_idle_rule(
 
     await db.refresh(idle)
     assert idle.status == "active"
+
+
+async def test_ag_ui_attachment_copy_is_stable_across_retries(tmp_path: Path) -> None:
+    path = workspace.create_workspace(uuid.uuid4())
+    attachments = [
+        _attachment(tmp_path, filename="../example.txt", body=b"first"),
+        _attachment(tmp_path, filename="example.txt", body=b"second"),
+    ]
+    # An interrupted worker did not finish publishing this upload.
+    root = workspace.resolve_workspace_dir(path)
+    inputs = root / "inputs"
+    inputs.mkdir(exist_ok=True)
+    (inputs / f".{attachments[0].id.hex}.part").write_bytes(b"unfinished")
+    initial = workspace.copy_attachments_to_inputs(path, attachments, stable_names=True)  # type: ignore[arg-type]
+    replay = workspace.copy_attachments_to_inputs(path, attachments, stable_names=True)  # type: ignore[arg-type]
+    assert initial == replay and len(set(initial)) == 2
+    assert [(root / name).read_bytes() for name in replay] == [b"first", b"second"]
+    assert sorted((root / "inputs").iterdir()) == sorted(root / name for name in initial)
+
+
+async def test_ag_ui_copy_authorizes_the_complete_upload_set_before_publishing(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    uploads = tmp_path / "uploads"
+    monkeypatch.setattr(settings, "upload_dir", str(uploads))
+    path = workspace.create_workspace(uuid.uuid4())
+    first = _attachment(tmp_path, filename="valid.txt")
+    foreign = _attachment(tmp_path, filename="private.txt")
+    foreign.storage_path = str(uploads / "tenants" / str(uuid.uuid4()) / "foreign.txt")
+    with pytest.raises(ForeignTenantPathError):
+        workspace.copy_attachments_to_inputs(path, [first, foreign], stable_names=True)  # type: ignore[list-item]
+    assert not list((workspace.resolve_workspace_dir(path) / "inputs").glob("*"))

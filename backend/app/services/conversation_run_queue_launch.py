@@ -9,7 +9,9 @@ from sqlalchemy import select
 
 from app.agent_runtime.runtime_config import AgentConfig
 from app.authz.agent_execution_scope import AgentExecutionTarget, load_agent_tree_for_execution
+from app.authz.conversation_agent_checks import require_agent_run
 from app.authz.conversation_input_scope import conversation_input_parent
+from app.authz.run_decisions import fresh_run_decision_scope
 from app.authz.scoping import private_parent_scoped
 from app.exceptions import AppError
 from app.models.conversation import Conversation
@@ -35,7 +37,12 @@ def facade_attr(name: str) -> Any:
 
 
 async def launch_claimed_input(input_id: uuid.UUID) -> ConversationRun | None:
-    """Rehydrate and launch one claimed input without request-scoped state."""
+    """Reauthorize detached execution independently of its claim or HTTP request."""
+    with fresh_run_decision_scope():
+        return await _launch_claimed_input(input_id)
+
+
+async def _launch_claimed_input(input_id: uuid.UUID) -> ConversationRun | None:
     registry = facade_attr("get_run_task_registry")()
     cfg: AgentConfig | None = None
     error_code: str | None = None
@@ -58,47 +65,72 @@ async def launch_claimed_input(input_id: uuid.UUID) -> ConversationRun | None:
             target = await metadata.authorize_queue_target(db, identity, run)
             if identity.agent_id is None:
                 raise metadata.QueueBindingInvalidError
+            await require_agent_run(target.context, identity.agent_id)
             await load_agent_tree_for_execution(
                 db, AgentExecutionTarget(identity.agent_id, target.context, run=True)
             )
         except metadata.QueueBindingInvalidError:
             await _fail_claimed_input(input_id, error_code="queue_binding_invalid")
             return None
-        except AppError:
+        except AppError as exc:
+            if exc.code == "authz_unavailable":
+                # Keep the committed claim for the existing recovery sweep.
+                return None
+            from app.services.conversation_goal_worker import stop_reservations_on_denial
+
+            await stop_reservations_on_denial(db, identity.conversation_id, scope, exc)
             is_active = await db.scalar(select(User.is_active).where(User.id == identity.user_id))
             error_code = (
                 "queue_user_unavailable" if is_active is not True else "queue_rehydrate_failed"
             )
+            # Terminal cleanup opens its own session and locks this conversation again.
+            await db.commit()
             await _fail_claimed_input(input_id, error_code=error_code)
             return run
         local_task = registry.get(target.run.id)
         if local_task is not None and not local_task.done():
             return target.run
         user = await db.get(User, identity.user_id)
-        queued = await db.scalar(
-            private_parent_scoped(
-                select(ConversationRunInput).where(ConversationRunInput.id == input_id),
-                conversation_input_parent(),
-                target.context,
+        row = (
+            await db.execute(
+                private_parent_scoped(
+                    select(ConversationRunInput, Conversation.active_branch_checkpoint_id)
+                    .select_from(ConversationRunInput)
+                    .where(ConversationRunInput.id == input_id),
+                    conversation_input_parent(),
+                    target.context,
+                )
             )
-        )
-        if queued is None or user is None or queued.agent_id is None:
+        ).one_or_none()
+        if row is None or user is None or row[0].agent_id is None:
             await _fail_claimed_input(input_id, error_code="queue_rehydrate_failed")
             return run
+        queued, selected = row
         context = target.context
         current_user = metadata.queue_current_user(user)
         input_payload = queued.input_payload
         try:
+            from app.services.ag_ui_queue_edit import validate_ag_ui_queue_delivery
+
+            await validate_ag_ui_queue_delivery(
+                db, context, queued, selected_checkpoint_id=selected
+            )
             cfg = await facade_attr("resolve_agent_context")(
                 db,
                 queued.conversation_id,
                 current_user,
                 context=context,
                 checkpoint_id=queued.checkpoint_id,
+                **({"include_subagents": False} if queued.source == "goal_followup" else {}),
             )
-        except (AppError, HTTPException, ValueError):
+        except (AppError, HTTPException, ValueError) as exc:
             logger.warning("queued input rehydration failed input_id=%s", input_id, exc_info=True)
-            error_code = "queue_rehydrate_failed"
+            error_code = (
+                exc.code
+                if isinstance(exc, AppError)
+                and exc.code in {"independent_job_unsupported", "queue_branch_unpinned"}
+                else "queue_rehydrate_failed"
+            )
         if error_code is None:
             try:
                 input_payload = await reauthorize_resource_context_payload(
@@ -115,10 +147,12 @@ async def launch_claimed_input(input_id: uuid.UUID) -> ConversationRun | None:
                     "queued resource context unavailable input_id=%s", input_id, exc_info=True
                 )
                 error_code = "queue_resource_context_unavailable"
-        attachment_ids = [uuid.UUID(value) for value in queued.attachment_ids]
+        attachment_ids = (
+            [uuid.UUID(value) for value in queued.attachment_ids] if error_code is None else []
+        )
         conversation_id = queued.conversation_id
         run_id = run.id
-        source = queued.source
+        source = "chat" if queued.source in {"steer", "goal_followup"} else queued.source
 
     if error_code is not None:
         await _fail_claimed_input(input_id, error_code=error_code)

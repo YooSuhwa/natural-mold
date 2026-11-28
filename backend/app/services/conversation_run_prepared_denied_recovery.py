@@ -21,6 +21,7 @@ acknowledged. Nothing is read beyond these rows and nothing is rebuilt.
 
 from __future__ import annotations
 
+from datetime import datetime
 from typing import Any
 
 from sqlalchemy import select
@@ -41,9 +42,25 @@ from app.services.conversation_run_state import transition_run
 _MESSAGE = "Prepared run could not be started"
 
 
-def _lease_missing(run: ConversationRun) -> bool:
+def locked_orphan_lease_missing(
+    run: ConversationRun,
+    *,
+    observed_owner: str | None,
+    worker_instance_id: str,
+    stale_before: datetime,
+) -> bool:
+    """Recheck the observed worker and its liveness while holding the run lock."""
     digest = run.runtime_materialization_sha256
-    if digest is None:
+    if (
+        not run.is_active
+        or run.status not in ("running", "canceling")
+        or run.runtime_materialized_at is None
+        or digest is None
+        or run.worker_instance_id != observed_owner
+    ):
+        return False
+    last_seen = run.heartbeat_at or run.started_at or run.created_at
+    if run.worker_instance_id != worker_instance_id and last_seen > stale_before:
         return False
     try:
         get_prepared_run_registry().ensure_live_for_marker(run.id, marker_digest=digest)
@@ -52,7 +69,7 @@ def _lease_missing(run: ConversationRun) -> bool:
     return False
 
 
-async def _locked_run(db: AsyncSession, row: Any) -> ConversationRun | None:
+async def lock_orphan_for_terminal_status(db: AsyncSession, row: Any) -> ConversationRun | None:
     parents = (
         await db.execute(
             select(Conversation.tenant_id, Conversation.org_id).where(
@@ -63,7 +80,8 @@ async def _locked_run(db: AsyncSession, row: Any) -> ConversationRun | None:
     if parents is None:
         return None
     await lock_tenant_org_write(db, parents[0], (parents[1],))
-    await agent_lifecycle_locks.acquire_agent_lifecycle_locks(db, (row.agent_id,))
+    if row.agent_id is not None:
+        await agent_lifecycle_locks.acquire_agent_lifecycle_locks(db, (row.agent_id,))
     await db.scalar(
         select(Conversation.id).where(Conversation.id == row.conversation_id).with_for_update()
     )
@@ -80,16 +98,17 @@ async def _locked_run(db: AsyncSession, row: Any) -> ConversationRun | None:
     )
 
 
-async def terminalize_denied_orphan(db: AsyncSession, row: Any) -> bool:
+async def terminalize_denied_orphan(
+    db: AsyncSession, row: Any, *, worker_instance_id: str, stale_before: datetime
+) -> bool:
     """Terminalize one gateway-denied paired orphan; ``True`` when written."""
 
-    run = await _locked_run(db, row)
-    if (
-        run is None
-        or not run.is_active
-        or run.status not in ("running", "canceling")
-        or run.runtime_materialized_at is None
-        or not _lease_missing(run)
+    run = await lock_orphan_for_terminal_status(db, row)
+    if run is None or not locked_orphan_lease_missing(
+        run,
+        observed_owner=row.worker_instance_id,
+        worker_instance_id=worker_instance_id,
+        stale_before=stale_before,
     ):
         await db.rollback()
         return False

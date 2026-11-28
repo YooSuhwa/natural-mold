@@ -5,8 +5,8 @@ stock ``create_deep_agent`` never processes them. This module rebuilds each
 child's processed spec exactly as the installed ``deepagents.graph`` does for
 declarative subagents and the implicit ``general-purpose`` child: filesystem
 middleware with the child's permissions, summarization, tool-call patching,
-skills, harness-profile extras, prompt caching, profile middleware exclusion,
-inherited ``interrupt_on`` merged with permission interrupts, and profile
+harness-profile extras, skills, prompt caching, model refusal handling, middleware
+exclusion, inherited ``interrupt_on`` merged with permission interrupts, and profile
 prompt/tool-description rewrites. The installed helpers are reused (imported,
 never edited); only the order of calls is mirrored. ``head``/``tail`` splice
 app wrappers around the spec's own middleware so a nested interceptor stays the
@@ -30,7 +30,9 @@ from deepagents.graph import (
     _REQUIRED_MIDDLEWARE_CLASSES,
     _REQUIRED_MIDDLEWARE_NAMES,
     _apply_custom_middleware,
+    _bind_backend,
     _merge_fs_interrupt_on,
+    _passed_skills_sources,
 )
 from deepagents.middleware._fs_interrupt import _build_interrupt_on_from_permissions
 from deepagents.middleware._prompt_caching import append_prompt_caching_middleware
@@ -45,7 +47,7 @@ from deepagents.profiles.harness.harness_profiles import (
     _apply_profile_prompt,
     _harness_profile_for_model,
 )
-from langchain.agents.middleware import AgentMiddleware
+from langchain.agents.middleware import AgentMiddleware, ModelRefusalMiddleware
 
 from app.agent_runtime.deep_agent_factory import actor_backend_impl
 from app.agent_runtime.offload_storage import GENERAL_PURPOSE_ACTOR
@@ -122,18 +124,22 @@ def prepared_child_spec(
         create_summarization_middleware(model, child_backend),
         PatchToolCallsMiddleware(),
     ]
-    child_skills = skills if general else spec.get("skills")
-    wants_skills = child_skills is not None if general else bool(child_skills)
-    if wants_skills and child_skills is not None:
-        stack.append(SkillsMiddleware(backend=child_backend, sources=child_skills))
     core_names = {m.name for m in stack}
     stack.extend(profile.materialize_extra_middleware())
+    declared_middleware = parent_middleware if general else spec.get("middleware", ())
+    child_skills = skills if general else (spec.get("skills") or None)
+    if child_skills is None:
+        child_skills = _passed_skills_sources(declared_middleware)
+    if child_skills is not None:
+        stack.append(SkillsMiddleware(backend=child_backend, sources=child_skills))
     append_prompt_caching_middleware(stack)
+    stack.append(ModelRefusalMiddleware())
     if general:
         slots = {m.name for m in stack}
-        custom = [m for m in parent_middleware if m.name in slots]
+        custom = [m for m in declared_middleware if m.name in slots]
     else:
-        custom = list(spec.get("middleware", ()))
+        custom = list(declared_middleware)
+        _bind_backend(custom, child_backend)
     stack = _apply_profile_middleware(
         stack,
         profile,
@@ -143,7 +149,7 @@ def prepared_child_spec(
     )
     raw_interrupt = interrupt_on if general else spec.get("interrupt_on", interrupt_on)
     merged = _merge_fs_interrupt_on(
-        _build_interrupt_on_from_permissions(permissions or []), raw_interrupt
+        _build_interrupt_on_from_permissions(permissions or [], child_backend), raw_interrupt
     )
     tools = _apply_tool_description_overrides(spec["tools"], profile.tool_description_overrides)
     processed = {

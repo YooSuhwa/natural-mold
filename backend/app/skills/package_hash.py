@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import hashlib
+from collections.abc import Iterable
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Final
@@ -26,10 +27,16 @@ def compute_package_tree_hash(root: Path) -> str:
     if not root_path.is_dir():
         raise PackageHashError(path=root.as_posix(), reason="not a directory")
 
+    return digest_package_files(
+        (entry.relative_to(root_path).as_posix(), entry.read_bytes())
+        for entry in _iter_hashable_files(root_path)
+    )
+
+
+def digest_package_files(files: Iterable[tuple[str, bytes]]) -> str:
+    """Hash an ordered manifest of actual bytes, including path and length."""
     hasher = hashlib.sha256()
-    for entry in _iter_hashable_files(root_path):
-        rel = entry.relative_to(root_path).as_posix()
-        data = entry.read_bytes()
+    for rel, data in files:
         file_digest = hashlib.sha256(data).hexdigest()
         hasher.update(rel.encode("utf-8"))
         hasher.update(b"\0")

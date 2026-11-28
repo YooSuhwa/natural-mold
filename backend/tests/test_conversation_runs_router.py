@@ -789,6 +789,39 @@ async def test_run_stream_endpoint_marks_old_active_run_stale_without_broker(
 
 
 @pytest.mark.asyncio
+async def test_reloading_enrolled_run_defers_to_sweep_without_restarting(
+    client: AsyncClient, db: AsyncSession
+) -> None:
+    from app.services.conversation_run_fence import claim_run_owner
+
+    agent, conversation = await _seed_agent_conversation(db)
+    run = await conversation_run_service.create_run(
+        db,
+        conversation_id=conversation.id,
+        agent_id=agent.id,
+        context=unit_context(agent.user_id),
+        source="chat",
+        input_preview="continue",
+    )
+    await conversation_run_service.transition_run(db, run, "running", worker_instance_id="old")
+    fence = claim_run_owner(run, "old")
+    run.heartbeat_at = utc_now_naive() - timedelta(days=1)
+    await db.commit()
+
+    path = f"/api/conversations/{conversation.id}"
+    for suffix in (
+        f"/runs/{run.id}/stream",
+        f"/runs/{run.id}/ag-ui-stream",
+        f"/stream?run_id={run.id}",
+    ):
+        response = await client.get(path + suffix)
+        assert response.status_code == 409
+        assert response.headers["retry-after"] == "1"
+    await db.refresh(run)
+    assert (run.status, run.owner_token, run.recovery_attempts) == ("running", fence.owner_token, 0)
+
+
+@pytest.mark.asyncio
 async def test_run_stream_endpoint_locks_run_before_stale_transition(
     client: AsyncClient,
     db: AsyncSession,
@@ -978,3 +1011,76 @@ async def test_cancel_endpoint_returns_terminal_status_without_restarting_work(
     assert resp.json()["status"] == "completed"
     await db.refresh(run)
     assert run.status == "completed"
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("outcome", ["local_active", "remote_active", "remote_complete"])
+@pytest.mark.parametrize("route", ["legacy", "stream", "ag-ui-stream"])
+async def test_attach_selects_stream_by_durable_generation(
+    client: AsyncClient, db: AsyncSession, route: str, outcome: str
+) -> None:
+    from app.services.conversation_run_fence import claim_run_owner
+
+    agent, conversation = await _seed_agent_conversation(db)
+    run = await conversation_run_service.create_run(
+        db,
+        conversation_id=conversation.id,
+        agent_id=agent.id,
+        context=unit_context(agent.user_id),
+        source="chat",
+        input_preview="recover",
+    )
+    await conversation_run_service.transition_run(db, run, "running", worker_instance_id="old")
+    first = claim_run_owner(run, "old")
+    if outcome != "local_active":
+        claim_run_owner(run, "successor")
+    if outcome == "remote_complete":
+        await conversation_run_service.transition_run(db, run, "completed")
+        db.add(
+            MessageEvent(
+                conversation_id=conversation.id,
+                assistant_msg_id=str(run.id),
+                events=[
+                    {
+                        "id": f"{run.id}-end",
+                        "event": event_names.MESSAGE_END,
+                        "data": {"content": "confirmed", "usage": {}},
+                    }
+                ],
+                last_event_id=f"{run.id}-end",
+                status="completed",
+            )
+        )
+    await db.commit()
+    broker = broker_registry.get_or_create(str(run.id), conversation_id=str(conversation.id))
+    broker.owner_generation = first.generation
+    broker.publish_nowait(
+        {
+            "id": "old",
+            "event": event_names.CONTENT_DELTA,
+            "data": {"delta": "local broker content"},
+        }
+    )
+    base = f"/api/conversations/{conversation.id}"
+    uri = f"{base}/stream?run_id={run.id}" if route == "legacy" else f"{base}/runs/{run.id}/{route}"
+    closer = (
+        asyncio.create_task(_close_broker_after_subscribe(broker))
+        if outcome == "local_active"
+        else None
+    )
+    try:
+        # A stale live subscription would hang here despite a new owner.
+        response = await asyncio.wait_for(client.get(uri), timeout=3)
+        if outcome == "local_active":
+            assert response.status_code == 200 and response.headers["x-resume-mode"] == "live"
+            assert "local broker content" in response.text
+            return
+        assert "local broker content" not in response.text
+        if outcome == "remote_complete":
+            assert response.status_code == 200 and response.headers["x-resume-mode"] == "replay"
+        else:
+            assert response.status_code == 409 and response.headers["Retry-After"] == "1"
+    finally:
+        broker.close()
+        if closer:
+            await closer

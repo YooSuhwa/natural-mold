@@ -9,9 +9,11 @@ from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.authz.org_context import OrgContext
+from app.models.conversation import INDEPENDENT_JOB_SOURCE
 from app.models.conversation_run import ConversationRun, utc_now_naive
 from app.models.conversation_run_input import ConversationRunInput
 from app.schemas.conversation_scope import ConversationPolicyTarget
+from app.services.ag_ui_queue_branch import bound_ag_ui_input
 from app.services.conversation_run_queue_mutations import (
     lock_owned_conversation,
     queue_input_not_found,
@@ -20,7 +22,7 @@ from app.services.conversation_run_queue_mutations import (
 from app.services.conversation_run_queue_payload import JsonValue, validate_queue_input_payload
 from app.services.conversation_runtime_policy import ensure_conversation_runtime_policy
 
-QueueInputSource = Literal["chat"]
+QueueInputSource = Literal["chat", "steer"]
 
 
 @dataclass(frozen=True, slots=True)
@@ -71,6 +73,7 @@ async def enqueue_input_with_result(
     attachment_ids: list[uuid.UUID],
     checkpoint_id: str | None,
     priority: int,
+    input_id: uuid.UUID | None = None,
 ) -> EnqueuedConversationInput:
     """Persist an idempotent input without allocating an active run."""
     user_id = context.user_id
@@ -81,6 +84,8 @@ async def enqueue_input_with_result(
         conversation_id=conversation_id,
         context=context,
     )
+    if conversation.source == INDEPENDENT_JOB_SOURCE:
+        raise _conflict("Independent job conversations accept only approval resumes")
     await ensure_conversation_runtime_policy(db, ConversationPolicyTarget(conversation.id, context))
     existing = await db.scalar(
         select(ConversationRunInput).where(
@@ -90,10 +95,18 @@ async def enqueue_input_with_result(
     )
     attachment_values = [str(item) for item in attachment_ids]
     if existing is not None:
+        submitted_checkpoint = existing.checkpoint_id
+        if (
+            submitted_checkpoint is not None
+            and existing.source == "chat"
+            and await db.scalar(select(bound_ag_ui_input(context, conversation.id, existing.id)))
+        ):
+            # The worker pinned this ordinary AG-UI input after it was accepted.
+            submitted_checkpoint = None
         same_request = (
             existing.input_payload == input_payload
             and existing.attachment_ids == attachment_values
-            and existing.checkpoint_id == checkpoint_id
+            and submitted_checkpoint == checkpoint_id
             and existing.source == source
         )
         if not same_request:
@@ -106,6 +119,7 @@ async def enqueue_input_with_result(
         )
     )
     queued = ConversationRunInput(
+        id=input_id or uuid.uuid4(),
         conversation_id=conversation.id,
         agent_id=agent_id,
         user_id=user_id,

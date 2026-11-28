@@ -13,22 +13,24 @@ from app.services.conversation_protocol_projection import (
 )
 
 
-async def load_checkpoint_channel_values(
+async def load_checkpoint_values_and_run(
     checkpointer: Any,
     *,
     thread_id: str,
     checkpoint_id: str | None,
-) -> dict[str, Any]:
+) -> tuple[dict[str, Any], str | None]:
     if checkpoint_id is None:
-        return {}
+        return {}, None
 
     config = {"configurable": {"thread_id": thread_id, "checkpoint_id": checkpoint_id}}
     checkpoint_tuple = await _get_checkpoint_tuple(checkpointer, config)
     if checkpoint_tuple is None:
         checkpoint_tuple = await _find_checkpoint_tuple(checkpointer, thread_id, checkpoint_id)
     if checkpoint_tuple is None:
-        return {}
-    return checkpoint_channel_values(checkpoint_tuple)
+        return {}, None
+    metadata = getattr(checkpoint_tuple, "metadata", None)
+    run_id = metadata.get("moldy_run_id") if isinstance(metadata, Mapping) else None
+    return checkpoint_channel_values(checkpoint_tuple), run_id if isinstance(run_id, str) else None
 
 
 async def _get_checkpoint_tuple(checkpointer: Any, config: dict[str, Any]) -> Any | None:

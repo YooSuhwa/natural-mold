@@ -92,6 +92,9 @@ def _project_structural_mapping(
     for raw_key, item in data.items():
         if raw_key == path_key or raw_key in _RESERVED_OFFLOAD_KEYS:
             continue
+        # Only the checkpoint needs the generated summary to resume the graph.
+        if path_key == "file_path" and raw_key == "summary_message":
+            continue
         key = _project_value(raw_key, context=context)
         if raw_key == "_summarization_event" and isinstance(item, Mapping):
             projected[key] = _project_structural_mapping(

@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import uuid
 from collections.abc import Sequence
+from dataclasses import replace
 from typing import Protocol
 
 from fastapi import APIRouter, Depends, HTTPException, Response, status
@@ -10,7 +11,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.agent_runtime.checkpointer import get_checkpointer
 from app.agent_runtime.conversation_checkpointer import conversation_checkpointer
-from app.agent_runtime.message_utils import content_to_text
+from app.agent_runtime.message_utils import content_to_text, parse_msg_id
+from app.authz.conversation_scope import lock_private_conversation
 from app.authz.org_context import OrgContext
 from app.authz.policies import PRIVATE, authz_policy
 from app.dependencies import get_db, get_org_context, owned_conversation, verify_csrf
@@ -66,6 +68,7 @@ def _message_role(message: BaseMessage) -> MessageRole | None:
 def _sources_for_messages(
     messages: Sequence[BaseMessage],
     branch_checkpoint_id: str,
+    conversation_id: uuid.UUID | None = None,
 ) -> tuple[SummarySource, ...]:
     """Reproduce assistant-ui's stable cross-turn message identity contract."""
 
@@ -79,7 +82,7 @@ def _sources_for_messages(
             turn_index += 1
         if role is None:
             continue
-        raw_id = str(getattr(message, "id", None) or f"synthetic-{message_index}")
+        raw_id = message.id or f"synthetic-{message_index}"
         source_id = _source_message_id(raw_id)
         first_turn = first_turn_by_source_id.get(source_id)
         first_turn_by_source_id.setdefault(source_id, turn_index)
@@ -93,6 +96,11 @@ def _sources_for_messages(
             role=role,
             text=content_to_text(message.content),
             branch_checkpoint_id=branch_checkpoint_id,
+            public_message_id=(
+                str(parse_msg_id(message.id, conversation_id, message_index))
+                if conversation_id is not None
+                else None
+            ),
         )
         scoped_id = (turn_index, source_id)
         existing_index = index_by_scoped_id.get(scoped_id)
@@ -101,12 +109,7 @@ def _sources_for_messages(
             sources.append(source)
         else:
             existing_id = sources[existing_index].message_id
-            sources[existing_index] = SummarySource(
-                message_id=existing_id,
-                role=source.role,
-                text=source.text,
-                branch_checkpoint_id=source.branch_checkpoint_id,
-            )
+            sources[existing_index] = replace(source, message_id=existing_id)
     return tuple(sources)
 
 
@@ -128,6 +131,7 @@ async def _load_sources(
         _sources_for_messages(
             [node.message for node in tree.nodes],
             tree.active_checkpoint_id or tree.nodes[-1].introduced_by_checkpoint_id,
+            conversation_id,
         )
         if tree.nodes
         else ()
@@ -170,15 +174,17 @@ async def write_pinned_summary(
     data: PinConversationSummaryRequest,
     db: AsyncSession = Depends(get_db),
     _csrf: None = Depends(verify_csrf),  # before the ownership gate: CSRF 403 -> 404
-    conv: PinnedConversationRef = Depends(owned_conversation),
+    _conv: PinnedConversationRef = Depends(owned_conversation),
     context: OrgContext = Depends(get_org_context),
 ) -> PinnedConversationSummaryResponse:
+    # Serialize the selected branch with concurrent branch switches through the pin write.
+    conv = await lock_private_conversation(db, conversation_id, context)
     active, historical = await _load_sources(
         conversation_id, conv.active_branch_checkpoint_id, db=db, context=context
     )
     try:
         row = await pin_summary(
-            db, PinSummaryTarget(conversation_id, context, data.message_id, active)
+            db, PinSummaryTarget(conversation_id, context, data.message_id, active, data.id_kind)
         )
     except InvalidPinnedSummarySourceError as exc:
         raise HTTPException(

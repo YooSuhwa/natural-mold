@@ -26,6 +26,7 @@ from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.approvals import registrations, service
+from app.approvals.independent_visibility import independent_job_approval_is_current
 from app.approvals.recording import INBOX_LINK
 from app.approvals.waiters import abandon_best_effort
 from app.authz.conversation_scope import load_private_conversation
@@ -66,18 +67,20 @@ def _protocol(name: str) -> Any:
 
 
 async def _pending_value(
-    db: AsyncSession, conversation: Conversation, context: OrgContext, interrupt_id: str
+    db: AsyncSession, conversation: Conversation, context: OrgContext, row: ApprovalRequest
 ) -> Any | None:
-    from app.routers.conversation_agent_protocol_interrupts import (
-        interrupts_from_tasks,
-        load_pending_interrupt_tasks,
-    )
+    from app.routers.conversation_agent_protocol_interrupts import load_pending_interrupt_tasks
 
     tasks = await load_pending_interrupt_tasks(
         db, conversation, user_id=context.user_id, context=context
     )
-    found = next((i for i in interrupts_from_tasks(tasks) if i["id"] == interrupt_id), None)
-    return None if found is None else found["value"]
+    for task in tasks:
+        if task["id"] != str(row.run_id):
+            continue
+        for interrupt in task["interrupts"]:
+            if interrupt["id"] == row.interrupt_id:
+                return interrupt["value"]
+    return None
 
 
 async def close(db: AsyncSession, row: ApprovalRequest, reason: str) -> None:
@@ -120,6 +123,11 @@ async def _respond(
     from app.services import chat_service
 
     await chat_service.require_executable_conversation(db, conversation.id, context)
+    value = await _pending_value(db, conversation, context, row)
+    if value is None or service.args_digest(value) != row.args_digest:
+        if channel == "inbox":
+            await close(db, row, "no_longer_pending" if value is None else "arguments_changed")
+        raise InboxError("approval_stale", "the run no longer waits for the reviewed arguments")
     command = AgentCommandRequest(
         id=f"approval:{row.id}",
         method="input.respond",
@@ -139,6 +147,7 @@ async def _respond(
         start_run=_protocol("start_conversation_run"),
         executor_fn=_protocol("resume_agent_stream_langgraph"),
         approval_channel=channel,
+        approval_run_id=row.run_id,
     )
     body = json.loads(bytes(response.body))
     if body.get("type") == "error":
@@ -162,6 +171,8 @@ async def decide(
     row = await db.get(ApprovalRequest, approval_id)
     if row is None or not await _decides(db, row, user, context):
         raise InboxError("approval_not_found", "approval request not found", 404)
+    if not await independent_job_approval_is_current(db, row, context):
+        raise InboxError("approval_not_found", "approval request not found", 404)
     if row.status != "pending":
         raise InboxError("approval_stale", f"the approval request is already {row.status}")
     if service.aware(row.expires_at) <= service.now():
@@ -176,13 +187,6 @@ async def decide(
     conversation = await load_private_conversation(db, row.conversation_id, context)
     if conversation is None:  # access revoked, or another organization's request
         raise InboxError("approval_not_found", "approval request not found", 404)
-    value = await _pending_value(db, conversation, context, row.interrupt_id)
-    if value is None:
-        await close(db, row, "no_longer_pending")
-        raise InboxError("approval_stale", "the run no longer waits for this request")
-    if service.args_digest(value) != row.args_digest:
-        await close(db, row, "arguments_changed")
-        raise InboxError("approval_stale", "the tool arguments changed since the request")
     await _respond(
         db,
         row=row,
@@ -322,6 +326,9 @@ async def _expire_one(due: _Due) -> None:
         row = await db.get(ApprovalRequest, due.id)
         if row is None or row.status != "pending":
             return
+        if not await independent_job_approval_is_current(db, row, context):
+            await close(db, row, "independent_job_unavailable")
+            return
         if row.kind == "business":
             from app.workflows import approvals as workflow_approvals
 
@@ -371,6 +378,8 @@ async def _expire_one(due: _Due) -> None:
                     None,
                 ),
             )
+        if row.status != "expired":  # another decision won while the resume was being prepared
+            return
         await notify(
             db,
             kind="approval.decided",
@@ -405,6 +414,22 @@ async def notify_expiring() -> int:
             row = await db.get(ApprovalRequest, due.id)
             if row is None or row.status != "pending" or row.expiring_notified_at is not None:
                 continue
+            if row.kind == "tool" and due.org_id is not None:
+                context = OrgContext(
+                    org_id=due.org_id, tenant_id=due.tenant_id, user_id=due.subject_user_id
+                )
+                try:
+                    current = await independent_job_approval_is_current(db, row, context)
+                except AppError as exc:
+                    if exc.status < 500:
+                        raise
+                    logger.warning(
+                        "Approval permission check will retry for approval_id=%s", due.id
+                    )
+                    continue
+                if not current:
+                    await close(db, row, "independent_job_unavailable")
+                    continue
             row.expiring_notified_at = service.now()
             await notify(
                 db,

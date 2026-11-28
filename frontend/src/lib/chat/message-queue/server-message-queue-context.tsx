@@ -23,8 +23,12 @@ export function ServerMessageQueueProvider({
   )
 }
 
+export function useOptionalServerMessageQueueController(): ServerMessageQueueController | null {
+  return useContext(ServerMessageQueueContext)
+}
+
 export function useServerMessageQueueController(): ServerMessageQueueController {
-  const controller = useContext(ServerMessageQueueContext)
+  const controller = useOptionalServerMessageQueueController()
   if (!controller) {
     throw new Error('ServerMessageQueueProvider is missing')
   }

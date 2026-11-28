@@ -1,7 +1,7 @@
 'use client'
 
 import type { ToolCallMessagePartProps } from '@assistant-ui/react'
-import { useTranslations } from 'next-intl'
+import { useLocale, useTranslations } from 'next-intl'
 import { ExternalLinkIcon, GlobeIcon, SearchIcon, SparklesIcon } from 'lucide-react'
 import { CollapsiblePill, pillStatusFromAssistantUi } from './collapsible-pill'
 import { useIsToolGroupChild } from './tool-group-child-context'
@@ -9,11 +9,12 @@ import {
   parseSearchResults,
   sanitizeThumbnailUrl,
   searchAnswerFromResult,
+  searchProviderFromResult,
   searchItemSnippet,
   searchItemUrl,
   type SearchResultItem,
 } from './search-tool-data'
-import { formatDisplayNumber } from '@/lib/utils/display-format'
+import { formatDisplayDate, formatDisplayNumber } from '@/lib/utils/display-format'
 
 // ──────────────────────────────────────────────
 // Types
@@ -34,6 +35,8 @@ function SearchResultCard({ item }: { item: SearchResultItem }) {
   const thumbnail = sanitizeThumbnailUrl(item.thumbnail)
   const title = item.title
   const snippet = searchItemSnippet(item)
+  const locale = useLocale()
+  const date = formatDisplayDate(item.published_date, { locale, fallback: '' })
 
   // 구조 없이 텍스트만 있는 경우
   if (!title && !url) {
@@ -65,7 +68,7 @@ function SearchResultCard({ item }: { item: SearchResultItem }) {
           <GlobeIcon className="mt-0.5 size-3 shrink-0 text-muted-foreground" />
         )}
         <div className="min-w-0 flex-1">
-          {title && (
+          {(title || url) && (
             <div className="flex items-center gap-1">
               {url ? (
                 <a
@@ -74,7 +77,7 @@ function SearchResultCard({ item }: { item: SearchResultItem }) {
                   rel="noopener noreferrer"
                   className="truncate moldy-ui-caption font-medium text-primary-strong hover:underline"
                 >
-                  {title}
+                  {title || url}
                 </a>
               ) : (
                 <span className="truncate moldy-ui-caption font-medium">{title}</span>
@@ -82,7 +85,12 @@ function SearchResultCard({ item }: { item: SearchResultItem }) {
               {url && <ExternalLinkIcon className="size-2.5 shrink-0 text-muted-foreground" />}
             </div>
           )}
-          {url && <div className="truncate moldy-ui-micro text-muted-foreground">{url}</div>}
+          {title && url && (
+            <div className="truncate moldy-ui-micro text-muted-foreground">{url}</div>
+          )}
+          {date && (
+            <div className="moldy-ui-micro text-muted-foreground">{t('published', { date })}</div>
+          )}
           {item.price !== undefined && (
             <div className="mt-0.5 flex items-center gap-1.5" data-moldy-search-price="true">
               <span className="moldy-ui-caption font-semibold text-foreground">
@@ -112,7 +120,11 @@ export function SearchRender({
   args,
   result,
   status,
+  isError = false,
+  toolName,
 }: {
+  isError?: boolean
+  toolName?: string
   args: SearchArgs
   result?: unknown
   status: { readonly type: string }
@@ -122,18 +134,31 @@ export function SearchRender({
   // 너무 길어진다. 단독 검색(그룹 아님)은 지금처럼 결과를 바로 펼친다.
   const isGroupChild = useIsToolGroupChild()
   const isRunning = status.type === 'running'
-  const items = parseSearchResults(result)
-  const answer = isRunning ? null : searchAnswerFromResult(result)
+  const provider = isRunning || isError ? undefined : searchProviderFromResult(result)
+  // Restored tool messages can lack the error flag. A successful research_search
+  // always returns a provider and results, including when no sources matched.
+  const failed =
+    isError ||
+    (toolName === 'research_search' &&
+      status.type === 'complete' &&
+      typeof result === 'string' &&
+      !provider)
+  const items = failed ? [] : parseSearchResults(result)
+  const answer = isRunning || failed ? null : searchAnswerFromResult(result)
   const title = args?.query ? `"${args.query}"` : t('defaultTitle')
   const meta = isRunning
     ? t('running')
-    : items.length > 0
-      ? t('count', { count: items.length })
-      : undefined
+    : provider
+      ? t('countByProvider', { provider, count: items.length })
+      : items.length > 0
+        ? t('count', { count: items.length })
+        : undefined
 
-  const hasBody = !isRunning && (items.length > 0 || Boolean(answer))
+  const errorMessage = failed && typeof result === 'string' ? result : undefined
+  const hasBody = !isRunning && (items.length > 0 || Boolean(answer) || Boolean(errorMessage))
   const body = hasBody ? (
     <div className="space-y-1.5">
+      {errorMessage && <p className="moldy-ui-caption text-foreground">{errorMessage}</p>}
       {answer ? (
         <div
           className="rounded-lg border border-primary-strong/25 bg-primary/5 p-2.5"
@@ -146,7 +171,7 @@ export function SearchRender({
           <p className="moldy-ui-caption leading-relaxed text-foreground/85">{answer}</p>
         </div>
       ) : null}
-      {items.slice(0, 5).map((item, i) => (
+      {(toolName === 'research_search' ? items : items.slice(0, 5)).map((item, i) => (
         <SearchResultCard key={i} item={item} />
       ))}
     </div>
@@ -156,7 +181,7 @@ export function SearchRender({
     <CollapsiblePill
       kind="tool"
       leadingIcon={SearchIcon}
-      status={pillStatusFromAssistantUi(status.type)}
+      status={failed ? 'error' : pillStatusFromAssistantUi(status.type)}
       title={title}
       meta={meta}
       defaultExpanded={!isGroupChild && hasBody}
@@ -179,6 +204,7 @@ export function SearchRender({
 
 export const SEARCH_TOOL_UI_NAMES = [
   // builtin + 스킬 의존성(tavily_search) + E2E scripted
+  'research_search',
   'tavily_search',
   'web_search',
   // registry definition_key (Naver 5종)

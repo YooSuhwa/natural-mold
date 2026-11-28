@@ -32,6 +32,7 @@ async def _seed_conversation(
     *,
     user_id: uuid.UUID = TEST_USER_ID,
     email: str = "run-links@test.local",
+    conversation_id: uuid.UUID | None = None,
 ) -> tuple[Agent, Conversation]:
     user = User(id=user_id, email=email, name="Run Links User")
     model = Model(
@@ -53,6 +54,7 @@ async def _seed_conversation(
     db.add(agent)
     await db.flush()
     conversation = Conversation(
+        id=conversation_id,
         agent_id=agent.id,
         title="Run links",
         org_id=TEST_ORG_ID,

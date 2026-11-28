@@ -27,6 +27,7 @@ from app.migrations.org_authz_v1.rls_children import CHILDREN
 DIRECT_TENANT: Final = frozenset(
     {
         "access_requests",
+        "ag_ui_command_receipts",
         "agent_api_keys",
         "agent_api_runs",  # I-07 tenant_id: runs outlive their deployment
         "agent_blueprints",
@@ -40,7 +41,11 @@ DIRECT_TENANT: Final = frozenset(
         "audit_events",
         "authz_revocations",
         "builder_sessions",
+        "chat_notification_outbox",
         "conversation_artifacts",
+        "conversation_goals",
+        "conversation_run_steers",
+        "conversation_run_tool_receipts",
         "conversation_runs",
         "conversations",
         "credential_defaults",
@@ -49,12 +54,14 @@ DIRECT_TENANT: Final = frozenset(
         "daily_spend_model",
         "daily_spend_user",
         "emergency_stops",  # 순번 13 emergency stop (app/approvals/emergency.py)
+        "goal_sandboxes",
         "group_members",
         "groups",
         "guardrail_events",  # guardrail detection records (company rows)
         "guardrail_pseudonyms",  # conversation pseudonym maps (encrypted values)
         "guardrail_template_versions",  # published company templates (immutable)
         "guardrail_templates",  # company guardrail templates (drafts)
+        "independent_chat_jobs",
         "jobs",  # generic background jobs (app/jobs)
         "marketplace_installations",
         "marketplace_items",
@@ -79,6 +86,7 @@ DIRECT_TENANT: Final = frozenset(
         "organizations",
         "resource_credential_bindings",
         "resource_grants",
+        "research_search_usage",
         "resource_policies",  # company policy per tool or MCP server (tool-governance 3.4)
         "share_links",
         "skill_builder_sessions",

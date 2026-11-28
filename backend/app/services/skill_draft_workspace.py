@@ -11,6 +11,7 @@ ADR-018 상대경로 계약(``storage/paths``)을 따른다.
 from __future__ import annotations
 
 import logging
+import os
 import shutil
 import tempfile
 import uuid
@@ -25,6 +26,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.authz.org_context import OrgContext
 from app.authz.scoping import private_scope_predicate
 from app.config import settings
+from app.error_codes import file_not_found
 from app.models.skill_builder_session import SkillBuilderSession
 from app.schemas.skill_builder import SkillDraftFile, SkillDraftFileRole
 from app.skills.display_limits import DISPLAY_TEXT_SNIFF_BYTES, MAX_DISPLAY_TEXT_BYTES
@@ -108,9 +110,47 @@ def seed_workspace_from_skill(skill: Skill, session_id: uuid.UUID) -> str:
     return storage_path
 
 
+def _stable_input_paths(
+    storage_path: str, attachments: Sequence[MessageAttachment]
+) -> list[tuple[Path, Path, Path]]:
+    workspace = resolve_workspace_dir(storage_path)
+    inputs_dir = workspace / INPUTS_DIR
+    if workspace != Path(settings.data_root).resolve() / storage_path or inputs_dir.is_symlink():
+        raise file_not_found()
+    files: list[tuple[Path, Path, Path]] = []
+    for attachment in attachments:
+        src = upload_data_path(attachment.storage_path, attachment.tenant_id)
+        name = Path(attachment.filename).name or "upload"
+        prefix = attachment.id.hex + "-"
+        name = name.encode("utf-8")[: 255 - len(prefix)].decode("utf-8", "ignore")
+        destination = inputs_dir / (prefix + name)
+        if not src.is_file() or destination.is_symlink():
+            raise file_not_found()
+        files.append((src, destination, inputs_dir / f".{attachment.id.hex}.part"))
+    return files
+
+
+def _copy_stable_input(src: Path, destination: Path, staging: Path) -> Path:
+    """The locked upload owns its staging name, including after an interrupted write."""
+    staging.unlink(missing_ok=True)
+    if destination.is_file():
+        return destination
+    destination.parent.mkdir(parents=True, exist_ok=True)
+    try:
+        fd = os.open(staging, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
+        with os.fdopen(fd, "wb") as tmp, src.open("rb") as blob:
+            shutil.copyfileobj(blob, tmp)
+        os.link(staging, destination)
+    finally:
+        staging.unlink(missing_ok=True)
+    return destination
+
+
 def copy_attachments_to_inputs(
     storage_path: str,
     attachments: Sequence[MessageAttachment],
+    *,
+    stable_names: bool = False,
 ) -> list[str]:
     """대화 첨부 blob을 ``<workspace>/inputs/``로 **복사**한다 (마운트 금지, §6-3).
 
@@ -119,6 +159,10 @@ def copy_attachments_to_inputs(
     없으면 건너뛴다 (orphan GC와의 경합 허용).
     """
 
+    if stable_names:
+        # Validate every path before publishing the first file in this command.
+        files = _stable_input_paths(storage_path, attachments)
+        return [f"{INPUTS_DIR}/{_copy_stable_input(*paths).name}" for paths in files]
     inputs_dir = resolve_workspace_dir(storage_path) / INPUTS_DIR
     inputs_dir.mkdir(parents=True, exist_ok=True)
     copied: list[str] = []
@@ -418,8 +462,10 @@ async def copy_conversation_attachments_to_inputs(
     db: AsyncSession,
     *,
     storage_path: str,
+    conversation_id: uuid.UUID,
     attachment_ids: Sequence[uuid.UUID],
     context: OrgContext,
+    stable_names: bool = False,
 ) -> list[str]:
     """run 시작 시 방금 링크된 첨부를 ``inputs/``로 복사한다 (소유권 필터 포함)."""
 
@@ -429,11 +475,14 @@ async def copy_conversation_attachments_to_inputs(
 
     result = await db.execute(
         select(MessageAttachment).where(
-            MessageAttachment.id.in_(list(attachment_ids)),
+            MessageAttachment.id.in_(attachment_ids),
+            MessageAttachment.conversation_id == conversation_id,
             private_scope_predicate(MessageAttachment, context),
         )
     )
-    return copy_attachments_to_inputs(storage_path, list(result.scalars()))
+    return copy_attachments_to_inputs(
+        storage_path, list(result.scalars()), stable_names=stable_names
+    )
 
 
 def build_skill_draft_brief(session: SkillBuilderSession) -> dict[str, object]:

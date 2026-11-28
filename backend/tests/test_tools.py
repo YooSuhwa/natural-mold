@@ -24,6 +24,7 @@ from app.authz.platform_scope import PlatformScope
 from app.credentials.creation import CredentialCreation
 from app.models.tool import Tool
 from app.models.user import User
+from app.services import research_search_policy
 from app.tools import registry as tool_registry_mod
 from app.tools.domain import ToolDefinition, ToolRunContext
 from app.tools.execution_scope import ToolRunOptions, ToolRunTarget
@@ -39,6 +40,7 @@ from tests.authz.unit_scope_fixture import (
     unit_context,
 )
 from tests.conftest import TEST_USER_ID, override_get_current_user
+from tests.sqlite_test_engine import TestSession
 
 
 @pytest.fixture(autouse=True)
@@ -62,6 +64,7 @@ async def test_tool_types_catalog(client: AsyncClient) -> None:
     assert {
         "http_request",
         "tavily_search",
+        "research_search",
         "naver_search_blog",
         "naver_search_news",
         "naver_search_image",
@@ -569,6 +572,7 @@ async def test_run_naver_search_uses_credential_headers(db: AsyncSession) -> Non
 async def test_run_tavily_search_uses_hosted_env_key(monkeypatch) -> None:
     monkeypatch.setattr("app.config.settings.tavily_api_key", "tvly-test")
 
+    monkeypatch.setattr(research_search_policy, "tenant_session", lambda _: TestSession())
     definition = tool_registry.get("tavily_search")
     assert definition is not None
     assert definition.credential_definition_keys == []
@@ -611,6 +615,9 @@ async def test_run_tavily_search_uses_hosted_env_key(monkeypatch) -> None:
                     "include_answer": "true",
                     "include_raw_content": True,
                 },
+                search_actor=research_search_policy.ResearchSearchActor(
+                    TEST_TENANT_ID, TEST_ORG_ID, TEST_USER_ID
+                ),
                 credentials=None,
                 http_client=client,
             )

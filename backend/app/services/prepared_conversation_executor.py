@@ -57,10 +57,10 @@ def _known_runners() -> dict[Any, PreparedRunner]:
     }
 
 
-def prepared_runner_for(executor_fn: Any) -> PreparedRunner | None:
-    """The prepared variant of a known executor, or ``None`` (flag off / custom)."""
+def prepared_runner_for(executor_fn: Any, *, required: bool = False) -> PreparedRunner | None:
+    """Independent work needs a dispatch permit even when ordinary chat runs unleased."""
 
-    if not settings.prepared_run_lease_enabled:
+    if not required and not settings.prepared_run_lease_enabled:
         return None
     return _known_runners().get(executor_fn)
 

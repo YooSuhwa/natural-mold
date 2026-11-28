@@ -2,7 +2,30 @@ export const conversationQueryKeys = {
   pageRoot: ['conversations', 'page'] as const,
   agentPageRoot: (agentId: string) => ['agents', agentId, 'conversations', 'page'] as const,
   prefix: (conversationId: string) => ['conversations', conversationId] as const,
+  childTasks: (conversationId: string, orgGeneration: number) =>
+    ['conversations', conversationId, 'child-tasks', orgGeneration] as const,
+  childTask: (conversationId: string, orgGeneration: number, childId: string) =>
+    [...conversationQueryKeys.childTasks(conversationId, orgGeneration), childId] as const,
   messages: (conversationId: string) => ['conversations', conversationId, 'messages'] as const,
+  steers: (conversationId: string) => ['conversations', conversationId, 'steers'] as const,
+  steersBefore: (conversationId: string, before: number) =>
+    ['conversations', conversationId, 'steers', 'before', before] as const,
+  historyEvidence: (
+    conversationId: string,
+    messageId: string | undefined,
+    historyId: string,
+    checkpointId?: string,
+    cutoffIndex?: number,
+  ) =>
+    [
+      'conversations',
+      conversationId,
+      'history-evidence',
+      messageId ?? null,
+      historyId,
+      checkpointId ?? null,
+      cutoffIndex ?? null,
+    ] as const,
   runMessageLinksLifecycle: (conversationId: string | null) =>
     ['conversations', conversationId ?? 'none', 'run-message-links-lifecycle'] as const,
   runMessageLinkIdentity: (conversationId: string | null, messageId: string | null | undefined) =>

@@ -1,7 +1,8 @@
-import type { APIRequestContext, Page, Request, Response } from '@playwright/test'
+import type { APIRequestContext, Locator, Page, Request, Response } from '@playwright/test'
 
+import { parseConversationRunStartUrl } from '../scripts/e2e-run-start-response'
 import { API_BASE, apiGetJson, expect, isRecord } from './fixtures'
-import { sendMessage } from './langgraph-v3-helpers'
+import { readAgUiAcceptance, readAgUiRunInput } from './helpers/ag-ui-run-receipt'
 
 export type QueueItem = Record<string, unknown> & {
   readonly id: string
@@ -55,6 +56,9 @@ export function inputHasExactHuman(value: unknown, expectedText: string): boolea
 
 export function runStartHasExactHuman(request: Request | undefined, expectedText: string): boolean {
   if (!request) return false
+  if (process.env.NEXT_PUBLIC_CHAT_RUNTIME === 'ag_ui') {
+    return inputHasExactHuman(readAgUiRunInput(request), expectedText)
+  }
   try {
     const body = request.postDataJSON() as { params?: unknown }
     return isRecord(body.params) && inputHasExactHuman(body.params.input, expectedText)
@@ -89,6 +93,12 @@ export async function expectUniqueTranscriptTurn(
 
 export function commandStrategy(request: Request): string | null {
   if (request.method() !== 'POST') return null
+  if (process.env.NEXT_PUBLIC_CHAT_RUNTIME === 'ag_ui') {
+    const props: unknown = readAgUiRunInput(request)?.forwardedProps
+    if (!isRecord(props) || !isRecord(props.moldy)) return null
+    const strategy = props.moldy.strategy
+    return strategy === 'enqueue' || strategy === 'interrupt' ? strategy : null
+  }
   try {
     const body = request.postDataJSON() as { method?: unknown; params?: unknown }
     if (body.method !== 'run.start' || !isRecord(body.params)) return null
@@ -116,31 +126,84 @@ export async function queueState(
   }
 }
 
+function queueCommand(
+  request: Request,
+  threadId: string,
+  strategy: 'enqueue' | 'interrupt',
+  text: string,
+): boolean {
+  const requestedThread =
+    process.env.NEXT_PUBLIC_CHAT_RUNTIME === 'ag_ui'
+      ? readAgUiRunInput(request, threadId)?.threadId
+      : parseConversationRunStartUrl(request.url(), API_BASE)
+  return (
+    requestedThread === threadId &&
+    commandStrategy(request) === strategy &&
+    runStartHasExactHuman(request, text)
+  )
+}
+
+async function enqueueOnce(thread: Locator, text: string): Promise<void> {
+  const input = thread.locator('textarea[data-moldy-composer-input="true"]')
+  await input.fill(text)
+  // A v3 thread with no SDK history can enqueue through the ordinary send control.
+  const sendAction = thread.getByRole('button', {
+    name:
+      process.env.NEXT_PUBLIC_CHAT_RUNTIME === 'ag_ui'
+        ? /^(다음 요청으로 대기|Queue as next request)$/
+        : /^(다음 요청으로 대기|Queue as next request|전송|Send Button)$/,
+  })
+  await expect(sendAction).toBeVisible()
+  await expect(sendAction).toBeEnabled()
+  // The composer intentionally keeps its text while awaiting the server's receipt.
+  await input.press('Enter')
+}
+
+async function responseFor(command: Request): Promise<Response> {
+  const response = await command.response()
+  if (!response) throw new Error('The submitted queue command did not receive a response')
+  return response
+}
+
+async function confirmSteer(
+  thread: Locator,
+  text: string,
+  afterSteerArmed?: () => Promise<void>,
+): Promise<void> {
+  const composer = thread.locator('textarea[data-moldy-composer-input="true"]')
+  await composer.fill(text)
+  const steerButton = thread.locator('[data-moldy-queue-steer-new]')
+  await expect(steerButton).toBeVisible({ timeout: 10_000 })
+  await expect(steerButton).toBeEnabled({ timeout: 10_000 })
+  await steerButton.click()
+  const sendNowButton = thread.locator('[data-moldy-queue-send-now-new]')
+  await expect(sendNowButton).toBeVisible()
+  await afterSteerArmed?.()
+  await sendNowButton.click()
+}
+
 export async function sendForStrategy(
   page: Page,
   text: string,
   strategy: 'enqueue' | 'interrupt',
   options?: { readonly afterSteerArmed?: () => Promise<void> },
 ): Promise<QueueSubmission> {
-  const responsePromise = page.waitForResponse(
-    (response) => commandStrategy(response.request()) === strategy,
-  )
-  if (strategy === 'enqueue') {
-    await sendMessage(page, text)
-  } else {
-    const composer = page.locator('textarea[data-moldy-composer-input="true"]').last()
-    await composer.fill(text)
-    const steerButton = page.locator('[data-moldy-queue-steer-new]')
-    await expect(steerButton).toBeVisible({ timeout: 10_000 })
-    await expect(steerButton).toBeEnabled({ timeout: 10_000 })
-    await steerButton.click()
-    const sendNowButton = page.locator('[data-moldy-queue-send-now-new]')
-    await expect(sendNowButton).toBeVisible()
-    await options?.afterSteerArmed?.()
-    await sendNowButton.click()
-  }
-  const response = await responsePromise
+  const threadId = /\/conversations\/([\w-]+)\/?$/.exec(new URL(page.url()).pathname)?.[1]
+  if (!threadId) throw new Error('Queue action requires a conversation page')
+  const thread = page.locator(`[data-chat-selection-thread="${threadId}"]`)
+  const [command] = await Promise.all([
+    page.waitForRequest((req) => queueCommand(req, threadId, strategy, text)),
+    strategy === 'enqueue'
+      ? enqueueOnce(thread, text)
+      : confirmSteer(thread, text, options?.afterSteerArmed),
+  ])
+  const response = await responseFor(command)
   expect(response.ok()).toBeTruthy()
+  if (process.env.NEXT_PUBLIC_CHAT_RUNTIME === 'ag_ui') {
+    const { queue, physicalRunId } = await readAgUiAcceptance(response)
+    if (!queue) throw new Error('Missing AG-UI queue input receipt')
+    return { inputId: queue.inputId, runId: physicalRunId }
+  }
   const body = (await response.json()) as { result?: unknown }
   if (!isRecord(body.result) || typeof body.result.input_id !== 'string') {
     throw new Error('queued run.start did not return input_id')
@@ -157,14 +220,25 @@ export async function beginPersistedEnqueue(
   conversationId: string,
   text: string,
 ): Promise<PersistedEnqueue> {
-  const responsePromise = page.waitForResponse(
-    (response) => commandStrategy(response.request()) === 'enqueue',
-  )
-  const requestPromise = page.waitForRequest(
-    (candidate) => commandStrategy(candidate) === 'enqueue',
-  )
-  await sendMessage(page, text)
-  const command = await requestPromise
+  const thread = page.locator(`[data-chat-selection-thread="${conversationId}"]`)
+  const [command] = await Promise.all([
+    page.waitForRequest((req) => queueCommand(req, conversationId, 'enqueue', text)),
+    enqueueOnce(thread, text),
+  ])
+  const responsePromise = responseFor(command)
+  if (process.env.NEXT_PUBLIC_CHAT_RUNTIME === 'ag_ui') {
+    const { queue } = await readAgUiAcceptance(await responsePromise)
+    if (!queue) throw new Error('Missing AG-UI queue input receipt')
+    await expect
+      .poll(
+        async () =>
+          (await queueState(request, conversationId)).items.find(
+            (item) => item.id === queue.inputId,
+          )?.status,
+      )
+      .toBe('pending')
+    return { inputId: queue.inputId, responsePromise }
+  }
   const body = command.postDataJSON() as { params?: unknown }
   if (!isRecord(body.params) || typeof body.params.client_request_id !== 'string') {
     throw new Error('queued run.start did not send client_request_id')

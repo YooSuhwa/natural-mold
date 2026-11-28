@@ -82,6 +82,15 @@ async def transition_run(
             run.error_code = error_code
             run.error_message = error_message
 
+    if status in {"canceling", "canceled", "completed", "failed", "stale"}:
+        from app.child_tasks.persistence import settle_parent_children
+
+        await settle_parent_children(db, run)
+
+    if status in RUN_TERMINAL_STATUSES:
+        from app.services.ag_ui_delivery_scope import clear_private_delivery
+
+        await clear_private_delivery(db, run)
     await project_owned_envelopes(db, run)
     await db.flush()
     return run

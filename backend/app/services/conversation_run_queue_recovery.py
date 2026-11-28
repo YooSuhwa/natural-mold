@@ -15,6 +15,7 @@ from app.services.conversation_run_cancellation_recovery import (
 )
 from app.services.conversation_run_prepared_recovery import terminalize_orphaned_prepared_runs
 from app.services.conversation_run_queue_launch import facade_attr
+from app.services.conversation_run_steer_rollover import recover_terminal_steers
 
 logger = logging.getLogger("app.services.conversation_run_queue_worker")
 
@@ -34,6 +35,12 @@ async def recover_conversation_queue() -> int:
         session_factory=facade_attr("_session_factory")(),
         protected_run_ids=tuple(registry.active_run_ids()),
     )
+    from app.services.conversation_goal_worker import recover_goal_attempts
+
+    await recover_terminal_steers(
+        facade_attr("_session_factory")(), facade_attr("_company_session")
+    )
+    await recover_goal_attempts()
     async with facade_attr("_session_factory")()() as db:
         claimed_result = await db.execute(
             select(ConversationRunInput.id, ConversationRunInput.run_id)
@@ -58,7 +65,9 @@ async def recover_conversation_queue() -> int:
         )
         pending_conversation_ids = list(pending_result.scalars().all())
 
-    launched = 0
+    from app.services.ag_ui_deferred_delivery import recover_ag_ui_deliveries
+
+    launched = await recover_ag_ui_deliveries(registry=registry)
     for input_id in claimed_ids:
         if await facade_attr("launch_claimed_input")(input_id) is not None:
             launched += 1

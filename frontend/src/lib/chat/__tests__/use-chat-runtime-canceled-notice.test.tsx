@@ -1,8 +1,9 @@
-import { renderHook, waitFor } from '@testing-library/react'
+import { act, renderHook, waitFor } from '@testing-library/react'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import type { ReactNode } from 'react'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import type { ConversationRun, Message, SSEEvent } from '@/lib/types'
+import * as checkpoints from '../langgraph-runtime/thread-state-checkpoints'
 import { appendDurableCanceledNotice, useChatRuntime } from '../use-chat-runtime'
 
 const mocks = vi.hoisted(() => ({
@@ -231,6 +232,28 @@ describe('useChatRuntime durable canceled notice', () => {
     })
   })
 
+  it('retains the visible partial response and appends a scoped recovery notice', async () => {
+    const run = conversationRun('failed', { error_code: 'recovery_output_started' })
+    const { result, rerender } = renderHook(
+      ({ latestRun }: { latestRun: ConversationRun }) =>
+        useChatRuntime({
+          messages: [message({ id: 'm2', role: 'assistant', content: '부분 응답' })],
+          streamFn: emptyStream,
+          conversationId: 'conversation-1',
+          latestRun,
+        }),
+      { initialProps: { latestRun: run }, wrapper: createWrapper() },
+    )
+    await waitFor(() => {
+      expect(threadTexts(result.current.runtime)).toEqual([
+        '부분 응답',
+        'recovery.recovery_output_started',
+      ])
+    })
+    rerender({ latestRun: { ...run, conversation_id: 'different' } })
+    await waitFor(() => expect(threadTexts(result.current.runtime)).toEqual(['부분 응답']))
+  })
+
   it('latest_run이 completed면 notice를 렌더하지 않는다', async () => {
     const { result } = renderHook(
       () =>
@@ -251,5 +274,96 @@ describe('useChatRuntime durable canceled notice', () => {
       expect(texts).toHaveLength(2)
       expect(texts[1]).toBe('완성된 응답')
     })
+  })
+})
+
+describe('useChatRuntime partial stream recovery', () => {
+  it('replaces transient tool arguments with a read-only recovery notice and restores it on remount', async () => {
+    const failed = conversationRun('failed', {
+      error_code: 'partial_model_stream',
+      cancel_requested_at: null,
+    })
+    const partial = {
+      text: 'Saved partial answer',
+      tools: [{ name: 'delivery', state: 'unknown' }],
+      truncated: false,
+    }
+    const readback = vi.spyOn(checkpoints, 'loadServerThreadState').mockResolvedValue({
+      metadata: {
+        conversation_id: failed.conversation_id,
+        latest_run: {
+          id: failed.id,
+          status: 'failed',
+          error_code: failed.error_code,
+          partial_output: partial,
+        },
+      },
+    })
+    const stream = vi.fn(async function* (): AsyncGenerator<SSEEvent> {
+      yield { event: 'content_delta', data: { content: 'Uncommitted stream text' } }
+      yield {
+        event: 'tool_call_start',
+        data: {
+          tool_name: 'delivery',
+          tool_call_id: 'partial-call',
+          parameters: { recipient: 'transient recipient' },
+        },
+      }
+      yield { event: 'error', data: { message: 'Stream interrupted' } }
+      yield {
+        event: 'message_end',
+        data: { content: 'Uncommitted stream text', usage: {}, status: 'failed' },
+      }
+    })
+    const messages = [message({ id: 'user-message', role: 'user', content: 'Check the delivery' })]
+    const useObservedChat = ({ latestRun }: { latestRun: ConversationRun | null }) =>
+      useChatRuntime({
+        messages,
+        streamFn: stream,
+        conversationId: failed.conversation_id,
+        latestRun,
+      })
+    try {
+      const initialProps: Parameters<typeof useObservedChat>[0] = { latestRun: null }
+      const view = renderHook(useObservedChat, {
+        wrapper: createWrapper(),
+        initialProps,
+      })
+      await act(async () => {
+        await view.result.current.sendMessage('Check the delivery')
+      })
+      expect(readback).not.toHaveBeenCalled()
+      expect(stream).toHaveBeenCalledTimes(1)
+      const interim = view.result.current.runtime.thread.getState().messages
+      expect(
+        interim.some(
+          (item) =>
+            item.role === 'assistant' &&
+            item.content.some((part) => part.type === 'tool-call' && part.toolName === 'delivery'),
+        ),
+      ).toBe(true)
+      view.rerender({ latestRun: failed })
+      await waitFor(() => expect(view.result.current.partialOutput).toEqual(partial))
+      const recovered = view.result.current.runtime.thread.getState().messages
+      expect(recovered.map((item) => item.id)).toEqual(['user-message', 'moldy-failed-run-1'])
+      expect(recovered[1]?.metadata.custom).toMatchObject({ terminalNotice: 'failed' })
+      expect(recovered[1]?.content).toEqual([{ type: 'text', text: 'partialModelStream' }])
+      expect(view.result.current.partialFailedRunId).toBe(failed.id)
+      view.unmount()
+
+      const reopened = renderHook(useObservedChat, {
+        wrapper: createWrapper(),
+        initialProps: { latestRun: failed },
+      })
+      await waitFor(() => expect(reopened.result.current.partialOutput).toEqual(partial))
+      expect(
+        reopened.result.current.runtime.thread.getState().messages.map((item) => item.id),
+      ).toEqual(['user-message', 'moldy-failed-run-1'])
+      expect(readback).toHaveBeenCalledTimes(2)
+      expect(stream).toHaveBeenCalledTimes(1)
+      reopened.unmount()
+    } finally {
+      readback.mockRestore()
+    }
   })
 })

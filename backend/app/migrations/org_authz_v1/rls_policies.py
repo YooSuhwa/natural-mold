@@ -133,7 +133,65 @@ def table_policy(quote: Quote, name: str) -> TablePolicy:
     return TablePolicy(name, gateway + f"({policy.read})", gateway + f"({policy.write})")
 
 
+def _goal_policy(quote: Quote, name: str) -> TablePolicy:
+    """Reject links to another private conversation even within the same tenant."""
+    row = quote(name)
+    if name == "conversation_goals":
+        belongs = (
+            "EXISTS (SELECT 1 FROM conversations AS c "  # noqa: S608
+            f"WHERE c.id = {row}.conversation_id AND c.tenant_id = {TENANT} "
+            f"AND c.tenant_id = {row}.tenant_id AND c.org_id = {row}.org_id "
+            f"AND c.user_id = {row}.user_id)"
+        )
+    else:
+        input_check = ""
+        if name == "goal_attempts":
+            input_check = (
+                f" AND ({row}.followup_input_id IS NULL OR EXISTS "  # noqa: S608
+                "(SELECT 1 FROM conversation_run_inputs AS i "
+                f"WHERE i.id = {row}.followup_input_id AND i.conversation_id = g.conversation_id "
+                "AND i.user_id = g.user_id))"
+            )
+        belongs = (
+            "EXISTS (SELECT 1 FROM conversation_goals AS g JOIN conversation_runs AS r "  # noqa: S608
+            f"ON r.id = {row}.run_id WHERE g.id = {row}.goal_id AND g.tenant_id = {TENANT} "
+            "AND r.tenant_id = g.tenant_id AND r.org_id = g.org_id "
+            "AND r.user_id = g.user_id AND r.conversation_id = g.conversation_id"
+            f"{input_check})"
+        )
+    return TablePolicy(name, *_scoped(belongs, belongs))
+
+
+def _independent_job_policy(quote: Quote, name: str) -> TablePolicy:
+    # A delegated job links two private conversations. Check both run bindings
+    # even when the inserting session knows an otherwise valid foreign UUID.
+    job = quote(name)
+    bindings = [f"{job}.tenant_id = {TENANT}"]
+    for side in ("parent", "child"):
+        bindings.append(
+            f"EXISTS (SELECT 1 FROM {quote('conversation_runs')} AS r "  # noqa: S608
+            f"WHERE r.id = {job}.{side}_run_id "
+            f"AND r.conversation_id = {job}.{side}_conversation_id "
+            f"AND r.tenant_id = {job}.tenant_id AND r.org_id = {job}.org_id "
+            f"AND r.user_id = {job}.user_id)"
+        )
+    bindings.append(
+        f"({job}.pending_approval_run_id IS NULL OR EXISTS ("  # noqa: S608
+        f"SELECT 1 FROM {quote('conversation_runs')} AS r "
+        f"WHERE r.id = {job}.pending_approval_run_id "
+        f"AND r.conversation_id = {job}.child_conversation_id "
+        f"AND r.tenant_id = {job}.tenant_id AND r.org_id = {job}.org_id "
+        f"AND r.user_id = {job}.user_id))"
+    )
+    bound = " AND ".join(bindings)
+    return TablePolicy(name, *_scoped(bound, bound))
+
+
 def _table_policy(quote: Quote, name: str) -> TablePolicy:
+    if name in {"conversation_goals", "goal_attempts", "goal_transition_intents"}:
+        return _goal_policy(quote, name)
+    if name == "independent_chat_jobs":
+        return _independent_job_policy(quote, name)
     if name in DIRECT_TENANT:
         write = f"tenant_id = {TENANT}"
         read = f"({write} OR tenant_id IS NULL)" if name in PLATFORM_CATALOG else write

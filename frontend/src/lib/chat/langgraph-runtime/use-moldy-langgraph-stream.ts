@@ -12,6 +12,7 @@ import { useChannel, type Channel } from '@langchain/react'
 import { useSetAtom } from 'jotai'
 import { useTranslations } from 'next-intl'
 import { reduceProtocolActivity } from './activity-protocol'
+import type { ThreadRunNotice } from './stream-thread-state-projection'
 import type { RunActivity } from './activity-model'
 import { selectDeepAgentsState } from './deepagents-state'
 import { refreshThreadLifecycleStream } from './lifecycle-subscription'
@@ -20,6 +21,7 @@ import { useStreamCommandController } from './use-stream-command-controller'
 import { useStreamInterruptView } from './use-stream-interrupt-view'
 import { useStreamReconciliationController } from './use-stream-reconciliation-controller'
 import { useStreamRuntimeMessages } from './use-stream-runtime-messages'
+import { terminalRunNotice } from './stream-thread-state-projection'
 import { useStreamVisibleMessages } from './use-stream-visible-messages'
 import { useSubmitCheckpointController } from './use-submit-checkpoint-controller'
 import {
@@ -107,12 +109,13 @@ export function useMoldyLangGraphStream({
     postRunHydrationPending,
   } = reconciliation
   const { pendingSubmit: cachedPendingNewSubmit, clearPendingSubmit } = submitCheckpoint
-  const durableThreadRunNotice = useMemo(() => {
+  const durableThreadRunNotice = useMemo<ThreadRunNotice | null>(() => {
     const pendingSubmitMatchesLatestRun =
       cachedPendingNewSubmit !== null &&
       serverLatestRun !== null &&
       (cachedPendingNewSubmit.acceptedRunId === serverLatestRun.id ||
         cachedPendingNewSubmit.content === serverLatestRun.input_preview)
+    const latestNotice = serverLatestRun ? terminalRunNotice(serverLatestRun) : null
     if (
       threadRunNotice?.status === 'canceling' &&
       serverLatestRun &&
@@ -121,15 +124,17 @@ export function useMoldyLangGraphStream({
         serverLatestRun.status === 'stale' ||
         serverLatestRun.status === 'failed')
     ) {
-      return {
-        id: serverLatestRun.id,
-        status: serverLatestRun.status,
-        ...(serverLatestRun.status === 'failed' && serverLatestRun.error_message
-          ? { errorMessage: serverLatestRun.error_message }
-          : {}),
-      }
+      return latestNotice
     }
-    if (threadRunNotice) return threadRunNotice
+    if (threadRunNotice) {
+      if (threadRunNotice.id === latestNotice?.id && threadRunNotice.status === 'failed') {
+        if (latestNotice.recoveryError) return latestNotice
+        if (threadRunNotice.partialOutput === undefined && latestNotice.partialOutput === null) {
+          return latestNotice
+        }
+      }
+      return threadRunNotice
+    }
     if (
       stream.isLoading ||
       claimedQueueRunInFlight ||
@@ -139,21 +144,7 @@ export function useMoldyLangGraphStream({
     ) {
       return null
     }
-    if (
-      serverLatestRun.status !== 'canceled' &&
-      serverLatestRun.status !== 'canceling' &&
-      serverLatestRun.status !== 'stale' &&
-      serverLatestRun.status !== 'failed'
-    ) {
-      return null
-    }
-    return {
-      id: serverLatestRun.id,
-      status: serverLatestRun.status,
-      ...(serverLatestRun.status === 'failed' && serverLatestRun.error_message
-        ? { errorMessage: serverLatestRun.error_message }
-        : {}),
-    }
+    return latestNotice
   }, [
     cachedPendingNewSubmit,
     claimedQueueRunInFlight,
@@ -189,14 +180,17 @@ export function useMoldyLangGraphStream({
     serverInterrupts,
     messages: visible.messages,
   })
-  const terminalNoticeText =
-    durableThreadRunNotice?.status === 'stale'
-      ? tReconnect('stale')
-      : durableThreadRunNotice?.status === 'failed'
-        ? (durableThreadRunNotice.errorMessage ?? tPage('runFailed'))
-        : durableThreadRunNotice?.status === 'canceling'
-          ? tPage('canceling')
-          : tPage('canceled')
+  const terminalNoticeText = durableThreadRunNotice?.recoveryError
+    ? tPage(`recovery.${durableThreadRunNotice.recoveryError}`)
+    : durableThreadRunNotice?.partialOutput !== undefined
+      ? tPage('partialModelStream')
+      : durableThreadRunNotice?.status === 'stale'
+        ? tReconnect('stale')
+        : durableThreadRunNotice?.status === 'failed'
+          ? (durableThreadRunNotice.errorMessage ?? tPage('runFailed'))
+          : durableThreadRunNotice?.status === 'canceling'
+            ? tPage('canceling')
+            : tPage('canceled')
   const runtimeMessages = useStreamRuntimeMessages({
     conversationId,
     stream,

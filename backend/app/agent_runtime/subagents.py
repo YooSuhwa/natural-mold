@@ -21,6 +21,7 @@ from app.agent_runtime.runtime_component_builder import (
 from app.agent_runtime.runtime_config import AgentConfig
 from app.agent_runtime.runtime_hydration_guard import assert_pre_marker
 from app.authz.agent_execution_scope import AgentExecutionTarget, load_agent_tree_for_execution
+from app.config import settings
 from app.error_codes import agent_not_found
 from app.guardrails.tool_risk import skills_on
 from app.models.agent import Agent
@@ -123,7 +124,21 @@ async def build_subagents_config(
 
     plan = parent_cfg.access_plan  # F-06: the links the parent's run may bind
     company = parent_cfg.tool_risk
-    for link in plan.sub_agent_links if plan is not None else parent_agent.sub_agent_links:
+    links = plan.sub_agent_links if plan is not None else parent_agent.sub_agent_links
+    tracked_conversation = None
+    if links and parent_cfg.run_path == "chat" and not is_trigger_mode:
+        from app.child_tasks.persistence import has_open_child_tasks
+        from app.guardrails.events import parse_uuid
+
+        conversation_id = parse_uuid(parent_cfg.thread_id)
+        if conversation_id and (
+            settings.child_tasks_enabled
+            or await has_open_child_tasks(
+                db, context=parent_cfg.org_context, conversation_id=conversation_id
+            )
+        ):
+            tracked_conversation = conversation_id
+    for link in links:
         child = link.sub_agent
         if child is None:
             continue
@@ -210,6 +225,17 @@ async def build_subagents_config(
         }
         if components.middleware:
             spec["middleware"] = components.middleware
+        if tracked_conversation is not None:
+            # Only a DB-linked child with its own verified actor can receive targeted input.
+            from app.agent_runtime.delegated_child_control import ChildTaskLifecycle
+
+            lifecycle = ChildTaskLifecycle(
+                context=parent_cfg.org_context,
+                conversation_id=tracked_conversation,
+                child_agent_id=child.id,
+                role=child_identity.runtime_name,
+            )
+            spec["middleware"] = [lifecycle.middleware(), *spec.get("middleware", [])]
         if components.skills_sources is not None:
             spec["skills"] = components.skills_sources
         if components.permissions:

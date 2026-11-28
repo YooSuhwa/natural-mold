@@ -76,6 +76,10 @@ class ConversationRunInput(Base):
     revision: Mapped[int] = mapped_column(Integer, nullable=False, default=1)
     input_payload: Mapped[dict[str, JsonValue]] = mapped_column(JSON, nullable=False)
     attachment_ids: Mapped[list[str]] = mapped_column(JSON, nullable=False, default=list)
+    # JSON null on older inputs means no external image description was admitted.
+    image_description_admission: Mapped[dict[str, JsonValue] | None] = mapped_column(
+        JSON(none_as_null=True), nullable=True
+    )
     checkpoint_id: Mapped[str | None] = mapped_column(String(64), nullable=True)
     claimed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=False), nullable=True)
     created_at: Mapped[datetime] = mapped_column(

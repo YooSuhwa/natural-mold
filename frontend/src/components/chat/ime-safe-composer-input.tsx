@@ -25,6 +25,7 @@ type ImeSafeComposerInputProps = Omit<TextareaHTMLAttributes<HTMLTextAreaElement
   addAttachmentOnPaste?: boolean
   autoFocusKey?: string | number | null
   restoreFocusOnTextClear?: boolean
+  queueSend?: (steer: boolean) => void
 }
 
 function assignRef<T>(ref: ForwardedRef<T>, value: T | null): void {
@@ -54,6 +55,7 @@ export const ImeSafeComposerInput = forwardRef<HTMLTextAreaElement, ImeSafeCompo
       addAttachmentOnPaste = true,
       autoFocusKey,
       restoreFocusOnTextClear = true,
+      queueSend,
       ...props
     },
     forwardedRef,
@@ -150,7 +152,11 @@ export const ImeSafeComposerInput = forwardRef<HTMLTextAreaElement, ImeSafeCompo
       if (event.key !== 'Enter') return
 
       const threadState = aui.thread.getState()
-      const hasQueue = threadState.capabilities.queue
+      const hasQueue = Boolean(queueSend) || threadState.capabilities.queue
+      const send = (steer: boolean) => {
+        if (queueSend) queueSend(steer)
+        else aui.composer.send({ steer })
+      }
 
       if (
         event.shiftKey &&
@@ -160,7 +166,7 @@ export const ImeSafeComposerInput = forwardRef<HTMLTextAreaElement, ImeSafeCompo
         !aui.composer.getState().isEmpty
       ) {
         event.preventDefault()
-        aui.composer.send({ steer: true })
+        send(true)
         return
       }
 
@@ -174,7 +180,7 @@ export const ImeSafeComposerInput = forwardRef<HTMLTextAreaElement, ImeSafeCompo
       if (shouldSubmit) {
         event.preventDefault()
         if (hasQueue) {
-          aui.composer.send({ steer: false })
+          send(false)
           return
         }
         textareaRef.current?.closest('form')?.requestSubmit()

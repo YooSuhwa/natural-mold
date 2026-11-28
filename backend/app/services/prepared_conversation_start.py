@@ -44,6 +44,7 @@ from app.agent_runtime.prepared_run_dispatch import PreparedRunHandle, handle_fo
 from app.agent_runtime.prepared_run_input_policy import (
     PreparedRunUnsupportedError,
     is_legacy_fallback,
+    unsupported,
 )
 from app.agent_runtime.prepared_run_registry import get_prepared_run_registry
 from app.agent_runtime.prepared_run_transaction import (
@@ -55,6 +56,7 @@ from app.agent_runtime.run_metrics import RunMetricsAccumulator
 from app.agent_runtime.runtime_config import AgentConfig, PreparedRunBinding, PreparedRunLease
 from app.authz.conversation_run_scope import RunExecutionTarget
 from app.dependencies import CurrentUser
+from app.exceptions import AppError
 from app.models.conversation_run import ConversationRun
 from app.services.conversation_run_task_registry import worker_attr
 from app.services.prepared_conversation_executor import (
@@ -170,7 +172,12 @@ async def start_owned_run(
 ) -> PreparedRunStart:
     """Start through the prepared lease when enabled, else the legacy transition."""
 
-    runner = prepared_runner_for(inputs.executor_fn)
+    required = inputs.cfg.independent_job
+    runner = prepared_runner_for(inputs.executor_fn, required=required)
+    if required and runner is None:
+        raise PreparedStartError from AppError(
+            "independent_job_unsupported", "독립 작업 실행 경로를 사용할 수 없습니다", status=409
+        )
     if runner is not None:
         try:
             start = await _start_prepared(
@@ -214,6 +221,14 @@ async def _start_prepared(
     handles: list[tuple[PreparedRunHandle, frozenset[str]]] = []
 
     async def prepare(db: Any, run: ConversationRun) -> Any:
+        from app.services.conversation_goal_worker import automatic_run_can_start
+
+        if not await automatic_run_can_start(db, run, conversation.context):
+            raise PreparedRunTransactionError(RUN_NOT_MATERIALIZABLE)
+        if runner.resume and inputs.cfg.output_schema is not None:
+            # A resumed workflow step needs its root response_format to settle the step.
+            # The prepared compiler currently supports response formats for children only.
+            raise unsupported("workflow_resume_schema")
         prepared = await resolver(db, run)
         locked.append(run)
         return prepared
@@ -222,7 +237,11 @@ async def _start_prepared(
         handles.append((handle_for(lease), lease.secret_values))
 
     request = RuntimeOwnershipRequest(
-        target.run_id, conversation.conversation_id, conversation.agent_id, conversation.context
+        target.run_id,
+        conversation.conversation_id,
+        conversation.agent_id,
+        conversation.context,
+        independent_job=inputs.cfg.independent_job,
     )
     context = conversation.context
     try:
@@ -240,6 +259,15 @@ async def _start_prepared(
                 seams=prepared_run_inputs.materializer_seams(),
             )
     except PreparedRunUnsupportedError as error:
+        if inputs.cfg.independent_job:
+            logger.info(
+                "unsupported independent work run_id=%s reason=%s", target.run_id, error.reason
+            )
+            raise AppError(
+                "independent_job_unsupported",
+                "독립 작업에 지원되지 않는 실행 설정입니다",
+                status=409,
+            ) from error
         if locked or not is_legacy_fallback(error.reason):
             raise
         FALLBACKS[error.reason] += 1

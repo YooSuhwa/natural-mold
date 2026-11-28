@@ -3,12 +3,15 @@
 from __future__ import annotations
 
 import os
+from collections.abc import Iterable, Iterator
+from contextlib import ExitStack, contextmanager
 from pathlib import Path, PurePosixPath
-from typing import Final
+from typing import TYPE_CHECKING, Final
 
 from deepagents.backends.protocol import FileDownloadResponse, ReadResult, WriteResult
 from deepagents.backends.utils import slice_read_response
 
+from app.agent_runtime.history_archive_render import paged_archive_read
 from app.agent_runtime.offload_storage_cleanup import conversation_mutation_lock
 from app.agent_runtime.offload_storage_fd import directory_flags as _directory_flags
 from app.agent_runtime.offload_storage_fd import open_scoped_directory as _open_scoped_directory
@@ -16,8 +19,16 @@ from app.agent_runtime.offload_storage_fd import raise_directory_error as _raise
 from app.agent_runtime.offload_storage_fd import (
     safe_dir,  # noqa: F401 -- compatibility export for the scoped storage facade
 )
+from app.agent_runtime.offload_storage_io import (
+    imported_session_path,
+    private_file_exists,
+    resolve_rollback_session,
+    rollback_history_path,
+    seed_rollback_history_locked,
+)
 from app.agent_runtime.offload_storage_secure_backend import SecureHashedFilesystemBackend
 from app.agent_runtime.offload_storage_types import (
+    ARCHIVE_FILE,
     MEDIA_FILE,
     PHYSICAL_ROOT,
     SESSION_FILE,
@@ -26,6 +37,10 @@ from app.agent_runtime.offload_storage_types import (
     OffloadSecurityError,
 )
 from app.agent_runtime.runtime_filesystem_secure_backend import SecureRuntimeFilesystemBackend
+
+if TYPE_CHECKING:
+    from app.agent_runtime.history_archive import HistoryArchive
+
 
 HIDDEN_ROOTS: Final = frozenset(
     {PHYSICAL_ROOT, VIRTUAL_ROOT.removeprefix("/"), "conversation_history", "large_tool_results"}
@@ -80,6 +95,55 @@ class HashedFilesystemBackend(SecureHashedFilesystemBackend):
 class HistoryBackend(HashedFilesystemBackend):
     domain = "history"
 
+    def __init__(
+        self,
+        root_dir: Path,
+        *,
+        mutation_scope: OffloadMutationScope,
+        virtual_mode: bool,
+        archive: HistoryArchive | None = None,
+        history_prefix: str | None = None,
+    ) -> None:
+        super().__init__(root_dir, mutation_scope=mutation_scope, virtual_mode=virtual_mode)
+        self.archive = archive
+        self.history_prefix = history_prefix
+
+    def _archive_view(self, key: str) -> Iterator[bytes] | None:
+        leaf = key.removeprefix("/")
+        if not ARCHIVE_FILE.fullmatch(leaf) or self.archive is None:
+            return None
+        if self.history_prefix is None:
+            raise OffloadSecurityError(reason="archive history route is unavailable")
+        return self.archive.rendered(
+            leaf, history_prefix=self.history_prefix, read_media=super()._read_bytes
+        )
+
+    def read(self, file_path: str, offset: int = 0, limit: int = 2000) -> ReadResult:
+        try:
+            view = self._archive_view(file_path)
+            if view is not None:
+                return paged_archive_read(view, offset, limit)
+        except (OSError, ValueError) as error:
+            return ReadResult(error=f"Error reading file '{file_path}': {error}")
+        return super().read(file_path, offset, limit)
+
+    def _read_bytes(self, key: str, *, root: Path | None = None) -> bytes:
+        view = self._archive_view(key)
+        if view is not None:
+            return b"".join(view)
+        return super()._read_bytes(key, root=root)
+
+    def archive_markdown(self, leaf: str) -> Iterator[bytes]:
+        view = self._archive_view(leaf)
+        if view is None:
+            raise OffloadSecurityError(reason="archive history route is unavailable")
+        return view
+
+    def read_legacy(self, name: str) -> bytes:
+        if not SESSION_FILE.fullmatch(name):
+            raise OffloadSecurityError(reason="invalid legacy history session")
+        return super()._read_bytes(name)
+
     def _validated_parts(self, key: str) -> tuple[str, ...]:
         key_parts = parts(key)
         valid_session = len(key_parts) == 1 and SESSION_FILE.fullmatch(key_parts[0]) is not None
@@ -91,6 +155,59 @@ class HistoryBackend(HashedFilesystemBackend):
         if not (valid_session or valid_media):
             raise OffloadSecurityError(reason="invalid durable history reference")
         return key_parts
+
+
+class RollbackHistoryBackend(SecureHashedFilesystemBackend):
+    """Subsequent single-file updates keep the original conversation's deletion fence."""
+
+    def __init__(
+        self, scope: OffloadMutationScope, actor_token: str, legacy_owner_token: str
+    ) -> None:
+        super().__init__(scope.internal_root, mutation_scope=scope, virtual_mode=True)
+        self._actor_token = actor_token
+        self._legacy_owner = legacy_owner_token
+
+    def _location(self, key: str) -> Path:
+        return resolve_rollback_session(
+            self._mutation_scope,
+            self._actor_token,
+            key.removeprefix("/"),
+            legacy_owner_token=self._legacy_owner,
+        )
+
+    def _mapped_parts(self, key: str) -> tuple[str, ...]:
+        return self._location(key).relative_to(self.cwd).parts
+
+    @contextmanager
+    def import_or_rollback_lock(self) -> Iterator[None]:
+        # A verified historical import and a rollback must never claim the same virtual leaf.
+        # Shared-agent histories can be stored under a different owner than the conversation.
+        actual = self._mutation_scope
+        owners = sorted({self._legacy_owner, actual.owner})
+        with ExitStack() as locks:
+            for owner in owners:
+                scope = OffloadMutationScope(actual.internal_root, owner, actual.conversation)
+                locks.enter_context(conversation_mutation_lock(scope))
+            yield
+
+    def published(self, leaf: str) -> bool:
+        return private_file_exists(
+            rollback_history_path(self._mutation_scope, self._actor_token, leaf)
+        )
+
+    def seed(self, leaf: str, pieces: Iterable[bytes]) -> None:
+        with self.import_or_rollback_lock():
+            path = rollback_history_path(self._mutation_scope, self._actor_token, leaf)
+            imported = imported_session_path(self._mutation_scope, self._legacy_owner, leaf)
+            if private_file_exists(imported):
+                raise OffloadSecurityError(
+                    reason="rollback session conflicts with imported history"
+                )
+            safe_dir(path.parent, ())
+            seed_rollback_history_locked(path, pieces)
+
+    def read_legacy(self, leaf: str) -> bytes:
+        return self._read_bytes(leaf)
 
 
 class SpillBackend(HashedFilesystemBackend):

@@ -508,3 +508,147 @@ async def test_interrupt_event_finalizes_run_as_interrupted(
         ).scalar_one()
         assert record.status == "completed"
     assert "conversation.run_interrupted" in await _audit_actions_for_run(run_id)
+
+
+@pytest.mark.asyncio
+async def test_recovery_competing_workers_claim_once_and_reject_old_fence(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from app.services import conversation_run_recovery
+    from app.services.conversation_run_fence import RunFence, RunOwnershipLost, lock_run_fence
+    from tests.integration._chat_recovery import save_model_boundary, stale_chat
+
+    launched: list[RunFence] = []
+
+    async def record_handoff(
+        *, recovery_fence: RunFence, input_payload: Any, **kwargs: Any
+    ) -> None:
+        # The actual worker is exercised elsewhere. Capture what the scheduler hands off
+        # after its independent PG transaction, including its no-new-input guarantee.
+        assert input_payload is None
+        assert kwargs["cfg"].checkpoint_id is not None
+        assert kwargs["registry"].worker_instance_id == recovery_fence.worker_instance_id
+        launched.append(recovery_fence)
+
+    monkeypatch.setattr(conversation_run_recovery, "start_conversation_run", record_handoff)
+    async with stale_chat(monkeypatch) as dead:
+        await save_model_boundary(dead.fence)
+        results = await asyncio.gather(dead.sweep("next-a"), dead.sweep("next-b"))
+
+        assert sorted(results) == [0, 1]
+        assert len(launched) == 1
+        replacement = launched[0]
+        assert replacement.run_id == dead.fence.run_id
+        assert replacement.generation == dead.fence.generation + 1
+        assert replacement.owner_token != dead.fence.owner_token
+        assert await dead.sweep("later") == 0
+        async with dead.sessions() as db:
+            with pytest.raises(RunOwnershipLost):
+                await lock_run_fence(db, dead.fence)
+            row = await lock_run_fence(db, replacement)
+            assert row.is_active and row.recovery_attempts == 1
+            audit = await db.scalars(
+                select(AuditEvent).where(
+                    AuditEvent.run_id == str(row.id),
+                    AuditEvent.action == "conversation.run_recovered",
+                )
+            )
+            assert len(audit.all()) == 1
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("fault", "reason"),
+    [
+        ("uncertain_write", "recovery_effect_unconfirmed"),
+        ("checkpoint_loss", "recovery_checkpoint_unavailable"),
+        ("partial_output", "recovery_output_started"),
+        ("revoked_membership", "recovery_authority_revoked"),
+        ("exhausted", "recovery_limit_reached"),
+        ("changed_policy", "recovery_policy_changed"),
+        ("disabled", "recovery_disabled"),
+    ],
+)
+async def test_recovery_stops_under_lock_and_never_launches_again(
+    monkeypatch: pytest.MonkeyPatch, fault: str, reason: str
+) -> None:
+    from app.config import settings
+    from app.models.conversation_run import ConversationRunToolReceipt
+    from app.models.organization import OrganizationMember
+    from app.services import conversation_run_recovery
+    from tests.integration._chat_recovery import save_model_boundary, stale_chat
+
+    launches: list[uuid.UUID] = []
+
+    async def unexpected_launch(*, run_id: uuid.UUID, **_kwargs: Any) -> None:
+        launches.append(run_id)
+
+    monkeypatch.setattr(conversation_run_recovery, "start_conversation_run", unexpected_launch)
+    async with stale_chat(monkeypatch) as dead:
+        if fault in {"uncertain_write", "partial_output"}:
+            await save_model_boundary(dead.fence)
+        async with dead.sessions() as db:
+            run = await db.get(ConversationRun, dead.fence.run_id, with_for_update=True)
+            assert run is not None
+            if fault == "uncertain_write":
+                db.add(
+                    ConversationRunToolReceipt(
+                        run_id=run.id,
+                        tenant_id=run.tenant_id,
+                        org_id=run.org_id,
+                        tool_call_id="sent-without-receipt",
+                        tool_name="send_mail",
+                        arguments_sha256="5" * 64,
+                        effect_kind="external_write",
+                        owner_generation=run.owner_generation,
+                        status="started",
+                    )
+                )
+            elif fault == "partial_output":
+                await trace_storage.append_events(
+                    db,
+                    conversation_id=run.conversation_id,
+                    assistant_msg_id=str(run.id),
+                    events_chunk=[
+                        {
+                            "id": f"{run.id}-1",
+                            "seq": 1,
+                            "run_id": str(run.id),
+                            "thread_id": str(run.conversation_id),
+                            "namespace": [],
+                            "method": "messages",
+                            "data": {
+                                "event": "content-block-delta",
+                                "content": {"type": "text", "text": "partial"},
+                            },
+                        }
+                    ],
+                )
+            elif fault == "revoked_membership":
+                membership = await db.get(OrganizationMember, (run.org_id, run.user_id))
+                assert membership is not None
+                await db.delete(membership)
+            elif fault == "exhausted":
+                run.recovery_attempts = settings.chat_run_recovery_max_attempts
+            elif fault == "changed_policy":
+                run.recovery_runtime_digest = "0" * 64
+            elif fault == "disabled":
+                monkeypatch.setattr(settings, "chat_run_recovery_enabled", False)
+            await db.commit()
+
+        assert await dead.sweep("next") == 0
+        assert await dead.sweep("retry") == 0
+        assert launches == []
+        async with dead.sessions() as db:
+            run = await db.get(ConversationRun, dead.fence.run_id)
+            assert run is not None and not run.is_active
+            assert (run.status, run.error_code) == ("failed", reason)
+            conversation = await db.get(Conversation, run.conversation_id)
+            assert conversation is not None and conversation.queue_paused
+            audits = await db.scalars(
+                select(AuditEvent).where(
+                    AuditEvent.run_id == str(run.id),
+                    AuditEvent.action == "conversation.run_recovery_blocked",
+                )
+            )
+            assert len(audits.all()) == 1

@@ -44,6 +44,11 @@ import {
   validatePlaywrightCliArguments,
 } from './e2e-lane-contract.mjs'
 import {
+  INDEPENDENT_JOB_SPEC,
+  independentJobBackendEnvironment,
+  resolveE2EChatRuntime,
+} from './e2e-lane-runtime.mjs'
+import {
   authenticationSetupFailure,
   resolveSkillNodeModulesDirectory,
 } from '../e2e/global-setup.mjs'
@@ -52,6 +57,57 @@ import { collectJsonNodes, parseArguments, runIsolatedLane } from './run-e2e-lan
 const frontendRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..')
 
 describe('E2E lane contract', () => {
+  it.each(['ag_ui', 'langgraph_v3', 'legacy'])(
+    'collects the native approval readiness case only for AG-UI (%s)',
+    (runtime) => {
+      const approval = 'ag-ui-approval-readiness.spec.ts'
+      const shared = 'chat-side-chat.spec.ts'
+      const list = spawnSync(
+        process.execPath,
+        [
+          'node_modules/@playwright/test/cli.js',
+          'test',
+          '--list',
+          '--reporter=json',
+          '--project=scripted-full',
+          `e2e/${approval}`,
+          `e2e/${shared}`,
+        ],
+        {
+          cwd: frontendRoot,
+          env: {
+            PATH: process.env.PATH,
+            HOME: process.env.HOME,
+            E2E_SELECTION_ONLY: '1',
+            NEXT_PUBLIC_CHAT_RUNTIME: runtime,
+          },
+          encoding: 'utf8',
+          timeout: 20_000,
+        },
+      )
+      expect(list.status, list.stderr).toBe(0)
+      const files = JSON.parse(list.stdout).suites.map((suite) => path.basename(suite.file))
+      expect(files.sort()).toEqual(runtime === 'ag_ui' ? [approval, shared] : [shared])
+    },
+    25_000,
+  )
+
+  it('grants loopback to the independent model fixture only in its dedicated scripted selection', () => {
+    const spec = INDEPENDENT_JOB_SPEC
+    expect(independentJobBackendEnvironment('scripted-full', [spec])).toEqual({
+      INDEPENDENT_CHAT_JOBS_ENABLED: 'true',
+      CHAT_WORK_NOTIFICATIONS_ENABLED: 'true',
+      CREDENTIAL_HTTP_ALLOWED_HOSTS: '127.0.0.1',
+      OUTBOUND_PRIVATE_ALLOWED_HOSTS: '127.0.0.1',
+    })
+    expect(independentJobBackendEnvironment('scripted-full', [])).toBeUndefined()
+    expect(independentJobBackendEnvironment('scripted-full', ['e2e/smoke.spec.ts'])).toBeUndefined()
+    expect(() => independentJobBackendEnvironment('live-manual', [spec])).toThrow('scripted-full')
+    expect(() =>
+      independentJobBackendEnvironment('scripted-full', [spec, 'e2e/smoke.spec.ts']),
+    ).toThrow('alone')
+  })
+
   it('consumes only the redundant fixed worker and retry options', () => {
     expect(
       parseArguments('scripted', [
@@ -80,17 +136,49 @@ describe('E2E lane contract', () => {
     expect(() => assertE2ELaneNodeVersion('not-a-version')).toThrow('E2E lanes require Node.js 22.')
   })
 
-  it('builds once with webpack and serves the isolated production frontend', () => {
-    // Given: the configured chat runtime, backend origin, and frontend port.
-    const command = buildFrontendWebServerCommand('langgraph_v3', 'http://localhost:8101', '3100')
+  it('enables chat goal delivery only in the opted-in scripted organization', () => {
+    const optIn = { E2E_CHAT_GOAL_NOTIFICATIONS: '1' }
+    const env = buildLaneEnvironment('scripted', optIn, 'scripted-full')
+    expect(env.CONVERSATION_GOAL_ORG_IDS).toBe('["a79a6b5b-9a26-5e0a-8d6c-c9977f83f592"]')
+    expect(env.CHAT_WORK_NOTIFICATIONS_ENABLED).toBe('true')
+    expect(
+      buildLaneEnvironment('scripted', {
+        CONVERSATION_GOAL_ORG_IDS: '[]',
+        CHAT_WORK_NOTIFICATIONS_ENABLED: 'true',
+      }).CHAT_WORK_NOTIFICATIONS_ENABLED,
+    ).toBeUndefined()
+    expect(() => buildLaneEnvironment('scripted', optIn, 'scripted-smoke')).toThrow('scripted-full')
+  })
 
-    // When / Then: both build and server preserve the required startup environment.
-    expect(command).toContain('pnpm prepare:assets')
-    expect(command.match(/NEXT_PUBLIC_CHAT_RUNTIME=langgraph_v3/g)).toHaveLength(2)
-    expect(command.match(/NEXT_PUBLIC_API_BASE_URL=http:\/\/localhost:8101/g)).toHaveLength(2)
-    expect(command).toContain('pnpm exec next build --webpack')
-    expect(command).toContain('pnpm exec next start --port 3100')
-    expect(command).not.toContain('next dev')
+  it.each(['legacy', 'langgraph_v3', 'ag_ui'])(
+    'uses the selected %s runtime in the launcher, production build, and server',
+    (runtime) => {
+      const environment = buildE2ELauncherEnvironment('scripted', 'scripted-full', {
+        NEXT_PUBLIC_CHAT_RUNTIME: runtime,
+      })
+      expect(environment.NEXT_PUBLIC_CHAT_RUNTIME).toBe(runtime)
+      const command = buildFrontendWebServerCommand(
+        environment.NEXT_PUBLIC_CHAT_RUNTIME,
+        'http://localhost:8101',
+        '3100',
+      )
+      expect(command).toContain('pnpm prepare:assets')
+      expect(command.match(/NEXT_PUBLIC_CHAT_RUNTIME=\w+/g)).toEqual([
+        `NEXT_PUBLIC_CHAT_RUNTIME=${runtime}`,
+        `NEXT_PUBLIC_CHAT_RUNTIME=${runtime}`,
+      ])
+      expect(command.match(/NEXT_PUBLIC_API_BASE_URL=http:\/\/localhost:8101/g)).toHaveLength(2)
+      expect(command).toContain('pnpm exec next build --webpack')
+      expect(command).toContain('pnpm exec next start --port 3100')
+      expect(command).not.toContain('next dev')
+    },
+  )
+
+  it('uses v3 by default and rejects unknown chat runtime selections', () => {
+    expect(resolveE2EChatRuntime()).toBe('langgraph_v3')
+    expect(() => buildFrontendWebServerCommand('unknown', 'http://localhost:8101', '3100')).toThrow(
+      'NEXT_PUBLIC_CHAT_RUNTIME',
+    )
   })
 
   it('keeps each project artifact policy compatible with export rules', () => {

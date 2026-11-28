@@ -40,6 +40,7 @@ from app.scheduler import (
     register_conversation_run_stale_sweep_job,
     register_credential_rotation_job,
     register_draft_conversation_gc_job,
+    register_goal_sandbox_maintenance_job,
     register_health_check_job,
     register_mcp_health_job,
     register_orphan_attachment_gc_job,
@@ -60,6 +61,10 @@ from app.scheduler import (
     sweep_stale_conversation_runs,
     try_acquire_scheduler_leader,
     update_model_catalog,
+)
+from app.scheduler_chat_notifications import (
+    drain_due_chat_notifications,
+    register_chat_notification_job,
 )
 from app.scheduler_job_ids import LeaderSchedulerJobId
 from app.scheduler_tenant_purge import (
@@ -99,6 +104,10 @@ async def run_leader_scheduler_job(job_id: LeaderSchedulerJobId) -> None:
             await recover_conversation_queue()
         case LeaderSchedulerJobId.CONVERSATION_RUN_STALE_SWEEP:
             await sweep_stale_conversation_runs()
+        case LeaderSchedulerJobId.GOAL_SANDBOX_MAINTENANCE:
+            from app.services.goal_sandbox_maintenance import maintain_goal_sandboxes
+
+            await maintain_goal_sandboxes()
         case LeaderSchedulerJobId.SKILL_RUNTIME_CLEANUP:
             cleanup_skill_runtime_roots()
         case LeaderSchedulerJobId.BROKER_EVICTION:
@@ -113,6 +122,8 @@ async def run_leader_scheduler_job(job_id: LeaderSchedulerJobId) -> None:
             await authz_job_run(job_id)
         case LeaderSchedulerJobId.APPROVAL_SWEEP:
             await sweep_approvals()
+        case LeaderSchedulerJobId.CHAT_NOTIFICATION_DRAIN:
+            await drain_due_chat_notifications()
         case LeaderSchedulerJobId.WORKFLOW_CHAT_RESUME:
             await resume_workflow_chats()
         case LeaderSchedulerJobId.WORKFLOW_SCHEDULES:
@@ -214,11 +225,13 @@ async def activate_scheduler() -> None:
     register_skill_draft_gc_job()
     cleanup_skill_runtime_roots()
     register_skill_runtime_cleanup_job()
+    register_goal_sandbox_maintenance_job()
     register_authz_jobs()
     register_retention_sweep_job()
     register_tenant_purge_job()
     register_tenant_export_gc_job()
     register_approval_sweep_job()
+    register_chat_notification_job()
     register_workflow_chat_resume_job()
     register_workflow_schedules_job()
     trigger_count = await reconcile_trigger_jobs()

@@ -10,13 +10,18 @@ import logging
 import time
 import uuid
 from collections.abc import Sequence
+from contextlib import nullcontext
 from typing import Any
 
 from langchain_core.tools import BaseTool
 
+from app.agent_runtime.archive_summarization import chat_archive_build
+from app.agent_runtime.chat_steer_middleware import root_steer_middleware
 from app.agent_runtime.message_utils import RuntimeMessage
 from app.agent_runtime.offload_storage import ScopedOffloadBackend
+from app.agent_runtime.omitted_media import OmittedMediaMiddleware
 from app.agent_runtime.run_secrets import add_run_secrets, collect_secret_values
+from app.agent_runtime.runtime.goal_run import goal_setup_allowed
 from app.agent_runtime.runtime_config import AgentConfig, RuntimeComponents
 from app.agent_runtime.runtime_facade_bindings import runtime_attr
 from app.agent_runtime.runtime_hydration_guard import assert_pre_marker
@@ -202,6 +207,13 @@ async def _prepare_runtime_components(
 ) -> RuntimeComponents:
     """Build reusable Deep Agents runtime pieces for a parent or child agent."""
     assert_pre_marker("_prepare_runtime_components")
+    if cfg.independent_job:
+        # Direct graphs do not check delegation on summary sends, retries and every tool.
+        raise PermissionError("independent_job_requires_lease")
+    if cfg.goal_followup and not goal_setup_allowed(
+        cfg.runtime_profile, cfg.middleware_configs or []
+    ):
+        raise ValueError("goal_followup_runtime_restricted")
     if cfg.runtime_profile == "skill_builder":
         return await runtime_attr("_prepare_skill_builder_components")(
             cfg,
@@ -256,6 +268,14 @@ async def _prepare_agent(
         scope_offload_backend=run_id is not None,
     )
     middleware = list(components.middleware or [])
+    if cfg.run_path == "chat":
+        middleware.append(OmittedMediaMiddleware())
+    middleware.extend(root_steer_middleware(cfg, run_id=run_id, is_trigger_mode=is_trigger_mode))
+    if cfg.subagents_config and cfg.run_path == "chat" and not is_trigger_mode:
+        from app.agent_runtime.delegated_child_control import DelegatedTaskDispatch, task_lifecycles
+
+        if targets := task_lifecycles(cfg.subagents_config):
+            middleware.insert(0, DelegatedTaskDispatch(targets))
     if cfg.attachment_inputs is not None and cfg.runtime_profile == "standard":
         from app.agent_runtime.attachment_inputs import AttachmentInputMiddleware
 
@@ -278,28 +298,39 @@ async def _prepare_agent(
 
     # 5. 에이전트 빌드 — create_deep_agent + checkpointer
     from app.agent_runtime.checkpointer import get_checkpointer
+    from app.agent_runtime.recovery_checkpoint_saver import fenced_chat_checkpointer
 
     build_started = time.perf_counter()
-    agent = runtime_attr("build_agent")(
-        components.model,
-        components.tools,
-        components.system_prompt,
-        middleware=middleware or None,
-        interrupt_on=components.interrupt_on,
-        checkpointer=get_checkpointer(),
-        backend=components.backend,
-        skills=components.skills_sources,
-        memory=components.memory_sources,
-        permissions=components.permissions,
-        name=cfg.agent_runtime_name or f"agent_{cfg.thread_id[:8]}",
-        subagents=cfg.subagents_config,
-        runtime_policy=cfg.runtime_policy,
-        guard=guard,
-        tool_risk=cfg.tool_risk,
-        unattended=components.unattended,
-        **_structured_output_kwargs(cfg),
-        **_tool_approval_kwargs(cfg),
+    archive_scope = (
+        chat_archive_build(components.backend, writes_enabled=settings.chat_archive_writes_enabled)
+        if isinstance(components.backend, ScopedOffloadBackend)
+        and cfg.archive_owner_user_id is not None
+        and cfg.run_path == "chat"
+        and cfg.runtime_profile == "standard"
+        and not is_trigger_mode
+        else nullcontext()
     )
+    with archive_scope:
+        agent = runtime_attr("build_agent")(
+            components.model,
+            components.tools,
+            components.system_prompt,
+            middleware=middleware or None,
+            interrupt_on=components.interrupt_on,
+            checkpointer=fenced_chat_checkpointer(get_checkpointer()),
+            backend=components.backend,
+            skills=components.skills_sources,
+            memory=components.memory_sources,
+            permissions=components.permissions,
+            name=cfg.agent_runtime_name or f"agent_{cfg.thread_id[:8]}",
+            subagents=cfg.subagents_config,
+            runtime_policy=cfg.runtime_policy,
+            guard=guard,
+            tool_risk=cfg.tool_risk,
+            unattended=components.unattended,
+            **_structured_output_kwargs(cfg),
+            **_tool_approval_kwargs(cfg),
+        )
     timings["build_agent_ms"] = int((time.perf_counter() - build_started) * 1000)
     last_mark = time.perf_counter()
 

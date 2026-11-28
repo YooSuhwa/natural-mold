@@ -5,6 +5,7 @@ import { useMutation, useQuery, useQueryClient, type QueryClient } from '@tansta
 import { ApiError } from '@/lib/api/client'
 import { memoryApi, memoryExportPath, type MemoryListParams } from '@/lib/api/memory'
 import { downloadApiFile } from '@/lib/hooks/use-api-object-url'
+import { currentOrgScope, isOrgScopeCurrent } from '@/lib/org-scope/org-scope-signal'
 import type {
   AgentMemorySettingsUpdate,
   MemoryExportFormat,
@@ -308,9 +309,15 @@ export function useMemoryVectorStatus() {
 
 export function useUpdateMemoryVector() {
   const qc = useQueryClient()
+  const scope = currentOrgScope()
   return useMutation({
-    mutationFn: (data: MemoryVectorUpdate) => memoryApi.updateVector(data),
+    mutationFn: (data: MemoryVectorUpdate) => {
+      // A mutation queued offline may resume after the active organization changes.
+      if (!isOrgScopeCurrent(scope)) throw new DOMException(undefined, 'AbortError')
+      return memoryApi.updateVector(data)
+    },
     onSuccess: (status) => {
+      if (!isOrgScopeCurrent(scope)) return
       qc.setQueryData(memoryKeys.vector, status)
       void qc.invalidateQueries({ queryKey: memoryKeys.vector })
     },

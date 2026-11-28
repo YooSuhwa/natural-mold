@@ -29,10 +29,14 @@ from langchain.agents.middleware.types import PrivateStateAttr
 from langchain_core.messages import AIMessage, HumanMessage, ToolMessage
 from langgraph.types import Command
 
+from app.agent_runtime.chat_steer_middleware import RunSteerMiddleware
 from app.agent_runtime.lease_dispatch_permit import DispatchDeniedError
 from app.agent_runtime.prepared_child_launch import ChildLaunchKey, ChildLaunchReservation
+from app.schemas.conversation_graph_input import CHILD_RECEIPTS_CHANNEL
 
-EXCLUDED_STATE_KEYS = frozenset({"messages", "todos", "structured_response"})
+EXCLUDED_STATE_KEYS = frozenset(
+    {"messages", "todos", "structured_response", CHILD_RECEIPTS_CHANNEL}
+)
 TASK_PATH_KEY = "_moldy_prepared_task_path"
 TERMINALIZED = "prepared_run_terminalized"
 
@@ -50,7 +54,10 @@ def child_config(key: ChildLaunchKey) -> dict[str, Any]:
         SUBAGENT_RESPONSE_FORMAT_CONFIG_KEY: None,
         TASK_PATH_KEY: path,
     }
-    return {"configurable": configurable}
+    return {
+        "configurable": configurable,
+        "metadata": {"lc_subagent_tool_call_id": key.invocation_id},
+    }
 
 
 def private_state_keys(*schemas: type[object]) -> frozenset[str]:
@@ -67,7 +74,7 @@ def private_state_keys(*schemas: type[object]) -> frozenset[str]:
 
 
 def _default_private_keys() -> frozenset[str]:
-    return private_state_keys(SkillsState, MemoryState)
+    return private_state_keys(SkillsState, MemoryState, RunSteerMiddleware.state_schema)
 
 
 @dataclass(frozen=True, slots=True)

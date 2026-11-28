@@ -22,6 +22,7 @@ interface UseLangGraphDraftConversationResult {
   readonly conversationId: string | null
   readonly error: unknown
   readonly isBootstrapping: boolean
+  readonly retry: () => void
   readonly retainDraftConversation: () => string | null
   readonly commitDraftConversation: () => string | null
 }
@@ -37,7 +38,7 @@ function draftKey(
   isDraftConversation: boolean,
   runtimeMode: ChatRuntimeMode,
 ): string | null {
-  return isDraftConversation && runtimeMode === 'langgraph_v3' ? agentId : null
+  return isDraftConversation && runtimeMode !== 'legacy' ? agentId : null
 }
 
 export function useLangGraphDraftConversation({
@@ -91,15 +92,17 @@ export function useLangGraphDraftConversation({
         if (draftConversationId === null || committedConversationIds.has(draftConversationId)) {
           return
         }
-        void conversationsApi.delete(draftConversationId).catch((caught: unknown) => {
-          reportClientWarning('useLangGraphDraftConversation', 'delete draft failed', caught)
-        })
+        void conversationsApi
+          .delete(draftConversationId, { onlyIfDraft: true })
+          .catch((caught: unknown) => {
+            reportClientWarning('useLangGraphDraftConversation', 'delete draft failed', caught)
+          })
       })
     }
   }, [key])
 
   useEffect(() => {
-    if (key === null) return
+    if (key === null || error !== null) return
     if (conversationId !== null || requestKeyRef.current === key) return
     requestKeyRef.current = key
     const requestKey = key
@@ -108,15 +111,20 @@ export function useLangGraphDraftConversation({
     void conversationsApi
       .createDraft(agentId)
       .then((conversation) => {
+        if (typeof conversation?.id !== 'string' || !conversation.id.trim()) {
+          throw new Error('Draft response is missing its conversation ID')
+        }
         if (
           activeKeyRef.current !== requestKey ||
           requestKeyRef.current !== requestKey ||
           requestTokenRef.current !== requestToken
         ) {
           if (!committedConversationIdsRef.current.has(conversation.id)) {
-            void conversationsApi.delete(conversation.id).catch((caught: unknown) => {
-              reportClientWarning('useLangGraphDraftConversation', 'delete draft failed', caught)
-            })
+            void conversationsApi
+              .delete(conversation.id, { onlyIfDraft: true })
+              .catch((caught: unknown) => {
+                reportClientWarning('useLangGraphDraftConversation', 'delete draft failed', caught)
+              })
           }
           return
         }
@@ -133,7 +141,13 @@ export function useLangGraphDraftConversation({
         }
         setState({ key: requestKey, conversationId: null, error: caught })
       })
-  }, [agentId, conversationId, key])
+  }, [agentId, conversationId, error, key])
+
+  const retry = useCallback(() => {
+    if (key === null || activeKeyRef.current !== key || error === null) return
+    requestKeyRef.current = null
+    setState(EMPTY_STATE)
+  }, [key, error])
 
   const retainDraftConversation = useCallback((): string | null => {
     const current = stateRef.current
@@ -153,6 +167,7 @@ export function useLangGraphDraftConversation({
     conversationId,
     error,
     isBootstrapping: key !== null && conversationId === null && error === null,
+    retry,
     retainDraftConversation,
     commitDraftConversation,
   }

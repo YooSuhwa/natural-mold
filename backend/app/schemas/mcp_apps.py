@@ -59,4 +59,9 @@ class McpAppArtifact(BaseModel):
     result_meta: dict[str, Any] | None = None
 
 
-__all__ = ["McpAppArtifact", "McpAppsCommand"]
+class McpAppWidgetResult(_StrictModel):
+    mcp_app: McpAppArtifact
+    structured_content: dict[str, Any] | None = None
+
+
+__all__ = ["McpAppArtifact", "McpAppWidgetResult", "McpAppsCommand"]

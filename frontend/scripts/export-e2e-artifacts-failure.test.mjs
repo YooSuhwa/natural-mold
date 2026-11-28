@@ -74,7 +74,8 @@ function expectNoPartialExport(fixture_) {
   }
 }
 
-describe('E2E artifact exporter failure contract', () => {
+// Export checks launch the native filesystem helper in separate processes.
+describe('E2E artifact exporter failure contract', { timeout: 60_000 }, () => {
   it('emits a sanitized source_topology category', () => {
     const fixture_ = fixture()
     const outside = mkdtempSync(path.join(os.tmpdir(), 'customer-secret-source-'))

@@ -6,7 +6,6 @@ import os
 import signal
 import subprocess
 import sys
-import threading
 import time
 from contextlib import suppress
 from pathlib import Path
@@ -303,81 +302,98 @@ def test_provenance_rejects_dirty_or_changed_head(
             toolchain.verify_provenance(expected, tmp_path)
 
 
-def test_term_ignoring_process_group_is_killed_and_reaped(tmp_path: Path) -> None:
-    """Given a TERM-ignoring child, when caller is terminated, then bounded KILL reaps it."""
+def _check_term_ignoring_group(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, *, descendant: bool
+) -> None:
     process = load_module("project_gate_process")
-    pid_path = tmp_path / "child.pid"
+    pid_path = tmp_path / "ignoring.pid"
     script = (
-        "import os,signal,time,pathlib;"
-        f"pathlib.Path({str(pid_path)!r}).write_text(str(os.getpid()));"
-        "signal.signal(signal.SIGTERM, signal.SIG_IGN);time.sleep(60)"
+        "import os, signal, time\n"
+        "from pathlib import Path\n"
+        "signal.signal(signal.SIGTERM, signal.SIG_IGN)\n"
+        f"pid_path = Path({str(pid_path)!r})\n"
+        "temporary = pid_path.with_suffix('.tmp')\n"
+        "temporary.write_text(str(os.getpid()))\n"
+        "temporary.replace(pid_path)\n"
+        "time.sleep(60)\n"
     )
-    previous = signal.getsignal(signal.SIGTERM)
+    if descendant:
+        script = (
+            "import subprocess, sys, time\n"
+            f"subprocess.Popen([sys.executable, '-I', '-S', '-c', {script!r}])\n"
+            "time.sleep(60)\n"
+        )
+
+    child_group: list[subprocess.Popen[bytes]] = []
+    forwarded: list[int] = []
+    started = 0.0
+    real_wait = subprocess.Popen.wait
+    real_killpg = os.killpg
+
+    def signal_ready_child(child: subprocess.Popen[bytes], timeout: float | None = None) -> int:
+        nonlocal started
+        if not child_group:
+            child_group.append(child)
+            deadline = time.monotonic() + 30
+            while not pid_path.exists():
+                assert child.poll() is None, "child exited before publishing its PID"
+                assert time.monotonic() < deadline, "child did not publish its PID"
+                time.sleep(0.01)
+            # The gate is in its wait block and the ignoring process is ready.
+            started = time.monotonic()
+            os.kill(os.getpid(), signal.SIGTERM)
+        return real_wait(child, timeout=timeout)
+
+    def forward_signal(group: int, number: int) -> None:
+        assert group == child_group[0].pid
+        if number == signal.SIGKILL:
+            if descendant:
+                assert child_group[0].poll() == -signal.SIGTERM
+            os.kill(int(pid_path.read_text(encoding="utf-8")), 0)
+        real_killpg(group, number)
+        if number:
+            forwarded.append(number)
+        if number == signal.SIGTERM:
+            # Deliver the caller's second signal inside cleanup, after the group's TERM.
+            os.kill(os.getpid(), signal.SIGTERM)
 
     def raise_signal(number: int, _frame: FrameType | None) -> None:
         raise process.GateSignal(number)
 
-    signal.signal(signal.SIGTERM, raise_signal)
-    first_timer = threading.Timer(0.25, lambda: os.kill(os.getpid(), signal.SIGTERM))
-    second_timer = threading.Timer(0.5, lambda: os.kill(os.getpid(), signal.SIGTERM))
-    started = time.monotonic()
-    first_timer.start()
-    second_timer.start()
-    try:
-        with pytest.raises(process.GateSignal):
-            process.run_process([sys.executable, "-c", script], tmp_path, {"PATH": "/usr/bin:/bin"})
-    finally:
-        first_timer.join()
-        second_timer.join()
-        signal.signal(signal.SIGTERM, previous)
-    elapsed = time.monotonic() - started
-    child_pid = int(pid_path.read_text(encoding="utf-8"))
-
-    assert elapsed < 5
-    with pytest.raises(ProcessLookupError):
-        os.kill(child_pid, 0)
-
-
-def test_term_ignoring_descendant_is_killed_after_parent_exits(tmp_path: Path) -> None:
-    """Given a TERM-default parent, when its child ignores TERM, then the group is reaped."""
-    process = load_module("project_gate_process")
-    pid_path = tmp_path / "descendant.pid"
-    descendant = (
-        "import os,signal,time,pathlib;"
-        "signal.signal(signal.SIGTERM, signal.SIG_IGN);"
-        f"pathlib.Path({str(pid_path)!r}).write_text(str(os.getpid()));"
-        "time.sleep(60)"
-    )
-    parent = (
-        "import subprocess,sys,time;"
-        f"subprocess.Popen([sys.executable,'-c',{descendant!r}]);"
-        "time.sleep(60)"
-    )
-    previous = signal.getsignal(signal.SIGTERM)
-
-    def raise_signal(number: int, _frame: FrameType | None) -> None:
-        raise process.GateSignal(number)
-
-    signal.signal(signal.SIGTERM, raise_signal)
-    timer = threading.Timer(0.5, lambda: os.kill(os.getpid(), signal.SIGTERM))
-    timer.start()
-    descendant_pid: int | None = None
+    monkeypatch.setattr(subprocess.Popen, "wait", signal_ready_child)
+    monkeypatch.setattr(os, "killpg", forward_signal)
+    previous = signal.signal(signal.SIGTERM, raise_signal)
     try:
         with pytest.raises(process.GateSignal):
             process.run_process(
-                [sys.executable, "-c", parent],
-                tmp_path,
-                {"PATH": "/usr/bin:/bin"},
+                [sys.executable, "-I", "-S", "-c", script], tmp_path, {"PATH": "/usr/bin:/bin"}
             )
-        descendant_pid = int(pid_path.read_text(encoding="utf-8"))
+        assert forwarded == [signal.SIGTERM, signal.SIGKILL]
+        assert time.monotonic() - started < 5
         with pytest.raises(ProcessLookupError):
-            os.kill(descendant_pid, 0)
-    finally:
-        timer.join()
-        signal.signal(signal.SIGTERM, previous)
-        if descendant_pid is not None:
+            os.kill(int(pid_path.read_text(encoding="utf-8")), 0)
+        with pytest.raises(ProcessLookupError):
+            real_killpg(child_group[0].pid, 0)
+    except BaseException:
+        for child in child_group:
             with suppress(ProcessLookupError):
-                os.kill(descendant_pid, signal.SIGKILL)
+                real_killpg(child.pid, signal.SIGKILL)
+            real_wait(child, timeout=5)
+        raise
+    finally:
+        signal.signal(signal.SIGTERM, previous)
+
+
+def test_term_ignoring_process_group_is_killed_and_reaped(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _check_term_ignoring_group(tmp_path, monkeypatch, descendant=False)
+
+
+def test_term_ignoring_descendant_is_killed_after_parent_exits(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _check_term_ignoring_group(tmp_path, monkeypatch, descendant=True)
 
 
 def test_writer_unlinks_partial_file_after_write_failure(

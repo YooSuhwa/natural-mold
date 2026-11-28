@@ -60,10 +60,13 @@ export const conversationsApi = {
     apiFetch<Conversation>(`/api/conversations/${conversationId}/read`, {
       method: 'POST',
     }),
-  delete: (conversationId: string) =>
-    apiFetch<void>(`/api/conversations/${conversationId}`, {
-      method: 'DELETE',
-    }),
+  delete: (conversationId: string, options?: { onlyIfDraft?: boolean }) =>
+    apiFetch<void>(
+      `/api/conversations/${conversationId}${options?.onlyIfDraft ? '?only_if_draft=true' : ''}`,
+      {
+        method: 'DELETE',
+      },
+    ),
   /**
    * M-CHAT1b — backend now returns `MessagesEnvelope`. We unwrap to keep the
    * existing `Message[]` consumer signature, but expose `messagesEnvelope` for

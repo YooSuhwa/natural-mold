@@ -36,6 +36,8 @@ class MessageAttachment(RequiredOrgScope, Base):
 
     filename: Mapped[str] = mapped_column(String(255), nullable=False)
     mime_type: Mapped[str] = mapped_column(String(120), nullable=False)
+    # Immutable content pin for model input. Existing uploads acquire no implicit version.
+    content_sha256: Mapped[str | None] = mapped_column(String(64))
     size_bytes: Mapped[int] = mapped_column(Integer, nullable=False)
     storage_path: Mapped[str] = mapped_column(String(500), nullable=False)
     url: Mapped[str] = mapped_column(String(500), nullable=False)

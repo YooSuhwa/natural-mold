@@ -1,0 +1,693 @@
+<!doctype html>
+<html>
+  <head>
+    <meta charset="utf-8" />
+    <title>SafeContentFrame</title>
+  </head>
+  <body>
+    <script>
+      (function (LOCATION_HREF) {
+        /**
+         * SafeContentFrame - Google Closure Library
+         * Copyright The Closure Library Authors.
+         * SPDX-License-Identifier: Apache-2.0
+         *
+         * This script creates a secure iframe content frame that validates
+         * messages from a trusted origin using SHA-256 hashing.
+         */
+
+        const globalContext = this || self;
+
+        /**
+         * Inheritance helper - sets up prototype chain
+         */
+        function inherits(childClass, parentClass) {
+          function TempConstructor() {}
+          TempConstructor.prototype = parentClass.prototype;
+          childClass.superClass_ = parentClass.prototype;
+          childClass.prototype = new TempConstructor();
+          childClass.prototype.constructor = childClass;
+          childClass.callSuperMethod = function (
+            instance,
+            methodName,
+            ...args
+          ) {
+            return parentClass.prototype[methodName].apply(instance, args);
+          };
+        }
+
+        /**
+         * Type validator factory
+         */
+        function createTypeValidator(validatorFn) {
+          validatorFn.isValidator = true;
+          return validatorFn;
+        }
+
+        // Type validators
+        const isString = createTypeValidator(
+          (value) => typeof value === "string"
+        );
+        const isBoolean = createTypeValidator(
+          (value) => typeof value === "boolean"
+        );
+        const isObject = createTypeValidator(
+          (value) =>
+            !!value &&
+            (typeof value === "object" || typeof value === "function")
+        );
+
+        /**
+         * Base hash class
+         */
+        class BaseHash {
+          constructor() {
+            this.blockSize = -1;
+          }
+        }
+
+        /**
+         * SHA-256 Implementation
+         */
+        class SHA256 extends BaseHash {
+          constructor(outputLength, initialState) {
+            super();
+            this.blockSize = 64;
+            this.buffer = globalContext.Uint8Array
+              ? new Uint8Array(this.blockSize)
+              : Array(this.blockSize);
+            this.totalLength = 0;
+            this.bufferLength = 0;
+            this.state = [];
+            this.outputLength = outputLength;
+            this.initialState = initialState;
+            this.workingArray = globalContext.Int32Array
+              ? new Int32Array(64)
+              : Array(64);
+
+            // Initialize K constants if not already done
+            if (SHA256_K === undefined) {
+              if (globalContext.Int32Array) {
+                SHA256_K = new Int32Array(SHA256_K_VALUES);
+              } else {
+                SHA256_K = SHA256_K_VALUES;
+              }
+            }
+
+            this.totalLength = 0;
+            this.bufferLength = 0;
+
+            // Clone initial state
+            if (globalContext.Int32Array) {
+              this.state = new Int32Array(this.initialState);
+            } else {
+              const stateCopy = this.initialState;
+              const length = stateCopy.length;
+              if (length > 0) {
+                const cloned = Array(length);
+                for (let i = 0; i < length; i++) {
+                  cloned[i] = stateCopy[i];
+                }
+                this.state = cloned;
+              } else {
+                this.state = [];
+              }
+            }
+          }
+
+          /**
+           * Process a 64-byte block
+           */
+          processBlock() {
+            const buffer = this.buffer;
+            const W = this.workingArray;
+
+            // Prepare message schedule
+            for (let i = 0, j = 0; j < buffer.length; ) {
+              W[i++] =
+                (buffer[j] << 24) |
+                (buffer[j + 1] << 16) |
+                (buffer[j + 2] << 8) |
+                buffer[j + 3];
+              j = i * 4;
+            }
+
+            // Extend message schedule
+            for (let i = 16; i < 64; i++) {
+              const s0Word = W[i - 15] | 0;
+              const s1Word = W[i - 2] | 0;
+              W[i] =
+                ((((W[i - 16] | 0) +
+                  (((s0Word >>> 7) | (s0Word << 25)) ^
+                    ((s0Word >>> 18) | (s0Word << 14)) ^
+                    (s0Word >>> 3))) |
+                  0) +
+                  (((W[i - 7] | 0) +
+                    (((s1Word >>> 17) | (s1Word << 15)) ^
+                      ((s1Word >>> 19) | (s1Word << 13)) ^
+                      (s1Word >>> 10))) |
+                    0)) |
+                0;
+            }
+
+            // Initialize working variables
+            let a = this.state[0] | 0;
+            let b = this.state[1] | 0;
+            let c = this.state[2] | 0;
+            let d = this.state[3] | 0;
+            let e = this.state[4] | 0;
+            let f = this.state[5] | 0;
+            let g = this.state[6] | 0;
+            let h = this.state[7] | 0;
+
+            // Main compression loop
+            for (let i = 0; i < 64; i++) {
+              const S0 =
+                ((a >>> 2) | (a << 30)) ^
+                ((a >>> 13) | (a << 19)) ^
+                ((a >>> 22) | (a << 10));
+              const maj = ((a & b) ^ (a & c) ^ (b & c)) | 0;
+              const temp2 = (S0 + maj) | 0;
+
+              const S1 =
+                ((e >>> 6) | (e << 26)) ^
+                ((e >>> 11) | (e << 21)) ^
+                ((e >>> 25) | (e << 7));
+              const ch = (e & f) ^ (~e & g);
+              const temp1 =
+                (((h + S1) | 0) +
+                  ((((ch + (SHA256_K[i] | 0)) | 0) + (W[i] | 0)) | 0)) |
+                0;
+
+              h = g;
+              g = f;
+              f = e;
+              e = (d + temp1) | 0;
+              d = c;
+              c = b;
+              b = a;
+              a = (temp1 + temp2) | 0;
+            }
+
+            // Update state
+            this.state[0] = (this.state[0] + a) | 0;
+            this.state[1] = (this.state[1] + b) | 0;
+            this.state[2] = (this.state[2] + c) | 0;
+            this.state[3] = (this.state[3] + d) | 0;
+            this.state[4] = (this.state[4] + e) | 0;
+            this.state[5] = (this.state[5] + f) | 0;
+            this.state[6] = (this.state[6] + g) | 0;
+            this.state[7] = (this.state[7] + h) | 0;
+          }
+
+          /**
+           * Update hash with data
+           */
+          update(data, length) {
+            if (length === undefined) {
+              length = data.length;
+            }
+
+            let dataIndex = 0;
+            let bufferIndex = this.bufferLength;
+
+            if (typeof data === "string") {
+              while (dataIndex < length) {
+                this.buffer[bufferIndex++] = data.charCodeAt(dataIndex++);
+                if (bufferIndex === this.blockSize) {
+                  this.processBlock();
+                  bufferIndex = 0;
+                }
+              }
+            } else {
+              const dataType = typeof data;
+              const isArray =
+                dataType !== "object"
+                  ? dataType
+                  : data
+                    ? Array.isArray(data)
+                      ? "array"
+                      : dataType
+                    : "null";
+
+              if (
+                isArray === "array" ||
+                (isArray === "object" && typeof data.length === "number")
+              ) {
+                while (dataIndex < length) {
+                  const byte = data[dataIndex++];
+                  if (
+                    !(
+                      typeof byte === "number" &&
+                      byte >= 0 &&
+                      byte <= 255 &&
+                      byte === (byte | 0)
+                    )
+                  ) {
+                    throw Error("message must be a byte array");
+                  }
+                  this.buffer[bufferIndex++] = byte;
+                  if (bufferIndex === this.blockSize) {
+                    this.processBlock();
+                    bufferIndex = 0;
+                  }
+                }
+              } else {
+                throw Error("message must be string or array");
+              }
+            }
+
+            this.bufferLength = bufferIndex;
+            this.totalLength += length;
+          }
+        }
+
+        // Padding for SHA-256 finalization
+        const PADDING = [];
+        PADDING[0] = 128;
+        for (let i = 1; i < 64; i++) {
+          PADDING[i] = 0;
+        }
+
+        // SHA-256 round constants (K)
+        const SHA256_K_VALUES = [
+          0x428a2f98, 0x71374491, 0xb5c0fbcf, 0xe9b5dba5, 0x3956c25b,
+          0x59f111f1, 0x923f82a4, 0xab1c5ed5, 0xd807aa98, 0x12835b01,
+          0x243185be, 0x550c7dc3, 0x72be5d74, 0x80deb1fe, 0x9bdc06a7,
+          0xc19bf174, 0xe49b69c1, 0xefbe4786, 0x0fc19dc6, 0x240ca1cc,
+          0x2de92c6f, 0x4a7484aa, 0x5cb0a9dc, 0x76f988da, 0x983e5152,
+          0xa831c66d, 0xb00327c8, 0xbf597fc7, 0xc6e00bf3, 0xd5a79147,
+          0x06ca6351, 0x14292967, 0x27b70a85, 0x2e1b2138, 0x4d2c6dfc,
+          0x53380d13, 0x650a7354, 0x766a0abb, 0x81c2c92e, 0x92722c85,
+          0xa2bfe8a1, 0xa81a664b, 0xc24b8b70, 0xc76c51a3, 0xd192e819,
+          0xd6990624, 0xf40e3585, 0x106aa070, 0x19a4c116, 0x1e376c08,
+          0x2748774c, 0x34b0bcb5, 0x391c0cb3, 0x4ed8aa4a, 0x5b9cca4f,
+          0x682e6ff3, 0x748f82ee, 0x78a5636f, 0x84c87814, 0x8cc70208,
+          0x90befffa, 0xa4506ceb, 0xbef9a3f7, 0xc67178f2,
+        ];
+
+        let SHA256_K;
+
+        // SHA-256 initial hash values (H)
+        const SHA256_INITIAL_STATE = [
+          0x6a09e667, 0xbb67ae85, 0x3c6ef372, 0xa54ff53a, 0x510e527f,
+          0x9b05688c, 0x1f83d9ab, 0x5be0cd19,
+        ];
+
+        /**
+         * Create a new SHA-256 hash instance
+         */
+        function createSHA256() {
+          return new SHA256(8, SHA256_INITIAL_STATE);
+        }
+
+        // TextEncoder for string to bytes conversion
+        const textEncoder = window.TextEncoder ? new TextEncoder() : undefined;
+        const SEPARATOR_BYTES = textEncoder
+          ? textEncoder.encode("$@#|").buffer
+          : undefined;
+
+        /**
+         * Compute SHA-256 hash of an ArrayBuffer
+         * Uses Web Crypto API if available, falls back to pure JS implementation
+         */
+        async function computeSHA256(data, useNative = true) {
+          if (useNative && window.crypto?.subtle) {
+            return await crypto.subtle.digest("SHA-256", data);
+          }
+
+          // Fallback: Pure JavaScript SHA-256
+          const hash = createSHA256();
+          hash.update(new Uint8Array(data));
+
+          const result = [];
+          let bitLength = hash.totalLength * 8;
+
+          // Add padding
+          if (hash.bufferLength < 56) {
+            hash.update(PADDING, 56 - hash.bufferLength);
+          } else {
+            hash.update(PADDING, hash.blockSize - (hash.bufferLength - 56));
+          }
+
+          // Append length in bits
+          for (let i = 63; i >= 56; i--) {
+            hash.buffer[i] = bitLength & 255;
+            bitLength /= 256;
+          }
+
+          hash.processBlock();
+
+          // Extract hash bytes
+          let outputIndex = 0;
+          for (let i = 0; i < hash.outputLength; i++) {
+            for (let shift = 24; shift >= 0; shift -= 8) {
+              result[outputIndex++] = (hash.state[i] >> shift) & 255;
+            }
+          }
+
+          return new Uint8Array(result).buffer;
+        }
+
+        /**
+         * Hash multiple parts with separator
+         */
+        async function hashParts({ useNative = true, parts }) {
+          if (parts.length === 0) {
+            throw Error("No parts provided");
+          }
+
+          if (!textEncoder || !SEPARATOR_BYTES) {
+            throw Error("TextEncoder not supported in this browser.");
+          }
+
+          const buffers = [];
+
+          for (let i = 0; i < parts.length; i++) {
+            const part = parts[i];
+
+            if (typeof part === "string") {
+              buffers.push(textEncoder.encode(part).buffer);
+            } else {
+              buffers.push(part);
+            }
+
+            // Add separator between parts
+            if (i < parts.length - 1) {
+              buffers.push(SEPARATOR_BYTES);
+            }
+          }
+
+          const concatenated = concatenateBuffers(...buffers);
+          return await computeSHA256(concatenated, useNative);
+        }
+
+        /**
+         * Convert byte array to base36 string
+         */
+        function bytesToBase36(bytes) {
+          return bytes
+            .reduce((acc, byte) => BigInt(256) * acc + BigInt(byte), BigInt(0))
+            .toString(36);
+        }
+
+        /**
+         * Concatenate multiple ArrayBuffers
+         */
+        function concatenateBuffers(...buffers) {
+          let totalLength = 0;
+          for (const buffer of buffers) {
+            totalLength += buffer.byteLength;
+          }
+
+          const result = new Uint8Array(totalLength);
+          let offset = 0;
+
+          for (const buffer of buffers) {
+            result.set(new Uint8Array(buffer), offset);
+            offset += buffer.byteLength;
+          }
+
+          return result.buffer;
+        }
+
+        /**
+         * Generate content hash for validation
+         */
+        async function generateContentHash({
+          product,
+          trustedOrigin,
+          salt,
+          useNative = true,
+        }) {
+          const saltBuffer = salt ? salt : new ArrayBuffer(0);
+          const hashBuffer = await hashParts({
+            useNative,
+            parts: [product, saltBuffer, trustedOrigin],
+          });
+          const hashBytes = new Uint8Array(hashBuffer);
+          return bytesToBase36(hashBytes).padStart(50, "0").slice(0, 50);
+        }
+
+        // Domain validation regex
+        const DOMAIN_PATTERN =
+          /^([a-z0-9]{50})-h(\d+)[.]scf[.]auiusercontent[.]com$/;
+
+        /**
+         * Initialize the SafeContentFrame message handler
+         */
+        function initializeMessageHandler(config) {
+          const { trustedOrigin, fileHash, product, version } = config;
+
+          window.addEventListener("message", async (event) => {
+            let blobUrl = undefined;
+            const responsePort = event.ports[0];
+
+            try {
+              // Validate origin
+              if (event.origin !== trustedOrigin) {
+                throw Error(
+                  `Message's origin: '${event.origin}' doesn't match the trusted origin.`
+                );
+              }
+
+              const messageData = event.data;
+
+              if (!isObject(messageData)) {
+                throw Error("The message must be an object.");
+              }
+
+              const { body, mimeType, salt, urlFragment, unsafeDocumentWrite } =
+                messageData;
+
+              // Validate body
+              if (!(isString(body) || body instanceof ArrayBuffer)) {
+                throw Error(
+                  "Argument `body` is required and must be either a string or ArrayBuffer."
+                );
+              }
+
+              // Validate mimeType
+              if (!isString(mimeType)) {
+                throw Error(
+                  "Argument `mimeType` is required and must be a string."
+                );
+              }
+
+              // Build validated content object
+              const content = { body, mimeType };
+
+              // Validate optional salt
+              if (salt !== undefined) {
+                if (salt instanceof ArrayBuffer) {
+                  content.salt = salt;
+                } else {
+                  throw Error("Argument `salt` must be an ArrayBuffer.");
+                }
+              }
+
+              // Validate optional urlFragment
+              if (urlFragment !== undefined) {
+                if (isString(urlFragment)) {
+                  content.urlFragment = urlFragment;
+                } else {
+                  throw Error("Argument `urlFragment` must be a string.");
+                }
+              }
+
+              // Validate optional unsafeDocumentWrite
+              if (unsafeDocumentWrite !== undefined) {
+                if (isBoolean(unsafeDocumentWrite)) {
+                  content.unsafeDocumentWrite = unsafeDocumentWrite;
+                } else {
+                  throw Error(
+                    "Argument `unsafeDocumentWrite` must be a boolean."
+                  );
+                }
+              }
+
+              // Verify content hash
+              const calculatedHash = await generateContentHash({
+                product,
+                salt: content.salt,
+                trustedOrigin,
+                version: Number(version),
+              });
+
+              if (
+                typeof fileHash !== "string" ||
+                fileHash.length !== 50 ||
+                fileHash !== calculatedHash
+              ) {
+                throw Error(
+                  `Calculated sum '${calculatedHash}' doesn't match the expected sum '${fileHash}'`
+                );
+              }
+
+              const successMessage = {
+                type: "msg",
+                message: "Reloading iframe",
+              };
+
+              // Handle content rendering
+              if (content.unsafeDocumentWrite === true) {
+                // Use document.write for HTML content
+                if (!content.mimeType.startsWith("text/html")) {
+                  throw Error(
+                    "Argument `unsafeDocumentWrite` can only be used with HTML documents."
+                  );
+                }
+
+                if (typeof document.write !== "function") {
+                  throw Error("document.write is not available.");
+                }
+
+                try {
+                  history.replaceState(null, "", "/");
+                } catch (e) {}
+
+                if (content.urlFragment !== undefined) {
+                  location.hash = content.urlFragment;
+                }
+
+                if (responsePort) {
+                  responsePort.postMessage(successMessage);
+                }
+
+                document.open();
+                document.write(
+                  content.body instanceof ArrayBuffer
+                    ? new TextDecoder().decode(content.body)
+                    : content.body
+                );
+                document.close();
+              } else {
+                // Use blob URL for content
+                blobUrl = URL.createObjectURL(
+                  new Blob([content.body], { type: content.mimeType })
+                );
+
+                if (content.urlFragment !== undefined) {
+                  const url = new URL(blobUrl);
+                  url.hash = content.urlFragment;
+                  blobUrl = url.href;
+                }
+
+                if (responsePort) {
+                  responsePort.postMessage(successMessage);
+                }
+
+                location.replace(blobUrl);
+              }
+            } catch (error) {
+              const errorMessage = { type: "error", message: error.message };
+              if (responsePort) {
+                responsePort.postMessage(errorMessage);
+              }
+            }
+          });
+        }
+
+        /**
+         * Report initialization state to the embedder. A shim that is never
+         * served still fires the iframe's load event in the parent, so without
+         * an explicit acknowledgment a missing shim and slow content look the
+         * same from the outside.
+         */
+        function postToParent(message) {
+          if (!parentOrigin) {
+            return;
+          }
+          try {
+            window.parent.postMessage(message, parentOrigin);
+          } catch (e) {}
+        }
+
+        /**
+         * Main initialization
+         */
+        let parentOrigin;
+
+        try {
+          const currentUrl = new URL(LOCATION_HREF);
+          const trustedOrigin = currentUrl.searchParams.get("origin");
+
+          if (!trustedOrigin) {
+            throw Error("Couldn't parse ?origin parameter");
+          }
+
+          // Validated here rather than after the hostname and product checks so
+          // that those failures still have a trusted postMessage target. A
+          // scheme prefix alone is not enough, because postMessage rejects a
+          // target it cannot parse.
+          try {
+            new URL(trustedOrigin);
+          } catch (e) {
+            throw Error("Invalid trusted origin");
+          }
+
+          if (
+            !(
+              trustedOrigin.startsWith("https://") ||
+              trustedOrigin.startsWith("http://") ||
+              trustedOrigin.startsWith("chrome-extension://")
+            )
+          ) {
+            throw Error("Invalid trusted origin");
+          }
+
+          parentOrigin = trustedOrigin;
+
+          const hostname = currentUrl.hostname;
+          const domainMatch = DOMAIN_PATTERN.exec(hostname);
+
+          if (
+            domainMatch === null ||
+            domainMatch[1] === null ||
+            domainMatch[2] === null
+          ) {
+            throw Error(
+              `Hashed domain '${hostname}' must match the following regular expression: ${DOMAIN_PATTERN}`
+            );
+          }
+
+          const config = {
+            fileHash: domainMatch[1],
+            version: domainMatch[2],
+          };
+
+          // Extract product name from path
+          const productMatch = /^\/([a-z0-9_-]+)\//.exec(currentUrl.pathname);
+
+          if (productMatch === null || productMatch[1] === null) {
+            throw Error(
+              "Product name was either invalid or null. Product name can only contain [a-z0-9_-] characters"
+            );
+          }
+
+          const fullConfig = {
+            trustedOrigin,
+            fileHash: config.fileHash,
+            version: config.version,
+            product: productMatch[1],
+          };
+
+          // Start message handler
+          initializeMessageHandler(fullConfig);
+
+          postToParent({ type: "ready" });
+        } catch (error) {
+          postToParent({ type: "error", message: error.message });
+
+          // Display error in document
+          const errorElement = document.createElement("strong");
+          errorElement.style.color = "red";
+          errorElement.textContent = "Error: " + error.message;
+          document.body.textContent = "";
+          document.body.appendChild(errorElement);
+          console.error(error);
+        }
+      })(location.href);
+    </script>
+  </body>
+</html>

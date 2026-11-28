@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useLayoutEffect, useMemo, useRef, useState, type SyntheticEvent } from 'react'
 import { useParams } from 'next/navigation'
 import type { ToolCallMessagePartProps } from '@assistant-ui/react'
 import { KeyRoundIcon, Loader2Icon } from 'lucide-react'
@@ -8,7 +8,8 @@ import { useTranslations } from 'next-intl'
 import { AuthCardConnect } from '@/components/readiness/auth-card-connect'
 import { AuthCardOAuthConnect } from './auth-card-oauth-connect'
 import { cn } from '@/lib/utils'
-import { useHiTL } from '@/lib/chat/hitl-context'
+import { useHiTL, type HiTLContextValue } from '@/lib/chat/hitl-context'
+import { canRespondToAction, useApprovalGeneration } from '@/lib/chat/hitl-readiness'
 import {
   AUTH_REQUIRED_RESPONSES,
   authRequiredDecision,
@@ -39,26 +40,104 @@ const REASON_KEYS: Record<string, string> = {
  * (G-04); owner-fixable items
  * only say the owner was notified. A re-ask (`attempt` > 1) says it is still not connected.
  */
-export function AuthRequiredCard({ args }: ToolCallMessagePartProps<AuthRequiredArgs, unknown>) {
-  const t = useTranslations('chat.authRequired')
+export function AuthRequiredCard({
+  args,
+  result,
+  status,
+}: ToolCallMessagePartProps<AuthRequiredArgs, unknown>) {
+  return (
+    <AuthRequiredForm args={args} resolved={status.type === 'complete' || result !== undefined} />
+  )
+}
+
+type AuthRequiredFormProps = Pick<ToolCallMessagePartProps<AuthRequiredArgs, unknown>, 'args'> & {
+  allowConnections?: boolean
+  resolved?: boolean
+}
+
+export function AuthRequiredForm({
+  args,
+  allowConnections = true,
+  resolved = false,
+}: AuthRequiredFormProps) {
   const hitl = useHiTL()
-  const [state, setState] = useState<'idle' | 'sending' | 'sent'>('idle')
-  const [failed, setFailed] = useState(false)
+  const generation = useApprovalGeneration(hitl)
   const routeAgentId = useParams<{ agentId?: string }>()?.agentId
   // The thread's own agent (side chat may sit on another agent's route), else the route's.
-  const agentId = hitl?.agentId || routeAgentId
+  const agentId = allowConnections ? hitl?.agentId || routeAgentId : undefined
+  return (
+    <AuthRequiredAttempt
+      key={JSON.stringify([
+        agentId,
+        allowConnections,
+        args?.hitl_interrupt_id,
+        args?.hitl_action_index,
+        args?.attempt,
+        generation,
+      ])}
+      args={args}
+      resolved={resolved}
+      agentId={agentId}
+      allowConnections={allowConnections}
+      hitl={hitl}
+    />
+  )
+}
+
+function AuthRequiredAttempt({
+  args,
+  resolved,
+  agentId,
+  allowConnections,
+  hitl,
+}: AuthRequiredFormProps & { agentId?: string; hitl: HiTLContextValue | null }) {
+  const t = useTranslations('chat.authRequired')
+  const tConnect = useTranslations('readiness.authCard')
+  const [state, setState] = useState<'idle' | 'sending' | 'sent'>('idle')
+  const [failed, setFailed] = useState(false)
+  const requiresSlot = hitl?.canRespond !== undefined || hitl?.canRespondTo !== undefined
+  const canRespond =
+    !resolved && canRespondToAction(hitl, args) && (!requiresSlot || !!hitl?.registerDecision)
+  const permission = useMemo(() => ({ canRespond }), [canRespond])
+  const currentPermission = useRef<typeof permission | null>(null)
+  const submitted = useRef(false)
+  useLayoutEffect(() => {
+    currentPermission.current = permission
+    return () => {
+      currentPermission.current = null
+    }
+  }, [permission])
   const askedAttempt = typeof args?.attempt === 'number' ? args.attempt : 1
   const items = authRequiredItems(args)
-  const oauthItems = items.filter(
-    (item) => item.fixableBy === 'me' && item.connectKind === 'oauth' && item.credentialId,
-  )
+  const oauthItems = allowConnections
+    ? items.filter(
+        (item) => item.fixableBy === 'me' && item.connectKind === 'oauth' && item.credentialId,
+      )
+    : []
   const mine = items
     .filter((item) => item.fixableBy === 'me' && !oauthItems.includes(item))
     .map((item) => item.resourceName)
   const reasonKey =
     REASON_KEYS[typeof args?.reason === 'string' ? args.reason : ''] ?? 'reasonAuthNeeded'
 
+  function mayAct() {
+    return (
+      permission.canRespond &&
+      currentPermission.current === permission &&
+      !submitted.current &&
+      canRespondToAction(hitl, args)
+    )
+  }
+
+  function checkConnectionAction(event: SyntheticEvent) {
+    if (mayAct()) return
+    event.preventDefault()
+    event.stopPropagation()
+  }
+
   async function answer(response: AuthRequiredResponse) {
+    if (!mayAct()) return
+    submitted.current = true
     setState('sending')
     setFailed(false)
     try {
@@ -77,6 +156,7 @@ export function AuthRequiredCard({ args }: ToolCallMessagePartProps<AuthRequired
       }
       setState('sent')
     } catch {
+      submitted.current = false
       setState('idle')
       setFailed(true)
     }
@@ -90,7 +170,7 @@ export function AuthRequiredCard({ args }: ToolCallMessagePartProps<AuthRequired
       </div>
       <div className="space-y-3 p-4 text-sm">
         <p className="text-muted-foreground">{t(reasonKey)}</p>
-        {askedAttempt > 1 && state !== 'sent' && (
+        {askedAttempt > 1 && !resolved && state !== 'sent' && (
           <p className="text-xs text-muted-foreground">{t('stillNotConnected')}</p>
         )}
         <ul className="space-y-1.5">
@@ -106,37 +186,54 @@ export function AuthRequiredCard({ args }: ToolCallMessagePartProps<AuthRequired
             </li>
           ))}
         </ul>
-        {failed && (
+        {failed && !resolved && (
           <p role="alert" className="text-xs text-destructive">
             {t('resumeFailed')}
           </p>
         )}
-        {state === 'sent' ? (
+        {resolved || state === 'sent' ? (
           <p className="text-xs text-muted-foreground">{t('sent')}</p>
         ) : (
-          <div className="flex flex-wrap justify-end gap-2">
-            {oauthItems.map((item) => (
-              <AuthCardOAuthConnect
-                key={item.credentialId}
-                credentialId={item.credentialId ?? ''}
-                resourceName={item.resourceName}
-                disabled={state === 'sending'}
-                onConnected={() => void answer('retry')}
-              />
-            ))}
-            {agentId && mine.length > 0 && (
-              <AuthCardConnect
-                agentId={agentId}
-                resourceNames={mine}
-                disabled={state === 'sending'}
-                onConnected={() => void answer('retry')}
-              />
+          <div
+            className="flex flex-wrap justify-end gap-2"
+            onClickCapture={checkConnectionAction}
+            onSubmitCapture={checkConnectionAction}
+          >
+            {oauthItems.map((item) =>
+              canRespond ? (
+                <AuthCardOAuthConnect
+                  key={item.credentialId}
+                  credentialId={item.credentialId ?? ''}
+                  resourceName={item.resourceName}
+                  disabled={state === 'sending'}
+                    canContinue={mayAct}
+                  onConnected={() => void answer('retry')}
+                />
+              ) : (
+                <BlockedConnection
+                  key={item.credentialId}
+                  label={t('connectOAuth', { name: item.resourceName })}
+                />
+              ),
             )}
+            {agentId &&
+              mine.length > 0 &&
+              (canRespond ? (
+                <AuthCardConnect
+                  agentId={agentId}
+                  resourceNames={mine}
+                  disabled={state === 'sending'}
+                  canContinue={mayAct}
+                  onConnected={() => void answer('retry')}
+                />
+              ) : (
+                <BlockedConnection label={tConnect('connect')} />
+              ))}
             {AUTH_REQUIRED_RESPONSES.map((response) => (
               <button
                 key={response}
                 type="button"
-                disabled={state === 'sending'}
+                disabled={!canRespond || state === 'sending'}
                 onClick={() => void answer(response)}
                 className={cn(
                   'flex items-center gap-1.5 rounded-full px-4 py-2 text-xs font-medium transition-[background-color,color,opacity] disabled:cursor-not-allowed disabled:opacity-60',
@@ -155,5 +252,17 @@ export function AuthRequiredCard({ args }: ToolCallMessagePartProps<AuthRequired
         )}
       </div>
     </div>
+  )
+}
+
+function BlockedConnection({ label }: { label: string }) {
+  return (
+    <button
+      type="button"
+      disabled
+      className="rounded-full bg-muted px-4 py-2 text-xs font-medium disabled:cursor-not-allowed disabled:opacity-60"
+    >
+      {label}
+    </button>
   )
 }

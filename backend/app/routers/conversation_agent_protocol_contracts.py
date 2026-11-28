@@ -7,6 +7,7 @@ from fastapi.responses import JSONResponse
 from pydantic import AliasChoices, BaseModel, ConfigDict, Field
 
 from app.agent_runtime.protocol_events import SubscribeParams
+from app.schemas.conversation_graph_input import PublicGraphInput
 from app.schemas.conversation_history_protocol import (
     HistoryRequest as HistoryRequest,
 )
@@ -50,7 +51,7 @@ class AgentCommandParams(BaseModel):
     model_config = ConfigDict(extra="allow", frozen=True)
 
     assistant_id: str | None = None
-    input: dict[str, JsonValue] | None = None
+    input: PublicGraphInput[JsonValue] | None = None
     config: dict[str, Any] | None = None
     metadata: dict[str, Any] | None = None
     checkpoint: ThreadCheckpoint | None = None
@@ -102,7 +103,7 @@ class SubscribeRequest(BaseModel):
 class UpdateStateRequest(BaseModel):
     model_config = ConfigDict(extra="allow", frozen=True)
 
-    values: dict[str, Any] = Field(default_factory=dict)
+    values: PublicGraphInput[Any] = Field(default_factory=dict)
     checkpoint: ThreadCheckpoint | None = None
     as_node: str | None = None
     task_id: str | None = None

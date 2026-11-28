@@ -16,6 +16,7 @@ from app.agent_runtime.credential_access import AgentCredentialAccess
 from app.agent_runtime.credential_resolution import (
     LLMCredentialRequiredError,
     resolve_llm_api_key_for_agent,
+    resolved_llm_credential_id,
     resolved_llm_credential_scope,
 )
 from app.agent_runtime.identity import (
@@ -135,8 +136,9 @@ async def _resolve(db: AsyncSession, agent: Agent) -> str | None:
 async def test_company_key_designated_to_the_run_org_serves_a_member_without_a_key(
     db: AsyncSession,
 ) -> None:
-    await _company_key(db, "sk-company", orgs=(TEST_ORG_ID,))
+    credential = await _company_key(db, "sk-company", orgs=(TEST_ORG_ID,))
     assert await _resolve(db, await _agent(db)) == "sk-company"
+    assert resolved_llm_credential_id() == str(credential.id)
     assert resolved_llm_credential_scope() == "tenant"
 
 
@@ -152,6 +154,7 @@ async def test_company_key_outside_the_run_org_or_inactive_is_never_used(
     with pytest.raises(LLMCredentialRequiredError):
         await _resolve(db, await _agent(db))
     assert resolved_llm_credential_scope() is None
+    assert resolved_llm_credential_id() is None
 
 
 async def test_own_provider_key_comes_before_the_company_key(db: AsyncSession) -> None:

@@ -6,7 +6,7 @@ from fastapi import HTTPException
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.authz.conversation_input_scope import owned_input_predicate
+from app.authz.conversation_input_scope import lineage_input_predicate, owned_input_predicate
 from app.authz.execution_lock_cursor import LockClass
 from app.authz.org_context import OrgContext
 from app.authz.organization_execution_gateway import held_conversation, lock_many, lock_query
@@ -17,6 +17,7 @@ from app.models.conversation import Conversation
 from app.models.conversation_run import utc_now_naive
 from app.models.conversation_run_input import ConversationRunInput
 from app.services.chat.conversations import require_executable_conversation
+from app.services.chat_resource_context_sources import ResourceContextScope
 from app.services.conversation_run_queue_payload import JsonValue, validate_queue_input_payload
 
 
@@ -70,12 +71,14 @@ async def list_inputs(
     conversation_id: uuid.UUID,
     context: OrgContext,
 ) -> list[ConversationRunInput]:
-    await lock_owned_conversation(
+    from app.services.conversation_run_service import readable_conversation_run_ids
+
+    conversation = await lock_owned_conversation(
         db,
         conversation_id=conversation_id,
         context=context,
     )
-    result = await db.execute(
+    query = (
         select(ConversationRunInput)
         .where(ConversationRunInput.conversation_id == conversation_id)
         .order_by(
@@ -84,7 +87,10 @@ async def list_inputs(
             ConversationRunInput.created_at,
         )
     )
-    return list(result.scalars().all())
+    run_ids = await readable_conversation_run_ids(db, conversation, context)
+    if run_ids is not None:
+        query = query.where(lineage_input_predicate(conversation, run_ids))
+    return list(await db.scalars(query))
 
 
 async def _pending_input_for_update(
@@ -114,6 +120,8 @@ async def _pending_input_for_update(
     )
     if queued is None:
         raise queue_input_not_found()
+    if queued.source == "goal_followup":
+        raise _conflict("Change the goal to update its automatic followup")
     if queued.status != "pending":
         raise _conflict("Only pending conversation inputs can be changed")
     if queued.revision != expected_revision:
@@ -140,7 +148,20 @@ async def edit_pending_input(
         context=context,
         expected_revision=expected_revision,
     )
-    queued.input_payload = input_payload
+    from app.services.ag_ui_queue_edit import public_queue_edit
+    from app.services.chat_resource_context_integration import freeze_resource_context_payload
+
+    if queued.agent_id is None:
+        raise queue_input_not_found()
+    public = await public_queue_edit(db, context, queued, input_payload)
+    frozen = await freeze_resource_context_payload(
+        db,
+        ResourceContextScope(
+            context=context, agent_id=queued.agent_id, conversation_id=conversation_id
+        ),
+        public,
+    )
+    queued.input_payload = validate_queue_input_payload(frozen)
     queued.revision += 1
     await db.flush()
     return queued

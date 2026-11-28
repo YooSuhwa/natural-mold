@@ -2,9 +2,11 @@
 
 import { ComposerPrimitive, useAui } from '@assistant-ui/react'
 import { RotateCcwIcon } from 'lucide-react'
+import { useContext } from 'react'
 
 import { Button } from '@/components/ui/button'
-import { queueItemText } from '@/lib/chat/message-queue/queue-message-projection'
+import { AgUiChatActionContext } from '@/lib/ag-ui/chat-action-context'
+import { queueInputText, queueItemText } from '@/lib/chat/message-queue/queue-message-projection'
 import {
   useServerMessageQueueController,
   useServerMessageQueueSnapshot,
@@ -37,10 +39,9 @@ export function ServerMessageQueuePanel({ labels }: { readonly labels: MessageQu
   const controller = useServerMessageQueueController()
   const snapshot = useServerMessageQueueSnapshot()
   const aui = useAui()
-  const ordinary = snapshot.items.filter((item) => item.status === 'pending' && item.priority < 100)
-  const promoted = snapshot.items.filter(
-    (item) => item.status === 'pending' && item.priority >= 100,
-  )
+  const agUi = useContext(AgUiChatActionContext)
+  const pending = snapshot.items.filter((item) => item.status === 'pending')
+  const ordinary = pending.filter((item) => item.priority < 100)
   const rejected = snapshot.rejectedSubmission
   const restoreRejected = async (): Promise<void> => {
     if (!rejected) return
@@ -78,13 +79,23 @@ export function ServerMessageQueuePanel({ labels }: { readonly labels: MessageQu
     )
     controller.dismissRejectedSubmission()
   }
-  if (
-    ordinary.length === 0 &&
-    promoted.length === 0 &&
-    !snapshot.queuePaused &&
-    snapshot.lastOperation.kind === 'idle'
-  ) {
+  if (pending.length === 0 && !snapshot.queuePaused && snapshot.lastOperation.kind === 'idle') {
     return null
+  }
+
+  function renderItem(id: string, text: string) {
+    const index = ordinary.findIndex((item) => item.id === id)
+    return (
+      <ServerMessageQueueItem
+        key={id}
+        id={id}
+        text={text}
+        labels={labels}
+        previousId={index > 0 ? ordinary[index - 1].id : undefined}
+        nextId={index >= 0 ? ordinary[index + 1]?.id : undefined}
+        actions={index < 0 ? 'promoted' : agUi ? 'server' : 'runtime'}
+      />
+    )
   }
 
   const operationLabel =
@@ -148,22 +159,14 @@ export function ServerMessageQueuePanel({ labels }: { readonly labels: MessageQu
             ) : null}
           </li>
         ) : null}
-        <ComposerPrimitive.Queue>
-          {({ queueItem }) => {
-            const index = ordinary.findIndex((item) => item.id === queueItem.id)
-            const isOrdinary = index >= 0
-            return (
-              <ServerMessageQueueItem
-                id={queueItem.id}
-                text={queueItemText(queueItem)}
-                labels={labels}
-                previousId={isOrdinary ? ordinary[index - 1]?.id : undefined}
-                nextId={isOrdinary ? ordinary[index + 1]?.id : undefined}
-                officialActions={isOrdinary}
-              />
-            )
-          }}
-        </ComposerPrimitive.Queue>
+        {/* The AG-UI runtime has no external composer queue adapter. Its queue lives on the server. */}
+        {agUi ? (
+          pending.map((item) => renderItem(item.id, queueInputText(item)))
+        ) : (
+          <ComposerPrimitive.Queue>
+            {({ queueItem }) => renderItem(queueItem.id, queueItemText(queueItem))}
+          </ComposerPrimitive.Queue>
+        )}
       </ul>
     </section>
   )

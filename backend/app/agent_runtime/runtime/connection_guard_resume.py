@@ -15,7 +15,7 @@ import logging
 from typing import Any
 
 from langgraph.config import get_config
-from langgraph.types import interrupt
+from langgraph.types import Interrupt, interrupt
 
 from app.agent_runtime.runtime.connection_guard_items import AuthDecision, decision_of
 
@@ -49,6 +49,11 @@ def recorded_answers() -> int:
 def ask(payload: dict[str, Any], asked: int, recorded: int) -> tuple[AuthDecision | None, int]:
     """Ask attempt ``asked + 1`` (raises when unanswered); the latest answer wins."""
 
+    namespace = get_config().get("configurable", {}).get("checkpoint_ns")
+    if isinstance(namespace, str) and namespace:
+        # LangGraph gives successive resume slots separate IDs. Its first-slot ID is
+        # stable for this task and also matches the ID saved by older checkpoints.
+        payload = {**payload, "auth_request_id": Interrupt.from_ns(None, namespace).id}
     asked += 1
     decision = decision_of(interrupt({**payload, "attempt": asked}))
     while asked < recorded:

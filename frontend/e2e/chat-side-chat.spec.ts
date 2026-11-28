@@ -1,15 +1,18 @@
 import { mkdir } from 'node:fs/promises'
 import path from 'node:path'
-import type { Locator, Page } from '@playwright/test'
+import type { Locator, Page, Request } from '@playwright/test'
 import { API_BASE, apiDeleteOk, apiGetJson, expect, isRecord, test } from './fixtures'
 import { recordFailureUiEvidence } from './helpers/failure-ui-evidence'
 import {
+  commandMethod,
   sendMessage,
   setupLangGraphV3Agent,
   waitForAcceptedRunStart,
   waitForRunStatus,
 } from './langgraph-v3-helpers'
 
+const agUi = process.env.NEXT_PUBLIC_CHAT_RUNTIME === 'ag_ui'
+const fixtureAnswer = 'E2E scripted document model is ready.'
 const captures = path.resolve('../output/e2e-captures/20260910-side-chat')
 
 async function capture(page: Page, name: string) {
@@ -41,6 +44,18 @@ test('quotes, comments, independent side run and return to main', async ({ page,
   await page.setViewportSize({ width: 1600, height: 1000 })
   await mkdir(captures, { recursive: true })
   const setup = await setupLangGraphV3Agent(request)
+  const runPosts: Request[] = []
+  if (agUi) {
+    page.on('request', (req) => {
+      if (req.method() !== 'POST') return
+      const path = new URL(req.url()).pathname
+      if (
+        /\/api\/conversations\/[^/]+\/(?:ag-ui\/runs|messages|run-inputs)$/.test(path) ||
+        commandMethod(req) === 'run.start'
+      )
+        runPosts.push(req)
+    })
+  }
   let succeeded = false
   let releaseStream = () => {}
   let releaseState = () => {}
@@ -52,7 +67,7 @@ test('quotes, comments, independent side run and return to main', async ({ page,
     const answer = main
       .locator('[data-moldy-message-role="assistant"] [data-chat-quote-text]')
       .last()
-    await expect(answer).toContainText('E2E scripted document model is ready.', { timeout: 60_000 })
+    await expect(answer).toContainText(fixtureAnswer, { timeout: 60_000 })
     await expect(answer).not.toHaveAttribute('data-chat-streaming', 'true', { timeout: 20_000 })
     await test.step('select rendered answer', () => selectBody(page, answer))
     await test.step('capture selection toolbar', () => capture(page, '01-selection-menu.png'))
@@ -74,19 +89,25 @@ test('quotes, comments, independent side run and return to main', async ({ page,
       .locator('textarea[data-moldy-composer-input]')
       .fill('본 채팅의 초안은 보존해 주세요.')
     await selectBody(page, answer)
+    const quoteSource = await main
+      .locator('[data-moldy-message-role="assistant"]')
+      .last()
+      .getAttribute('data-moldy-message-id')
     // Attach the side stream only after its durable run completes so this
     // scenario exercises compact replay rather than relying on live timing.
     let heldStreams = 0
     const streamGate = new Promise<void>((resolve) => {
       releaseStream = resolve
     })
-    await page.route('**/langgraph/threads/*/stream/events', async (route) => {
-      if (!route.request().url().includes(setup.conversationId)) {
-        heldStreams += 1
-        await streamGate
-      }
-      await route.continue()
-    })
+    if (!agUi) {
+      await page.route('**/langgraph/threads/*/stream/events', async (route) => {
+        if (!route.request().url().includes(setup.conversationId)) {
+          heldStreams += 1
+          await streamGate
+        }
+        await route.continue()
+      })
+    }
     const created = page.waitForResponse(
       (response) =>
         response.request().method() === 'POST' && response.url().endsWith('/side-chats'),
@@ -101,36 +122,57 @@ test('quotes, comments, independent side run and return to main', async ({ page,
     if (!isRecord(sideValue) || typeof sideValue.id !== 'string')
       throw new Error('Missing side conversation')
     const sideId = sideValue.id
+    expect(sideId).not.toBe(setup.conversationId)
     const side = page.locator(`[data-chat-selection-thread="${sideId}"]`)
     await expect(side.getByTestId('quote-context-chips')).toBeVisible({ timeout: 30_000 })
     const sideComposer = side.locator('textarea[data-moldy-composer-input]')
     await sideComposer.fill('선택한 부분을 자세히 알려 주세요.')
-    const runRequest = page.waitForRequest(
-      (req) => req.url().includes(sideId) && (req.postData() ?? '').includes('resource_context'),
-    )
-    const stateGate = new Promise<void>((resolve) => {
-      releaseState = resolve
-    })
-    await page.route(`**/langgraph/threads/${sideId}/state`, async (route) => {
-      await stateGate
-      await route.continue()
-    })
-    const acceptedRun = await waitForAcceptedRunStart(page, sideId, () =>
-      sideComposer.press('Enter'),
-    )
-    await waitForRunStatus(request, sideId, acceptedRun, 'completed')
-    await expect.poll(() => heldStreams).toBeGreaterThan(0)
-    releaseStream()
-    expect((await runRequest).postData()).toContain('E2E scripted document model is ready.')
+    if (agUi) {
+      // Drafts and quote chips are editable while the newly opened side thread loads its snapshot.
+      await expect(side.getByRole('button', { name: '전송', exact: true })).toBeEnabled()
+      const [submitted] = await Promise.all([
+        page.waitForRequest(
+          (req) =>
+            req.method() === 'POST' &&
+            new URL(req.url()).pathname === `/api/conversations/${sideId}/ag-ui/runs`,
+        ),
+        sideComposer.press('Enter'),
+      ])
+      const response = await test.step('receive the side run stream', () => submitted.response(), {
+        timeout: 30_000,
+      })
+      expect(response?.ok()).toBe(true)
+      expect(response?.headers()['content-type']).toContain('text/event-stream')
+    } else {
+      const runRequest = page.waitForRequest(
+        (req) => req.url().includes(sideId) && (req.postData() ?? '').includes('resource_context'),
+      )
+      const stateGate = new Promise<void>((resolve) => {
+        releaseState = resolve
+      })
+      await page.route(`**/langgraph/threads/${sideId}/state`, async (route) => {
+        await stateGate
+        await route.continue()
+      })
+      const acceptedRun = await waitForAcceptedRunStart(page, sideId, () =>
+        sideComposer.press('Enter'),
+      )
+      await waitForRunStatus(request, sideId, acceptedRun, 'completed')
+      await expect.poll(() => heldStreams).toBeGreaterThan(0)
+      releaseStream()
+      expect((await runRequest).postData()).toContain(fixtureAnswer)
+    }
     await expect(side.locator('[data-moldy-message-role="assistant"]')).toContainText(
-      'E2E scripted document model is ready.',
+      fixtureAnswer,
       { timeout: 60_000 },
     )
-    const hydratedState = page.waitForResponse(
-      (response) => response.url().includes(sideId) && response.url().endsWith('/state'),
-    )
-    releaseState()
-    expect((await hydratedState).status()).toBe(200)
+    if (!agUi) {
+      const hydratedState = page.waitForResponse(
+        (response) => response.url().includes(sideId) && response.url().endsWith('/state'),
+      )
+      releaseState()
+      expect((await hydratedState).status()).toBe(200)
+    }
     await expect(side.getByTestId('sent-quote-context')).toBeVisible()
     await expect(main.locator('textarea[data-moldy-composer-input]')).toHaveValue(
       '본 채팅의 초안은 보존해 주세요.',
@@ -193,7 +235,7 @@ test('quotes, comments, independent side run and return to main', async ({ page,
     await expect(
       main.getByRole('img', { name: `${currentUser.name} 프로필 아이콘`, exact: true }),
     ).toBeVisible({ timeout: 30_000 })
-    await expect(answer).toContainText('E2E scripted document model is ready.', {
+    await expect(answer).toContainText(fixtureAnswer, {
       timeout: 30_000,
     })
     await expect(main.locator('textarea[data-moldy-composer-input]')).toBeVisible()
@@ -215,6 +257,41 @@ test('quotes, comments, independent side run and return to main', async ({ page,
     await expect(sideToggle).toHaveAttribute('aria-expanded', 'true')
     await expect(page.getByRole('dialog')).toBeVisible()
     await expect(side.getByTestId('sent-quote-context')).toBeVisible({ timeout: 20_000 })
+    if (agUi) {
+      expect(runPosts.map((req) => new URL(req.url()).pathname)).toEqual([
+        `/api/conversations/${setup.conversationId}/ag-ui/runs`,
+        `/api/conversations/${sideId}/ag-ui/runs`,
+      ])
+      const [parentInput, sideInput]: unknown[] = runPosts.map((req) => req.postDataJSON())
+      if (!isRecord(parentInput) || !isRecord(sideInput)) throw new Error('Invalid run inputs')
+      expect(quoteSource).toBeTruthy()
+      expect(parentInput).toMatchObject({
+        protocolVersion: '1.0',
+        threadId: setup.conversationId,
+        runId: expect.any(String),
+      })
+      expect(sideInput).toMatchObject({
+        protocolVersion: '1.0',
+        threadId: sideId,
+        runId: expect.any(String),
+        forwardedProps: {
+          moldy: {
+            resourceContext: {
+              resources: [
+                {
+                  kind: 'conversation',
+                  id: setup.conversationId,
+                  message_id: quoteSource,
+                  message_role: 'assistant',
+                  quote: fixtureAnswer,
+                },
+              ],
+            },
+          },
+        },
+      })
+      expect(sideInput.runId).not.toBe(parentInput.runId)
+    }
     succeeded = true
   } catch (error: unknown) {
     await recordFailureUiEvidence(page, test.info())

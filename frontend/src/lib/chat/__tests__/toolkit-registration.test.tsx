@@ -18,6 +18,7 @@ import { ALL_TOOLKIT, BUILDER_TOOLKIT, SETTINGS_TEST_TOOLKIT } from '@/lib/chat/
 interface SourceMessage {
   readonly id: string
   readonly toolName: string
+  readonly result?: string
 }
 
 function convertMessage(message: SourceMessage): ThreadMessageLike {
@@ -30,7 +31,7 @@ function convertMessage(message: SourceMessage): ThreadMessageLike {
         toolCallId: `call-${message.id}`,
         toolName: message.toolName,
         args: message.toolName === 'write_todos' ? { todos: [] } : { input: 'value' },
-        result: 'done',
+        result: message.result ?? 'done',
       },
     ],
   }
@@ -44,9 +45,17 @@ function AssistantMessage() {
   )
 }
 
-function Harness({ toolName, toolkit }: { readonly toolName: string; readonly toolkit: Toolkit }) {
+function Harness({
+  toolName,
+  toolkit,
+  result,
+}: {
+  readonly toolName: string
+  readonly toolkit: Toolkit
+  readonly result?: string
+}) {
   const runtime = useExternalStoreRuntime<SourceMessage>({
-    messages: [{ id: 'message-1', toolName }],
+    messages: [{ id: 'message-1', toolName, result }],
     isRunning: false,
     onNew: async () => {},
     convertMessage,
@@ -70,6 +79,43 @@ describe('assistant-ui toolkit registration', () => {
 
     await waitFor(() => expect(screen.getByText('Plan')).toBeInTheDocument())
     expect(screen.queryByText('write_todos')).not.toBeInTheDocument()
+  })
+
+  it('renders the responding research provider and every original source from a saved tool result', async () => {
+    const results = Array.from({ length: 6 }, (_, i) => ({
+      title: i === 0 ? '' : `Article ${i + 1}`,
+      url: `https://publisher.example/papers/${i + 1}?lang=ko#summary`,
+      provider: 'searxng',
+      published_date: '2026-11-24T00:00:00+00:00',
+    }))
+    render(
+      <Harness
+        toolName="research_search"
+        toolkit={ALL_TOOLKIT}
+        result={JSON.stringify({ query: 'AI', provider: 'searxng', results })}
+      />,
+    )
+    expect(await screen.findByText('SearXNG · 6건')).toBeInTheDocument()
+    expect(screen.getByRole('link', { name: results[0].url })).toHaveAttribute(
+      'href',
+      results[0].url,
+    )
+    expect(screen.getByRole('link', { name: 'Article 6' })).toHaveAttribute('href', results[5].url)
+    expect(screen.getAllByText(/발행일.*2026/)).toHaveLength(6)
+  })
+
+  it('restores a failed research call even when its old tool message has no error flag', async () => {
+    const error = 'Research search is temporarily unavailable. Retry later.'
+    render(<Harness toolName="research_search" toolkit={ALL_TOOLKIT} result={error} />)
+    expect(await screen.findByText(error)).toBeInTheDocument()
+    expect(screen.queryByText('1건')).not.toBeInTheDocument()
+  })
+
+  it('keeps the responding provider for a successful search with no sources', async () => {
+    const result = JSON.stringify({ provider: 'tavily', results: [] })
+    render(<Harness toolName="research_search" toolkit={ALL_TOOLKIT} result={result} />)
+    expect(await screen.findByText('Tavily · 0건')).toBeInTheDocument()
+    expect(screen.queryByRole('link')).not.toBeInTheDocument()
   })
 
   it('renders an unknown tool through the Moldy grouped-parts fallback', async () => {

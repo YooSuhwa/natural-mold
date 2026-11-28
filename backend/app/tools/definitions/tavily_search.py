@@ -10,7 +10,11 @@ from __future__ import annotations
 import os
 from typing import Any
 
+import httpx
+
 from app.config import settings
+from app.services import research_search_policy
+from app.tools.definitions.search_transport import ResearchSearchError, provider_post
 from app.tools.domain import ToolDefinition, ToolRunContext
 from app.tools.parameters import FieldDef, FieldKind
 from app.tools.risk import ToolRiskLevel
@@ -40,14 +44,30 @@ def _int_param(value: Any, default: int, minimum: int, maximum: int) -> int:
     return max(minimum, min(maximum, parsed))
 
 
-async def _run_tavily_search(ctx: ToolRunContext) -> dict[str, Any]:
+def hosted_api_key() -> str:
     api_key = settings.tavily_api_key.strip() or os.environ.get("TAVILY_API_KEY", "").strip()
     if not api_key:
-        raise ValueError("TAVILY_API_KEY is not configured on the backend server")
+        raise ResearchSearchError("TAVILY_API_KEY is not configured on the backend server")
 
+    return api_key
+
+
+async def fetch_tavily(
+    client: httpx.AsyncClient, api_key: str, payload: dict[str, Any]
+) -> dict[str, Any]:
+    return await provider_post(
+        client,
+        "https://api.tavily.com/search",
+        headers={"Authorization": f"Bearer {api_key}"},
+        json=payload,
+    )
+
+
+async def _run_tavily_search(ctx: ToolRunContext) -> dict[str, Any]:
+    api_key = hosted_api_key()
     query = _string_param(ctx.parameters.get("query"))
     if not query:
-        raise ValueError("query is required")
+        raise ResearchSearchError("query is required")
 
     time_range = _string_param(ctx.parameters.get("time_range"))
     payload: dict[str, Any] = {
@@ -66,19 +86,13 @@ async def _run_tavily_search(ctx: ToolRunContext) -> dict[str, Any]:
     if time_range:
         payload["time_range"] = time_range
 
-    response = await ctx.http_client.post(
-        "https://api.tavily.com/search",
-        headers={
-            "Authorization": f"Bearer {api_key}",
-            "Content-Type": "application/json",
-        },
-        json=payload,
-    )
-    response.raise_for_status()
-    data = response.json()
+    await research_search_policy.reserve_attempt(ctx.search_actor, "tavily", legacy_tavily=True)
+    data = await fetch_tavily(ctx.http_client, api_key, payload)
 
     results = []
     for item in data.get("results") or []:
+        if not isinstance(item, dict):
+            raise ResearchSearchError("Search provider returned an invalid result.")
         raw_content = item.get("raw_content")
         if isinstance(raw_content, str) and len(raw_content) > 6000:
             raw_content = raw_content[:6000] + "\n...[truncated]"

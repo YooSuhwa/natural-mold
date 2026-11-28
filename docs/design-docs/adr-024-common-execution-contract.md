@@ -127,6 +127,37 @@ SDK retries are off (`agent_runtime/lease_provider_retry_policy.py`).
 Risk levels decide approval and block write tools in triggers (`tools/risk.py`).
 There are no idempotency keys and no unknown-outcome state for tool calls.
 
+For chat streams, `CHAT_STREAM_RETRY_PROVIDERS` selects provider families for
+bounded model sends. To retry an in-band concurrency-limit or gateway-timeout
+frame, register the gateway that produced it in `CHAT_STREAM_RETRY_ORIGINS`,
+a JSON object mapping each provider to verified origins. For example, a
+verified custom endpoint could use
+`{"openai_compatible":["https://gateway.example:8443"]}`. Both settings
+default to empty. The selected SDK client's effective base and the failed
+HTTP response must have the same registered scheme, host, and port, including
+after a model override, fallback, or redirect. A replacement send triggered by
+one of these frames requires a currently registered destination. Removing a
+gateway during backoff stops that replay. In the direct path an opted-in model call
+shares up to three sends with its fallback candidates. A prepared call reopens
+its dispatch permit for each attempt. A delivered SDK chunk, including a
+role-only chunk or a tool-call fragment, closes automatic replay for that call.
+When an opted-in stream fails at this point, the run records
+`partial_model_stream`. The chat can show the bounded, redacted partial text
+and observed tool status on its original branch. The user can edit a fresh
+continuation before sending it. Per-attempt logs record only the attempt
+number, whether output started, and the outcome.
+
+An ordinary chat enrolled in worker recovery reserves each model send before
+network I/O. The run's owner lock protects the count for each LangGraph
+checkpoint and task. A successor inherits the remaining sends, including
+reservations made just before a crash. It stops when prior sends cannot be
+verified. Each run tracks up to 256 task hashes. Beyond that, the current
+worker can finish with its local limits and a later generation stops before
+its next model send. Apply migration `i50_chat_model_attempts` and upgrade
+all eligible workers before enabling both features. For a rollback, stop new
+enrollments and finish or stop existing enrolled runs before restoring older
+workers or dropping the column.
+
 **Rule.**
 - Tool calls that change external state (write, send, delete) are never retried
   automatically. Read calls may be.

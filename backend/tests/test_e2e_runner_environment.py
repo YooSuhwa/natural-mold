@@ -19,7 +19,7 @@ def _environment(tmp_path: Path, project: Project = "scripted-smoke") -> dict[st
     return build_lane_environment("scripted", project, dsns, tmp_path)
 
 
-@pytest.mark.parametrize("runtime", ["legacy", "langgraph_v3"])
+@pytest.mark.parametrize("runtime", ["legacy", "langgraph_v3", "ag_ui"])
 def test_valid_chat_runtime_is_forwarded(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path, runtime: str
 ) -> None:
@@ -123,3 +123,15 @@ def test_node_major_guard_is_exact_and_preprovision(
     else:
         with pytest.raises(E2eContractError, match="node_major_mismatch"):
             assert_node22()
+
+
+def test_chat_goal_notifications_only_forward_scripted_full_opt_in(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    monkeypatch.setenv("E2E_CHAT_GOAL_NOTIFICATIONS", "1")
+    assert _environment(tmp_path, "scripted-full")["E2E_CHAT_GOAL_NOTIFICATIONS"] == "1"
+    with pytest.raises(E2eContractError, match="invalid_chat_goal_notifications"):
+        _environment(tmp_path, "scripted-smoke")
+    monkeypatch.setenv("E2E_CHAT_GOAL_NOTIFICATIONS", "true")
+    with pytest.raises(E2eContractError, match="invalid_chat_goal_notifications"):
+        _environment(tmp_path, "scripted-full")

@@ -12,7 +12,9 @@ vi.mock('next-intl', () => ({
     params ? `${key}(${Object.values(params).join('/')})` : key,
 }))
 
-const memoriesQueryMock = vi.hoisted(() => ({ current: { data: undefined as unknown } }))
+const memoriesQueryMock = vi.hoisted((): { current: { data: unknown; isError?: boolean } } => ({
+  current: { data: undefined },
+}))
 
 vi.mock('@/lib/hooks/use-memory', () => ({
   useMemories: () => memoriesQueryMock.current,
@@ -64,6 +66,26 @@ describe('MemoryRecallChip', () => {
     expect(screen.getByText('한국어로 답변 선호')).toBeInTheDocument()
     expect(screen.getByText('hiddenContent')).toBeInTheDocument()
     expect(screen.queryByText('<redacted>')).not.toBeInTheDocument()
+  })
+
+  it('재조회가 거부되면 캐시에 남아 있던 기억을 숨긴다', async () => {
+    const user = userEvent.setup()
+    const cachedContent = '캐시에만 남은 기억'
+    const cached = [{ id: 'm1', content: cachedContent }]
+    memoriesQueryMock.current = { data: cached, isError: false }
+    const store = createStore()
+    store.set(chatMemoryRecallAtom, {
+      'conv-1': [{ id: 'm1', scope: 'user', content: '<redacted>' }],
+    })
+    const view = renderChip(store)
+    await user.click(screen.getByText('title'))
+    expect(screen.getByText(cachedContent)).toBeInTheDocument()
+
+    memoriesQueryMock.current = { data: cached, isError: true }
+    view.rerender(<MemoryRecallChip />)
+
+    expect(screen.queryByText(cachedContent)).not.toBeInTheDocument()
+    expect(screen.getByText('hiddenContent')).toBeInTheDocument()
   })
 
   it('회상 개수 메타를 보여주고 펼치면 scope 배지 + 내용을 보여준다', async () => {

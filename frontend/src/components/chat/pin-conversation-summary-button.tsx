@@ -1,7 +1,12 @@
 'use client'
 
+import { useContext, useRef } from 'react'
 import { PinIcon, PinOffIcon } from 'lucide-react'
 import { useAuiState } from '@assistant-ui/react'
+import { AgUiChatActionContext } from '@/lib/ag-ui/chat-action-context'
+import { useMoldyAgUiActivities } from '@/lib/ag-ui/activity-context'
+import { findChatMessageLink } from '@/lib/ag-ui/chat-message-identity'
+import { reportClientError } from '@/lib/logging/client-logger'
 import { usePinnedConversationSummary } from '@/lib/hooks/use-pinned-conversation-summary'
 
 type PinConversationSummaryButtonProps = {
@@ -15,12 +20,50 @@ export function PinConversationSummaryButton({
   pinLabel,
   unpinLabel,
 }: PinConversationSummaryButtonProps) {
-  const messageId = useAuiState((state) => state.message?.id)
-  const isRunning = useAuiState((state) => state.message?.status?.type === 'running')
-  const { summary, isMutating, pin, unpin } = usePinnedConversationSummary(conversationId)
-  const isPinned = summary?.source_message_id === messageId
+  const actions = useContext(AgUiChatActionContext)
+  const activity = useMoldyAgUiActivities()
+  const message = useAuiState((state) =>
+    state.message?.status?.type === 'running' ? null : state.message,
+  )
+  const publicId =
+    message && activity?.conversationId === conversationId
+      ? findChatMessageLink(message, activity.links)?.uiMessageId
+      : undefined
+  const { summary, isMutating, pin, pinPublic, unpin } =
+    usePinnedConversationSummary(conversationId)
+  const isPinned = Boolean(
+    summary &&
+    (actions
+      ? publicId && summary.source_public_message_id === publicId
+      : summary.source_message_id === message?.id),
+  )
   const label = isPinned ? unpinLabel : pinLabel
-  const disabled = conversationId === null || !messageId || isRunning || isMutating
+  const resolving = useRef(false)
+  const disabled = conversationId === null || !message?.id || isMutating
+
+  const toggle = async () => {
+    if (!message || disabled || resolving.current) return
+    if (isPinned) {
+      unpin()
+      return
+    }
+    if (!actions) {
+      pin(message.id)
+      return
+    }
+    if (!actions.resolveMessageId) return
+    resolving.current = true
+    try {
+      const resolved = await actions.resolveMessageId(message)
+      if (!resolved) return
+      if (resolved === summary?.source_public_message_id) unpin()
+      else pinPublic(resolved)
+    } catch (error) {
+      reportClientError('pinned-summary', 'Could not resolve the stored message.', error)
+    } finally {
+      resolving.current = false
+    }
+  }
 
   return (
     <button
@@ -29,14 +72,7 @@ export function PinConversationSummaryButton({
       aria-label={label}
       title={label}
       disabled={disabled}
-      onClick={() => {
-        if (!messageId || disabled) return
-        if (isPinned) {
-          unpin()
-        } else {
-          pin(messageId)
-        }
-      }}
+      onClick={() => void toggle()}
     >
       {isPinned ? (
         <PinOffIcon className="size-3" aria-hidden="true" />

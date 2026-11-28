@@ -33,6 +33,7 @@ from app.authz.conversation_run_scope import (
     RunExecutionTarget,
     lock_executable_run,
 )
+from app.authz.organization_execution_gateway import held_conversation
 from app.authz.worker_conversation_scope import (
     WorkerConversationTarget,
     load_worker_conversation,
@@ -43,6 +44,7 @@ from app.dependencies import CurrentUser
 from app.error_codes import conversation_not_found
 from app.exceptions import AppError
 from app.marketplace.redaction import replace_secret_values
+from app.models.conversation import INDEPENDENT_JOB_SOURCE
 from app.models.conversation_run import ConversationRun
 from app.services import conversation_run_service, thread_branch_service
 from app.services import conversation_stream_service as stream_service
@@ -63,6 +65,7 @@ from app.services.conversation_run_delivery import (
     _trace_status_for_run,
 )
 from app.services.conversation_run_execution import AgentStreamExecutor, _run_conversation
+from app.services.conversation_run_fence import RunFence, lock_run_fence
 from app.services.conversation_run_interrupts import (
     has_interrupt_events,
     interrupt_id_from_events,
@@ -178,6 +181,7 @@ async def start_conversation_run(
     registry: RunTaskRegistry | None = None,
     attachment_ids: list[uuid.UUID] | None = None,
     config_transform: Callable[[AgentConfig], AgentConfig] | None = None,
+    recovery_fence: RunFence | None = None,
 ) -> StreamCtx:
     target = _execution_target(run_id, conversation_id, cfg)
     if user.id != target.conversation.context.user_id:
@@ -196,12 +200,31 @@ async def start_conversation_run(
             if error.code == "AGENT_ARCHIVED":
                 raise
             raise conversation_not_found() from error
-        if await lock_executable_run(session, target) is None:
+        run = await lock_executable_run(session, target)
+        if run is None:
             raise conversation_not_found()
+        conversation = held_conversation(session, conversation_id)
+        if conversation is None or cfg.independent_job != (
+            conversation.source == INDEPENDENT_JOB_SOURCE
+        ):
+            raise conversation_not_found()
+        from app.services.conversation_goal_worker import configure_goal_runtime
+
+        await configure_goal_runtime(session, run, cfg)
         registry = registry or get_run_task_registry()
+        if recovery_fence is not None:
+            if (
+                recovery_fence.run_id != run_id
+                or recovery_fence.conversation_id != conversation_id
+                or recovery_fence.worker_instance_id != registry.worker_instance_id
+            ):
+                raise conversation_not_found()
+            await lock_run_fence(session, recovery_fence)
         ctx = stream_service.prepare_stream_context(
             conversation_id, run_id=str(run_id), tenant=target.conversation.context
         )
+        if recovery_fence is not None:
+            ctx.broker.owner_generation = recovery_fence.generation
         task = asyncio.create_task(
             _run_conversation(
                 run_id=run_id,
@@ -215,6 +238,7 @@ async def start_conversation_run(
                 registry=registry,
                 attachment_ids=attachment_ids,
                 config_transform=config_transform,
+                recovery_fence=recovery_fence,
             ),
             name=f"conversation-run-{run_id}",
         )

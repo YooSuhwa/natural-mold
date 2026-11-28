@@ -1,0 +1,358 @@
+"""Resolve a protected action in the same targeted sibling after fresh authentication."""
+
+from __future__ import annotations
+
+import asyncio
+import json
+import os
+from pathlib import Path
+from typing import TYPE_CHECKING, Any
+from uuid import uuid4
+
+import httpx
+from http_common import Gate, checked_sse, expect_status, open_gate, require
+
+if TYPE_CHECKING:
+    from delegation_parity import ResearchModel
+
+
+async def browser_decision(
+    fixture: dict[str, str], path: str
+) -> tuple[dict[str, Any], httpx.Response, dict[str, Any]]:
+    helper = Path(__file__).with_name("delegation_approval_browser.cjs")
+    proc = await asyncio.create_subprocess_exec(
+        "node",
+        str(helper),
+        stdin=asyncio.subprocess.PIPE,
+        stdout=asyncio.subprocess.PIPE,
+        stderr=asyncio.subprocess.PIPE,
+    )
+    try:
+        stdout, stderr = await asyncio.wait_for(proc.communicate(json.dumps(fixture).encode()), 150)
+    except TimeoutError:
+        proc.terminate()
+        await proc.wait()
+        raise
+    if proc.returncode != 0:
+        # The helper emits only its decision phase and reason on stderr.
+        raise AssertionError("child browser decision failed: " + stderr.decode()[-600:])
+    wire = json.loads(stdout)
+    body = wire["request"]
+    request = httpx.Request("POST", os.environ["E2E_API_BASE_URL"] + path, json=body)
+    response = httpx.Response(
+        wire["status"], headers=wire["headers"], content=wire["sse"].encode(), request=request
+    )
+    return body, response, wire["observations"]
+
+
+async def check_targeted_approval(gate: Gate, model: ResearchModel, tid: str, rid: str) -> None:
+    base = f"/api/conversations/{tid}"
+    records: dict[str, Any] = {"threadId": tid, "startRunId": rid}
+
+    def record(**observed: Any) -> None:
+        records.update(observed)
+        (gate.evidence_dir / "targeted-sibling-approval.json").write_text(
+            json.dumps(records, indent=2) + "\n"
+        )
+
+    public = checked_sse(await gate.owner_b.send("GET", f"{base}/ag-ui/runs/{rid}/stream"))
+    terminal = public[-1].get("outcome", {})
+    record(
+        phase="original terminal",
+        outcome=terminal.get("type"),
+        histories=model.histories,
+        terminalType=public[-1]["type"],
+        failureCode=public[-1].get("code"),
+    )
+    require(
+        terminal.get("type") == "interrupt",
+        "targeted child did not ask for protected approval",
+    )
+    require(not model.protected_results, "protected lookup returned a result before approval")
+    [waiting] = terminal["interrupts"]
+    iid, sid = waiting["id"], waiting["subagentRunId"]
+    [action] = waiting["metadata"]["moldy"]["action_requests"]
+    require(action["name"] == "read_file", "approval does not name the protected child action")
+    require(
+        model.histories == {"alpha": [0, 1], "beta": [0, 0]},
+        "wrong child saw the instruction before approval",
+    )
+    before = await gate.sql(
+        "SELECT status,decision_no FROM approval_requests "
+        "WHERE interrupt_id=%s AND conversation_id=%s",
+        (iid, tid),
+    )
+    require(
+        before == [{"status": "pending", "decision_no": 0}],
+        "native approval already consumed before decision",
+    )
+    record(phase="approval pending", interruptId=iid, subagentRunId=sid)
+    await gate.owner_a.client.aclose()
+    await gate.owner_b.client.aclose()
+    async with open_gate() as fresh:
+        require(fresh.owner_b.user_id == gate.owner_b.user_id, "fresh login changed actor")
+        snap_url = f"{base}/ag-ui/snapshot?runId={rid}"
+        snapshot = await fresh.owner_b.json("GET", snap_url)
+        foreign = await fresh.other_b.send("GET", snap_url)
+        expect_status(foreign, 404)
+        native = await fresh.owner_a.json(
+            "GET", f"{base}/langgraph/threads/{tid}/state?read_only=true"
+        )
+        native_interrupts = [
+            i.get("id") for t in native.get("tasks", []) for i in t.get("interrupts", [])
+        ]
+        task_page = await fresh.owner_a.json("GET", f"{base}/child-tasks")
+        tasks = task_page["items"]
+        by_call = {t["tool_call_id"]: t for t in tasks}
+        alpha, beta = by_call["delegate-alpha"], by_call["delegate-beta"]
+        require(
+            model.key not in json.dumps(snapshot),
+            "fixture key leaked into standard snapshot",
+        )
+        require(model.marker not in json.dumps(snapshot), "unapproved file content was exposed")
+        (gate.evidence_dir / "targeted-sibling-pending-snapshot.json").write_text(
+            json.dumps(snapshot) + "\n"
+        )
+        require(
+            model.key not in json.dumps(task_page),
+            "fixture key leaked into child controls",
+        )
+        (gate.evidence_dir / "targeted-sibling-pending-tasks.json").write_text(
+            json.dumps(task_page) + "\n"
+        )
+        children = {c["childTaskId"]: c for c in snapshot["subagents"] if c.get("childTaskId")}
+        a, b = children[alpha["id"]], children[beta["id"]]
+        record(
+            phase="fresh login",
+            targetId=alpha["id"],
+            siblingId=beta["id"],
+            foreignRead=foreign.status_code,
+            nativeInterruptIds=native_interrupts,
+            standardInterrupts=[(i["id"], i.get("subagentRunId")) for i in snapshot["interrupts"]],
+            childStates={"target": a["status"], "sibling": b["status"]},
+            managedTaskStates={"target": alpha["status"], "sibling": beta["status"]},
+            streamChildren=[
+                {
+                    "type": frame["type"],
+                    "subagentRunId": frame.get("subagentRunId"),
+                    "outcome": frame.get("outcome", {}).get("type"),
+                }
+                for frame in public
+                if frame["type"] in {"SUBAGENT_STARTED", "SUBAGENT_FINISHED"}
+            ],
+            targetInterruptIds=a["interruptIds"],
+            siblingInterruptIds=b["interruptIds"],
+        )
+        require(
+            [i["id"] for i in snapshot["interrupts"]] == [iid]
+            and snapshot["interrupts"][0].get("subagentRunId") == sid,
+            "fresh session lost protected interrupt identity",
+        )
+        require(iid in native_interrupts, "native reader lost the same pending interrupt")
+        require(
+            a["subagentRunId"] == sid
+            and a["interruptIds"] == [iid]
+            and a["status"] == "interrupted"
+            and not b["interruptIds"]
+            and b["status"] == "completed",
+            "sibling assignment changed after reauthentication",
+        )
+        finishes = [frame for frame in public if frame["type"] == "SUBAGENT_FINISHED"]
+        by_subagent = {frame["subagentRunId"]: frame.get("outcome", {}) for frame in finishes}
+        require(
+            len(finishes) == 2
+            and set(by_subagent) == {sid, b["subagentRunId"]}
+            and by_subagent[sid].get("type") == "suspended"
+            and by_subagent[sid].get("interruptIds") == [iid]
+            and by_subagent[b["subagentRunId"]].get("type", "success") == "success",
+            "standard child finish events disagree with the managed tasks at the pause boundary",
+        )
+        public_resume = str(uuid4())
+        body = {
+            "threadId": tid,
+            "runId": public_resume,
+            "protocolVersion": "1.0",
+            "messages": [],
+            "state": {},
+            "tools": [],
+            "context": [],
+            "forwardedProps": {},
+            "resume": [
+                {
+                    "interruptId": iid,
+                    "status": "resolved",
+                    "payload": {"decisions": [{"type": "approve"}]},
+                }
+            ],
+        }
+        path = f"{base}/ag-ui/runs"
+        if os.environ.get("MOLDY_AGUI_BROWSER_READY") == "1":
+            room = await fresh.sql(
+                "SELECT agent_id::text AS id FROM conversations WHERE id=%s", (tid,)
+            )
+            visible, response, observations = await browser_decision(
+                {
+                    "threadId": tid,
+                    "agentId": room[0]["id"],
+                    "interruptId": iid,
+                    "sourceRunId": rid,
+                    "alphaTaskId": alpha["id"],
+                    "betaTaskId": beta["id"],
+                    "subagentRunId": sid,
+                    "expectedParentResult": "Both local checks have finished.",
+                    "expectedAlphaResult": "report alpha, addressed instructions 1",
+                },
+                path,
+            )
+            require(
+                visible["threadId"] == tid
+                and visible["resume"] == body["resume"]
+                and visible["runId"] != rid,
+                "browser resumed a different protected interrupt",
+            )
+            public_resume = visible["runId"]
+            record(phase="browser decision delivered", browser=observations)
+        else:
+            response = await fresh.owner_b.send("POST", path, body)
+        record(
+            phase="decision submitted",
+            resumeRunId=public_resume,
+            responseStatus=response.status_code,
+        )
+        continued = checked_sse(response)
+        terminal = continued[-1]
+        if terminal.get("code") == "AG_UI_SNAPSHOT_REQUIRED":
+            # Snapshot invalidation ends this reader. The accepted command has its own lifetime.
+            restored = await fresh.owner_b.json(
+                "GET", f"{base}/ag-ui/snapshot?runId={public_resume}"
+            )
+            require(
+                restored["runId"] == public_resume and restored["threadId"] == tid,
+                "read reset moved the approval to a different run",
+            )
+            record(phase="restored decision read", resetRunStatus=restored["runStatus"])
+            replay = await fresh.owner_b.send("GET", f"{base}/ag-ui/runs/{public_resume}/stream")
+            terminal = checked_sse(replay)[-1]
+        record(
+            phase="continuation terminal",
+            terminalType=terminal["type"],
+            outcome=terminal.get("outcome", {}).get("type"),
+            failureCode=terminal.get("code"),
+            histories=model.histories,
+            protectedToolResults=model.protected_results,
+        )
+        final_snap = await fresh.owner_a.json("GET", f"{base}/ag-ui/snapshot?runId={public_resume}")
+        require(model.key not in json.dumps(final_snap), "fixture key leaked in the final read")
+        (gate.evidence_dir / "targeted-sibling-final-snapshot.json").write_text(
+            json.dumps(final_snap) + "\n"
+        )
+        require(
+            terminal["type"] == "RUN_FINISHED"
+            and terminal.get("outcome", {}).get("type", "success") == "success",
+            "targeted continuation failed",
+        )
+        public_result_owners = [
+            message.get("subagentRunId")
+            for message in final_snap["messages"]
+            if message.get("role") == "tool" and model.marker in str(message.get("content", ""))
+        ]
+        require(
+            public_result_owners == [sid],
+            "the public lookup result is missing, duplicated, or attached to the sibling",
+        )
+        require(
+            model.protected_results == [True],
+            "the approved target did not receive exactly one successful lookup of the seeded file",
+        )
+        require(
+            model.histories == {"alpha": [0, 1, 1], "beta": [0, 0]},
+            "resume re-executed the sibling or lost the targeted input",
+        )
+        model_calls = model.requests
+        final_page = await fresh.owner_a.json("GET", f"{base}/child-tasks")
+        final = final_page["items"]
+        by_id = {t["id"]: t for t in final}
+        require(
+            set(by_id) == {alpha["id"], beta["id"]},
+            "approved child was duplicated or replaced",
+        )
+        for t, source, receipts in ((alpha, "alpha", ["applied"]), (beta, "beta", [])):
+            row = by_id[t["id"]]
+            require(
+                row["status"] == "completed"
+                and row["result"] == f"report {source}, addressed instructions {len(receipts)}"
+                and [r["status"] for r in row["instructions"]] == receipts,
+                "final result/receipt belongs to the wrong child",
+            )
+        final_children = {child["subagentRunId"]: child for child in final_snap["subagents"]}
+        for original, task in ((a, alpha), (b, beta)):
+            restored_child = final_children.get(original["subagentRunId"], {})
+            require(
+                restored_child.get("status") == "completed"
+                and restored_child.get("childTaskId") == task["id"]
+                and restored_child.get("parentToolCallId") == original["parentToolCallId"],
+                "completed child cannot be reopened by its authorized task and original tool call",
+            )
+        final_native = await fresh.owner_b.json(
+            "GET", f"{base}/langgraph/threads/{tid}/state?read_only=true"
+        )
+        from delegation_parity import message_text
+
+        for source in ("alpha", "beta"):
+            expected = by_id[by_call[f"delegate-{source}"]["id"]]["result"]
+            require(
+                any(
+                    m.get("tool_call_id") == f"delegate-{source}"
+                    and message_text(m.get("content")) == expected
+                    for m in final_native["values"]["messages"]
+                ),
+                "native history lost targeted result link",
+            )
+            require(
+                any(
+                    m.get("role") == "tool" and m.get("content") == expected
+                    for m in final_snap["messages"]
+                ),
+                "standard history lost targeted result",
+            )
+        require(
+            not final_snap["interrupts"] and model.key not in json.dumps(final_snap),
+            "finished snapshot exposed stale approval or credential",
+        )
+        require(
+            model.key not in json.dumps(final_page),
+            "fixture key leaked in final child controls",
+        )
+        (gate.evidence_dir / "targeted-sibling-final-tasks.json").write_text(
+            json.dumps(final_page) + "\n"
+        )
+        decisions = await fresh.sql(
+            "SELECT status, decision_no, decided_by::text AS actor FROM approval_requests "
+            "WHERE conversation_id=%s AND interrupt_id=%s",
+            (tid, iid),
+        )
+        require(
+            decisions == [{"status": "approved", "decision_no": 1, "actor": fresh.owner_b.user_id}],
+            "expected exactly one owned approval decision",
+        )
+        runs = await fresh.sql(
+            "SELECT id::text AS id, parent_run_id::text AS parent, status, source "
+            "FROM conversation_runs WHERE conversation_id=%s ORDER BY created_at,id",
+            (tid,),
+        )
+        require(
+            len(runs) == 2
+            and runs[0]["id"] == rid
+            and runs[1]["parent"] == rid
+            and runs[1]["status"] == "completed",
+            "read or resume created extra runs",
+        )
+        require(model.requests == model_calls, "read-only restoration invoked the model")
+        record(
+            phase="passed",
+            physicalRuns=runs,
+            decisions=decisions,
+            modelCalls=model_calls,
+            readModelCalls=model.requests - model_calls,
+            publicProtectedResultOwners=public_result_owners,
+        )

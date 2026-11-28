@@ -10,9 +10,15 @@ from functools import partial
 from typing import Any, assert_never
 
 from deepagents.middleware.filesystem import FilesystemMiddleware, FilesystemPermission
+from deepagents.middleware.summarization import compute_summarization_defaults
 from langchain_core.language_models import BaseChatModel
 from langchain_core.tools import BaseTool
 
+from app.agent_runtime.archive_summarization import (
+    ArchiveSummarizationMiddleware,
+    LegacyArchiveSummarizationMiddleware,
+    chat_archive_writes_for,
+)
 from app.agent_runtime.deep_agent_factory import (
     DeepAgentFactoryBindings as _DeepAgentFactoryBindings,
 )
@@ -29,6 +35,7 @@ from app.agent_runtime.deep_agent_factory import (
     with_moldy_deepagents_compatibility_impl as _with_moldy_deepagents_compatibility_impl,
 )
 from app.agent_runtime.filesystem_permissions import add_scoped_offload_permissions
+from app.agent_runtime.offload_storage import ScopedOffloadBackend
 from app.agent_runtime.runtime_facade_bindings import runtime_attr
 from app.agent_runtime.runtime_policy import ResolvedRuntimePolicy
 from app.agent_runtime.runtime_policy_capabilities import STORED_RESERVED_TOOL_NAMES
@@ -229,6 +236,7 @@ def build_agent(
     tool_approval: Any | None = None,
 ) -> Any:
     """Build a moldy agent. Returns CompiledStateGraph."""
+    archive_chat_history = chat_archive_writes_for(backend)
     effective_permissions = permissions
     effective_tools = tools
     bindings = _DeepAgentFactoryBindings(
@@ -259,6 +267,27 @@ def build_agent(
                 todo_enabled=todo_enabled,
             ),
         )
+    elif archive_chat_history is not None:
+        if not isinstance(backend, ScopedOffloadBackend):
+            raise ValueError("chat_archive_owner_required")
+        summarizer = (
+            ArchiveSummarizationMiddleware
+            if archive_chat_history
+            else LegacyArchiveSummarizationMiddleware
+        )
+        middleware = [
+            *(
+                item
+                for item in middleware or ()
+                if _middleware_name_impl(item) != _SUMMARIZATION_MIDDLEWARE_NAME
+            ),
+            summarizer(
+                model=model,
+                backend=backend,
+                trim_tokens_to_summarize=None,
+                **compute_summarization_defaults(model),
+            ),
+        ]
     return _build_agent_impl(
         model=model,
         tools=effective_tools,

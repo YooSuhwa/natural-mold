@@ -1,5 +1,7 @@
 """Execution queue children inherit their Conversation's owner and Agent binding."""
 
+from uuid import UUID
+
 from sqlalchemy import and_
 from sqlalchemy.sql.elements import ColumnElement
 
@@ -24,6 +26,17 @@ def conversation_input_parent() -> PrivateParent:
     )
 
 
-def owned_input_predicate(context: OrgContext) -> ColumnElement[bool]:
+def owned_input_predicate(context: OrgContext | Conversation) -> ColumnElement[bool]:
     """Owner match for queue inputs read under their already locked private Conversation."""
     return ConversationRunInput.user_id == context.user_id
+
+
+def lineage_input_predicate(
+    conversation: Conversation, readable_run_ids: set[UUID]
+) -> ColumnElement[bool]:
+    """A managed child's queue history contains only inputs accepted for its own runs."""
+    return and_(
+        ConversationRunInput.run_id.in_(readable_run_ids),
+        ConversationRunInput.user_id == conversation.user_id,
+        ConversationRunInput.agent_id == conversation.agent_id,
+    )

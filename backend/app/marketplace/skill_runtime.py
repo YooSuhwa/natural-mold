@@ -138,6 +138,7 @@ class SkillToolContext:
     agent_id: uuid.UUID | None = None
     run_id: str | None = None
     audit_kind: SkillExecutionAuditKind = "execute_in_skill"
+    goal_sandbox_run_id: str | None = field(default=None, kw_only=True)
     tenant_id: uuid.UUID = field(kw_only=True)  # derived audit/usage writes open this company
 
 

@@ -1,15 +1,18 @@
 import { test, expect } from './fixtures'
 import type { Page, Route } from '@playwright/test'
+import type { ToolApprovalView } from '../src/lib/types/tool-approval'
 import { mkdirSync } from 'node:fs'
 import { join } from 'node:path'
 import { MOCK_ORGANIZATIONS } from './helpers/organization-mock'
 
+const alphaAgentId = 'c1918c22-a180-4677-8234-79af77b69928'
+const draftId = '4f3d71b5-cd11-4364-b5e1-4a054ccb4023'
 const now = '2026-06-10T12:00:00Z'
 const captureDir = join(process.cwd(), '..', 'output', 'e2e-captures', '20260611-chat-navigator')
 
 const agents = [
   {
-    id: 'agent-1',
+    id: alphaAgentId,
     name: 'Alpha Agent',
     description: 'Research and planning assistant',
     status: 'active',
@@ -61,7 +64,7 @@ const agentDetails = agents.map((agent) => ({
 const conversations = [
   {
     id: 'conv-1',
-    agent_id: 'agent-1',
+    agent_id: alphaAgentId,
     title: 'Alpha kickoff',
     is_pinned: false,
     unread_count: 0,
@@ -74,7 +77,7 @@ const conversations = [
   },
   {
     id: 'conv-2',
-    agent_id: 'agent-1',
+    agent_id: alphaAgentId,
     title: 'Second hidden session',
     is_pinned: true,
     unread_count: 0,
@@ -99,6 +102,15 @@ const conversations = [
     active_run: null,
   },
 ]
+
+const draftConversation = {
+  ...conversations[0],
+  id: draftId,
+  title: '새 대화',
+  agent_name_snapshot: agents[0].name,
+  last_activity_at: now,
+  created_at: now,
+}
 
 function withAgent(conversation: (typeof conversations)[number]) {
   const agent = agents.find((item) => item.id === conversation.agent_id) ?? agents[0]
@@ -152,6 +164,23 @@ async function mockApi(route: Route) {
     await route.fulfill({ json: agents })
     return
   }
+  if (
+    route.request().method() === 'POST' &&
+    pathname === `/api/agents/${alphaAgentId}/conversations/draft`
+  ) {
+    await route.fulfill({ status: 201, json: draftConversation })
+    return
+  }
+  if (pathname === `/api/conversations/${draftId}`) {
+    if (route.request().method() === 'DELETE' && url.searchParams.get('only_if_draft') === 'true') {
+      await route.fulfill({ status: 204 })
+      return
+    }
+    if (route.request().method() === 'GET') {
+      await route.fulfill({ json: draftConversation })
+      return
+    }
+  }
   if (pathname.startsWith('/api/agents/') && pathname.endsWith('/conversations/page')) {
     const agentId = pathname.split('/')[3]
     await route.fulfill({
@@ -191,6 +220,7 @@ async function mockApi(route: Route) {
   if (pathname.endsWith('/messages')) {
     await route.fulfill({
       json: {
+        conversation_source: pathname === `/api/conversations/${draftId}/messages` ? 'draft' : 'ui',
         messages: [],
         active_tip_message_id: null,
         active_checkpoint_id: null,
@@ -199,8 +229,52 @@ async function mockApi(route: Route) {
     })
     return
   }
+  if (
+    route.request().method() === 'GET' &&
+    /^\/api\/conversations\/[^/]+\/independent-jobs$/.test(pathname)
+  ) {
+    await route.fulfill({ json: { enabled: false, parent_job: null, jobs: [], targets: [] } })
+    return
+  }
+  if (route.request().method() === 'GET' && /^\/api\/conversations\/[^/]+\/goal$/.test(pathname)) {
+    await route.fulfill({ json: { enabled: false, goal: null } })
+    return
+  }
+  if (
+    route.request().method() === 'GET' &&
+    /^\/api\/conversations\/[^/]+\/child-tasks$/.test(pathname)
+  ) {
+    await route.fulfill({
+      json: { enabled: false, allow_legacy_details: true, items: [], next_offset: null },
+    })
+    return
+  }
+  if (
+    route.request().method() === 'GET' &&
+    /^\/api\/conversations\/[^/]+\/steers$/.test(pathname)
+  ) {
+    await route.fulfill({ json: [] })
+    return
+  }
   if (pathname.endsWith('/files')) {
     await route.fulfill({ json: [] })
+    return
+  }
+  if (/^\/api\/conversations\/[^/]+\/tool-grants$/.test(pathname)) {
+    await route.fulfill({ json: [] })
+    return
+  }
+  if (/^\/api\/agents\/[^/]+\/tool-approval$/.test(pathname)) {
+    await route.fulfill({
+      json: {
+        settings: null,
+        company_actions: {},
+        company_always_ask: [],
+        tools: [],
+        parts: [],
+        unresolved: [],
+      } satisfies ToolApprovalView,
+    })
     return
   }
   await route.fulfill({ json: { items: [], total: 0 } })
@@ -209,7 +283,7 @@ async function mockApi(route: Route) {
 async function setupNavigatorPage(page: Page) {
   await page.route('**/threads/**', (route) => route.fulfill({ json: [] }))
   await page.route('**/api/**', mockApi)
-  await page.goto('/agents/agent-1/conversations/conv-1')
+  await page.goto(`/agents/${alphaAgentId}/conversations/conv-1`)
   await page.waitForLoadState('domcontentloaded')
 }
 
@@ -252,7 +326,7 @@ test.describe('Chat navigator consolidation', () => {
     await capturePage(page, 'chat-navigator-default.png')
 
     const kickoffRow = page.locator(
-      '[data-chat-session-href="/agents/agent-1/conversations/conv-1"]',
+      `[data-chat-session-href="/agents/${alphaAgentId}/conversations/conv-1"]`,
     )
     await kickoffRow.hover()
     await kickoffRow.getByRole('button', { name: '대화 메뉴' }).click()
@@ -283,7 +357,10 @@ test.describe('Chat navigator consolidation', () => {
     await capturePage(page, 'chat-navigator-search.png')
 
     await page.getByRole('button', { name: '새 채팅' }).click()
-    await expect(page).toHaveURL(/\/agents\/agent-1\/conversations\/new$/)
+    await expect(page).toHaveURL(
+      (url) => url.pathname === `/agents/${alphaAgentId}/conversations/new`,
+    )
+    await expect(page.locator('textarea[data-moldy-composer-input="true"]').last()).toBeEditable()
 
     expect(errors.console).toEqual([])
     expect(errors.network).toEqual([])
@@ -329,13 +406,13 @@ test.describe('Chat navigator consolidation', () => {
     const sidebar = page.locator('[data-sidebar="sidebar"]')
     const agentHeaderOrder = () =>
       sidebar
-        .locator('a[href="/agents/agent-1"], a[href="/agents/agent-2"]')
+        .locator(`a[href="/agents/${alphaAgentId}"], a[href="/agents/agent-2"]`)
         .evaluateAll((nodes) => nodes.map((node) => node.getAttribute('href')))
 
     // 기본 상태: 에이전트별 보기 + 최근 사용 정렬(Alpha가 위), 비활성 에이전트 세션은 접혀 있다
     await expect(page.getByText('Alpha kickoff').first()).toBeVisible()
     await expect(page.getByText('Beta recent session')).toHaveCount(0)
-    await expect.poll(agentHeaderOrder).toEqual(['/agents/agent-1', '/agents/agent-2'])
+    await expect.poll(agentHeaderOrder).toEqual([`/agents/${alphaAgentId}`, '/agents/agent-2'])
 
     // 트리거는 opacity-0이라 헤딩 hover로 노출시킨 뒤 연다 (Playwright는 opacity-0도 클릭 가능하지만 캡처를 위해)
     // Base UI 라디오 항목은 closeOnClick=false라 메뉴가 유지되므로, 한 번 열어 연속으로 조작한다
@@ -357,7 +434,7 @@ test.describe('Chat navigator consolidation', () => {
       'true',
     )
     await page.getByRole('menuitemradio', { name: '생성순' }).click()
-    await expect.poll(agentHeaderOrder).toEqual(['/agents/agent-2', '/agents/agent-1'])
+    await expect.poll(agentHeaderOrder).toEqual(['/agents/agent-2', `/agents/${alphaAgentId}`])
     await capturePage(page, 'chat-navigator-agent-sort-created.png')
 
     // 보기 방식 서브메뉴: 세 가지 모드 라디오와 현재 선택(에이전트별)을 확인한다
@@ -388,7 +465,7 @@ test.describe('Chat navigator consolidation', () => {
       page.locator('[data-slot="tooltip-content"]').getByText('Beta Agent'),
     ).toBeVisible()
     await expect(page.getByText('Alpha kickoff').first()).toBeVisible()
-    await expect(sidebar.locator('a[href="/agents/agent-1"]')).toHaveCount(0)
+    await expect(sidebar.locator(`a[href="/agents/${alphaAgentId}"]`)).toHaveCount(0)
     await capturePage(page, 'chat-navigator-recent-sessions.png')
 
     expect(errors.console).toEqual([])

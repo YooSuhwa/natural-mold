@@ -21,13 +21,6 @@
     "message": "Anchors must have content and the content must be accessible by a screen reader."
   },
   {
-    "filePath": "src/components/chat/right-rail/chat-right-rail.tsx",
-    "line": 409,
-    "column": 13,
-    "ruleId": "jsx-a11y/anchor-has-content",
-    "message": "Anchors must have content and the content must be accessible by a screen reader."
-  },
-  {
     "filePath": "src/components/chat/trace-debugger-view.tsx",
     "line": 103,
     "column": 27,
@@ -43,7 +36,7 @@
   },
   {
     "filePath": "src/components/chat/chat-image.tsx",
-    "line": 66,
+    "line": 80,
     "column": 9,
     "ruleId": "jsx-a11y/click-events-have-key-events",
     "message": "Visible, non-interactive elements with click handlers must have at least one keyboard listener."
@@ -133,30 +126,9 @@
     "message": "A control must be associated with a text label."
   },
   {
-    "filePath": "src/components/chat/right-rail/chat-right-rail.tsx",
-    "line": 409,
-    "column": 13,
-    "ruleId": "jsx-a11y/control-has-associated-label",
-    "message": "A control must be associated with a text label."
-  },
-  {
     "filePath": "src/components/chat/tool-ui/approval-footer.tsx",
     "line": 57,
     "column": 7,
-    "ruleId": "jsx-a11y/control-has-associated-label",
-    "message": "A control must be associated with a text label."
-  },
-  {
-    "filePath": "src/components/chat/tool-ui/user-input-ui.tsx",
-    "line": 128,
-    "column": 7,
-    "ruleId": "jsx-a11y/control-has-associated-label",
-    "message": "A control must be associated with a text label."
-  },
-  {
-    "filePath": "src/components/chat/tool-ui/user-input-ui.tsx",
-    "line": 96,
-    "column": 15,
     "ruleId": "jsx-a11y/control-has-associated-label",
     "message": "A control must be associated with a text label."
   },
@@ -218,7 +190,7 @@
   },
   {
     "filePath": "src/components/chat/chat-image.tsx",
-    "line": 66,
+    "line": 80,
     "column": 9,
     "ruleId": "jsx-a11y/no-noninteractive-element-interactions",
     "message": "Non-interactive elements should not be assigned mouse or keyboard event listeners."

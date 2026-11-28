@@ -1,16 +1,19 @@
 'use client'
 
-import { useState } from 'react'
+import { useContext, useState } from 'react'
 import { useAuiState } from '@assistant-ui/react'
 import { ArrowLeftToLineIcon, CheckIcon, SaveIcon, XIcon } from 'lucide-react'
 import { useTranslations } from 'next-intl'
 import { toast } from 'sonner'
+import { AgUiChatActionContext } from '@/lib/ag-ui/chat-action-context'
+import { storedChatMessageId, wireChatMessageId } from '@/lib/ag-ui/chat-message-identity'
 import { Button } from '@/components/ui/button'
 import { useSaveSideChat } from '@/lib/hooks/use-side-chat'
 import { useSideChat } from './side-chat-context'
 
 export function SideChatToolbar({ agentId }: { readonly agentId: string }) {
   const workspace = useSideChat()
+  const agUi = useContext(AgUiChatActionContext)
   const t = useTranslations('chat.sideChat')
   const { mutateAsync: saveSideChat } = useSaveSideChat(agentId)
   const messages = useAuiState((state) => state.thread.messages)
@@ -48,7 +51,7 @@ export function SideChatToolbar({ agentId }: { readonly agentId: string }) {
       reference: {
         kind: 'conversation',
         id: workspace.sideId,
-        message_id: answer.id,
+        message_id: agUi ? (storedChatMessageId(answer) ?? wireChatMessageId(answer)) : answer.id,
         message_role: 'assistant',
         quote: answerText,
         label: t('title'),

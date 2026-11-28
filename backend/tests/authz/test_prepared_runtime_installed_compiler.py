@@ -152,7 +152,7 @@ def build_prepared_root(
     admission: Any,
     *,
     tools: list[Any],
-    leaf: LeafSpy | None = None,
+    leaf: AgentMiddleware[Any, Any, Any] | None = None,
     compile_child: Callable[..., Any] | None = None,
 ):
     common: dict[str, Any] = {

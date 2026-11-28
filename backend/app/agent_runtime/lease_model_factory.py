@@ -61,11 +61,14 @@ from app.agent_runtime.model_provider_builders import (
     _apply_openai_compatible_base_url,
 )
 from app.agent_runtime.model_provider_registry import _GPT5_DEFAULT_COMPLETION_TOKENS
+from app.agent_runtime.openai_prompt_cache import prompt_cache_options
 
 OPENAI_FAMILY = frozenset({"openai", "custom", "openrouter", "openai_compatible"})
 SUPPORTED_PROVIDERS = OPENAI_FAMILY | {"anthropic", "google"}
 _SCALAR_PARAMS = ("temperature", "top_p", "max_tokens")
-_ALLOWED_PARAMS = frozenset({*_SCALAR_PARAMS, "context_window", "use_responses_api"})
+_ALLOWED_PARAMS = frozenset(
+    {*_SCALAR_PARAMS, "context_window", "use_responses_api", "prompt_cache_key"}
+)
 
 
 @dataclass(frozen=True, slots=True)
@@ -163,7 +166,7 @@ def _create(spec: LeaseModelSpec, guard: LeaseSendGuard) -> LeaseOwnedModel:
         try:
             with pending_google_transport(bundle):
                 google = LeaseGoogleChatModel(**kwargs)
-            google.bind_lease_guard(guard)
+            google.bind_lease_guard(guard, provider=spec.provider)
         except BaseException:
             close_unused_owned(bundle.cleanup.aclose)
             raise
@@ -195,5 +198,12 @@ def _build_http_model(
         completion_token_default=_GPT5_DEFAULT_COMPLETION_TOKENS,
     )
     _apply_openai_compatible_base_url(spec.provider, kwargs)
-    model = build_openai_family_model({**kwargs, "stream_usage": True}, guard=guard, owned=owned)
+    kwargs.update(
+        prompt_cache_options(
+            spec.provider, kwargs.get("base_url"), spec.params.get("prompt_cache_key")
+        )
+    )
+    model = build_openai_family_model(
+        {**kwargs, "stream_usage": True}, guard=guard, owned=owned, provider=spec.provider
+    )
     return model, model.openai_api_base

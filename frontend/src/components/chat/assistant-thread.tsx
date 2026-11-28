@@ -20,6 +20,7 @@ import { ArrowDownIcon } from 'lucide-react'
 import { useTranslations } from 'next-intl'
 import { ChatSearchOverlay } from '@/components/chat/chat-search-overlay'
 import { MissionControlBar } from '@/components/chat/mission-control-bar'
+import { DelegatedChildTasks } from '@/components/chat/delegated-child-tasks'
 import { SubagentTeamStrip } from '@/components/chat/subagent-team-strip'
 import { MemoryRecallChip } from '@/components/chat/memory-recall-chip'
 import { ExcludedCapabilitiesBanner } from '@/components/chat/excluded-capabilities-banner'
@@ -46,6 +47,7 @@ import type { ChatCommandActions } from '@/lib/chat/commands/chat-command-types'
 import type { SkillBrief } from '@/lib/types'
 import 'katex/dist/katex.min.css'
 import { useSideChat } from '@/components/chat/side-chat/side-chat-context'
+import { CanceledRunSummary } from '@/components/chat/run-summary'
 import './markdown-styles.css'
 
 export { GenericToolFallback } from '@/components/chat/tool-ui/generic-tool-ui'
@@ -55,6 +57,7 @@ export {
 } from '@/components/chat/assistant-message-parts'
 
 export interface AssistantThreadProps {
+  readOnlyConversation?: boolean
   threadHeader?: ReactNode
   agentImageUrl?: string | null
   agentImagePublicAsset?: boolean
@@ -72,6 +75,7 @@ export interface AssistantThreadProps {
   deepAgentsState?: DeepAgentsStateSnapshot
   enableAttachments?: boolean
   enableMessageQueue?: boolean
+  enableRunSteer?: boolean
   conversationId?: string
   variant?: 'default' | 'builder'
   builderModelLabel?: string
@@ -86,6 +90,7 @@ export interface AssistantThreadProps {
 }
 
 export function AssistantThread({
+  readOnlyConversation = false,
   threadHeader,
   agentImageUrl,
   agentImagePublicAsset = false,
@@ -103,6 +108,7 @@ export function AssistantThread({
   deepAgentsState,
   enableAttachments = false,
   enableMessageQueue = false,
+  enableRunSteer = false,
   conversationId,
   variant = 'default',
   builderModelLabel,
@@ -132,6 +138,7 @@ export function AssistantThread({
       builderAgentSubtitle,
       deepAgentsState,
       isBuilder,
+      readOnlyConversation,
       showMessageTimestamp,
       user,
     }),
@@ -143,6 +150,7 @@ export function AssistantThread({
       builderAgentSubtitle,
       deepAgentsState,
       isBuilder,
+      readOnlyConversation,
       showMessageTimestamp,
       user,
     ],
@@ -176,7 +184,12 @@ export function AssistantThread({
           {!isBuilder && deepAgentsState && deepAgentsState.todos.length > 0 ? (
             <MissionControlBar todos={deepAgentsState.todos} />
           ) : null}
-          {!isBuilder ? <SubagentTeamStrip /> : null}
+          {!isBuilder &&
+            (conversationId ? (
+              <DelegatedChildTasks conversationId={conversationId} />
+            ) : (
+              <SubagentTeamStrip />
+            ))}
           {!isBuilder ? <MemoryRecallChip /> : null}
           {!isBuilder ? <ExcludedCapabilitiesBanner /> : null}
           {!isBuilder ? <ConversationToolGrantChips /> : null}
@@ -207,14 +220,16 @@ export function AssistantThread({
             >
               <ThreadPrimitive.Messages>
                 {({ message }) => {
-                  const Component = message.composer.isEditing
-                    ? ASSISTANT_THREAD_MESSAGE_COMPONENTS.UserEditComposer
-                    : message.role === 'user'
-                      ? ASSISTANT_THREAD_MESSAGE_COMPONENTS.UserMessage
-                      : ASSISTANT_THREAD_MESSAGE_COMPONENTS.AssistantMessage
+                  const Component =
+                    message.composer.isEditing && !readOnlyConversation
+                      ? ASSISTANT_THREAD_MESSAGE_COMPONENTS.UserEditComposer
+                      : message.role === 'user'
+                        ? ASSISTANT_THREAD_MESSAGE_COMPONENTS.UserMessage
+                        : ASSISTANT_THREAD_MESSAGE_COMPONENTS.AssistantMessage
                   return <Component />
                 }}
               </ThreadPrimitive.Messages>
+              <CanceledRunSummary />
             </div>
             <ThreadPrimitive.ViewportFooter className="pointer-events-none sticky bottom-0 z-10 flex justify-center pb-2">
               <ScrollToBottomButton isAtBottom={isViewportAtBottom} />
@@ -224,7 +239,7 @@ export function AssistantThread({
             <DataComponent key={`data-${index}`} />
           ))}
           <ReconnectIndicator />
-          {isBuilder ? (
+          {readOnlyConversation ? null : isBuilder ? (
             <Suspense fallback={<BuilderComposerFallback />}>
               <BuilderComposer modelLabel={builderModelLabel} />
             </Suspense>
@@ -239,6 +254,7 @@ export function AssistantThread({
                 compact={compact}
                 enableAttachments={enableAttachments}
                 enableMessageQueue={enableMessageQueue}
+                enableRunSteer={enableRunSteer}
                 focusKey={conversationId}
                 dictationAvailability={dictationAvailability}
                 onDictationStart={onDictationStart}

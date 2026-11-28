@@ -7,6 +7,7 @@ import { cn } from '@/lib/utils'
 import { formatCostUsd } from '@/components/usage/format'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
 import { formatDisplayNumber } from '@/lib/utils/display-format'
+import { useAgUiMessageActivity } from '@/lib/ag-ui/activity-context'
 import type { TokenUsageBreakdown } from '@/lib/types'
 
 interface AssistantMetadataCustom {
@@ -33,9 +34,11 @@ function formatDurationMs(ms: number): string {
  */
 export function TokenUsagePopover() {
   const t = useTranslations('chat.tokenUsage')
-  const usage = useAuiState(
+  const activity = useAgUiMessageActivity()
+  const savedUsage = useAuiState(
     (s) => (s.message?.metadata?.custom as AssistantMetadataCustom | undefined)?.usage,
   )
+  const usage = activity?.usage ?? savedUsage
 
   if (!usage) return null
   const total = usage.prompt_tokens + usage.completion_tokens

@@ -110,7 +110,7 @@ export function useHitlDecisionController({
     activeGenerationByIdRef.current = activeGenerationById
   }, [activeGenerationById])
 
-  useEffect(() => {
+  useLayoutEffect(() => {
     generationRef.current += 1
     const reason = new DOMException('Pending HiTL decisions were replaced', 'AbortError')
     for (const coordinator of coordinatorsRef.current.values()) coordinator.cancel(reason)
@@ -380,7 +380,7 @@ export function useHitlDecisionController({
   )
 
   const onResumeDecisionsRef = useRef(onResumeDecisions)
-  useEffect(() => {
+  useLayoutEffect(() => {
     onResumeDecisionsRef.current = onResumeDecisions
   }, [onResumeDecisions])
 

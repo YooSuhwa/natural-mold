@@ -131,6 +131,21 @@ async def materialize_prepared_execution(
 
     try:
         async with tenant_session(request.context, maker=async_session) as db:
+            if request.independent_job:
+                from app.authz.independent_job_execution import (
+                    authorize_independent_job_execution,
+                    independent_job_unavailable,
+                )
+
+                # Lock both conversations in canonical order before the materializer
+                # locks the child run and performs any external MCP discovery.
+                if not await authorize_independent_job_execution(
+                    db,
+                    run_id=request.run_id,
+                    conversation_id=request.conversation_id,
+                    context=request.context,
+                ):
+                    raise independent_job_unavailable()
             return await materialize_and_activate(
                 db,
                 execution_target(request),

@@ -9,7 +9,7 @@ from ``dev-plan-context-compaction-marker.md``:
 * no internal offload path reaches wire, broker, persistence, or trace output,
 * summarization tokens are suppressed (leak guard — they never reach the wire),
 * ★ the real answer content survives intact (suppress must be exact-match only),
-* with the flag off the legacy behavior holds (no markers, tokens flow through).
+* with the flag off, no markers or internal summary tokens reach the wire.
 
 Deep Agents 0.7.30+ counts the system prompt and tool schemas (about 3,600 tokens
 here) against the input budget and refuses a request that still does not fit after
@@ -19,6 +19,7 @@ the original shape: no compaction on the first run, one on each later run.
 
 from __future__ import annotations
 
+import asyncio
 import itertools
 import json
 from typing import Any, assert_never
@@ -26,6 +27,7 @@ from typing import Any, assert_never
 import pytest
 from deepagents import create_deep_agent
 from langchain.agents.middleware import ModelFallbackMiddleware
+from langchain_core.callbacks import AsyncCallbackHandler
 from langchain_core.callbacks.manager import CallbackManagerForLLMRun
 from langchain_core.language_models.fake_chat_models import GenericFakeChatModel
 from langchain_core.messages import AIMessage, BaseMessage, HumanMessage
@@ -322,18 +324,18 @@ async def test_stored_summarization_projects_two_runs_without_offload_path_leaks
         agent, thread_id, "run-first-compaction", "둘째 질문 " * _REPEAT
     )
     second_events, second_persisted, second_trace, second_broker = await _drive(
-        agent, thread_id, "run-second-compaction", "셋째 질문 " * _REPEAT
+        agent, thread_id, "run-second-compaction", "짧게"
     )
 
     first_payloads = _compaction_payloads(first_events)
     second_payloads = _compaction_payloads(second_events)
-    assert [payload.get("state") for payload in first_payloads].count("running") == 1
-    assert [payload.get("state") for payload in first_payloads].count("done") == 1
-    assert [payload.get("state") for payload in second_payloads].count("running") == 1
-    assert [payload.get("state") for payload in second_payloads].count("done") == 1
-
-    first_done = next(payload for payload in first_payloads if payload.get("state") == "done")
-    second_done = next(payload for payload in second_payloads if payload.get("state") == "done")
+    assert [payload["state"] for payload in first_payloads] == ["running", "done"]
+    assert [payload["state"] for payload in second_payloads] == ["running", "done"]
+    first_done = first_payloads[1]
+    second_done = second_payloads[1]
+    assert second_done["cutoff_index"] > first_done["cutoff_index"]
+    short_turn, *_ = await _drive(agent, thread_id, "run-short", "또 짧게")
+    assert _compaction_payloads(short_turn) == []
     history_id = first_done.get("history_id")
     assert isinstance(history_id, str)
     assert history_id.startswith("history_")
@@ -400,11 +402,13 @@ async def test_stored_auto_compaction_keeps_normal_answer_fallback_functional() 
     assert [payload.get("state") for payload in payloads].count("done") == 1
     assert _FALLBACK_ANSWER in _answer_text(events)
     for projection in (events, persisted, trace, broker):
-        assert "/conversation_history/" not in _serialized(projection)
+        serialized = _serialized(projection)
+        assert "/conversation_history/" not in serialized
+        assert "summary state" not in serialized
 
 
 @pytest.mark.asyncio
-async def test_compaction_disabled_flows_summary_tokens(
+async def test_compaction_disabled_hides_markers_and_internal_summary_tokens(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     monkeypatch.setattr(settings, "compaction_marker_enabled", False)
@@ -413,8 +417,58 @@ async def test_compaction_disabled_flows_summary_tokens(
     await _drive(agent, thread_id, "run-off-before", "첫 질문 " * _REPEAT)
     events, _, _, _ = await _drive(agent, thread_id, "run-off", "둘째 질문 " * _REPEAT)
 
-    # Flag off → no markers, and the legacy v3 path leaves summarization tokens
-    # in the stream (no suppress).
     assert _compaction_payloads(events) == []
-    assert len(_summary_token_events(events)) > 0
+    assert _summary_token_events(events) == []
     assert _ANSWER in _answer_text(events)
+
+
+@pytest.mark.asyncio
+async def test_running_is_delivered_while_the_summary_model_is_still_waiting() -> None:
+    release = asyncio.Event()
+    entered = asyncio.Event()
+
+    class HoldSummary(AsyncCallbackHandler):
+        async def on_chat_model_start(
+            self, _serialized: Any, _messages: Any, *, metadata: Any = None, **_: Any
+        ) -> None:
+            if metadata and metadata.get("lc_source") == "summarization":
+                entered.set()
+                await release.wait()
+
+    agent = _build_agent()
+    thread_id = "thread-held-summary"
+    await _drive(agent, thread_id, "before-held", "첫 질문 " * _REPEAT)
+    config = {"configurable": {"thread_id": thread_id}, "callbacks": [HoldSummary()]}
+    events = []
+    async with asyncio.timeout(10):
+        async for sse in stream_agent_response_langgraph(
+            agent, [HumanMessage(content="둘째 질문 " * _REPEAT)], config, run_id="held"
+        ):
+            event = _parse_sse(sse)
+            events.append(event)
+            if _compaction_payloads([event]) == [{"state": "running"}]:
+                await entered.wait()
+                release.set()
+
+    assert [p["state"] for p in _compaction_payloads(events)] == ["running", "done"]
+    assert _ANSWER in _answer_text(events)
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("enabled", [True, False])
+async def test_user_source_metadata_does_not_hide_the_answer(
+    enabled: bool, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(settings, "compaction_marker_enabled", enabled)
+    config = {
+        "configurable": {"thread_id": "ordinary-user-source"},
+        "metadata": {"lc_source": "summarization"},
+    }
+    events = [
+        _parse_sse(raw)
+        async for raw in stream_agent_response_langgraph(
+            _build_agent(), [HumanMessage(content="hello")], config
+        )
+    ]
+    assert _ANSWER in _answer_text(events)
+    assert _compaction_payloads(events) == []

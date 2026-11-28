@@ -1,6 +1,6 @@
 # Moldy Architecture Map
 
-<!-- project-current-source: migration=i09_token_usage_credential_scope; deepagents=0.7.11; ruff=0.16.5; refreshed=2026-10-21 -->
+<!-- project-current-source: migration=i52_ag_ui_queue_claim_guard; deepagents=0.7.42; ruff=0.16.5; refreshed=2026-11-27 -->
 
 > Last updated: 2026-09-10
 > Source basis: current tracked repository source, recent runtime commits, and
@@ -19,8 +19,8 @@ schedule productization.
 |------|----------------------|
 | Backend | FastAPI app factory in `backend/app/main.py` and async SQLAlchemy services |
 | Frontend | Next.js 16.2.2 + React 19.2.4 App Router, `next-intl`, TanStack Query, Jotai |
-| Runtime | LangChain 1.x + LangGraph 1.x + `deepagents>=0.7.11,<0.8.0` (lock: 0.7.11) |
-| Database | PostgreSQL 16, Alembic head `m77_side_chat_link` |
+| Runtime | LangChain 1.x + LangGraph 1.2.24 + `deepagents==0.7.42` (lock: 0.7.42) |
+| Database | PostgreSQL 16, Alembic head `i52_ag_ui_queue_claim_guard` |
 | Auth | ADR-016 JWT HS256, HttpOnly cookies, CSRF double-submit, refresh rotation, `super_user` |
 | Credentials | Cipher V2 and system/user credential separation |
 | Marketplace | Catalog, install, update, uninstall, publish, ACL, moderation/listing, k-skill importer |
@@ -194,7 +194,7 @@ The current skill runtime is selected-skill based, not a broad `/skills/` mount:
 
 ## Data Model Groups
 
-Alembic head is `m77_side_chat_link`. The ORM groups tables as follows:
+Alembic head is `i52_ag_ui_queue_claim_guard`. The ORM groups tables as follows:
 
 | Group | Tables / models |
 |-------|-----------------|
@@ -255,7 +255,8 @@ State flow:
 lib/api/* -> lib/hooks/* (TanStack Query) -> components/app routes
 lib/stores/* (Jotai) for chat rail, artifacts, sidebar, local UI state
 lib/sse/* and lib/chat/use-chat-runtime.ts for legacy streaming and resume
-lib/chat/langgraph-runtime/* for the feature-flagged LangGraph v3 runtime
+lib/ag-ui/* for the default AG-UI 1.0 transport in ordinary and side chat
+lib/chat/langgraph-runtime/* for the LangGraph v3 transport
 ```
 
 The LangGraph v3 frontend transport path is selected with
@@ -265,8 +266,9 @@ the effective runtime policy. `useMoldyLangGraphStream` owns a single
 assistant-ui with `useExternalStoreRuntime`, keeps the raw stream available for
 DeepAgents selectors, and routes HITL resume through `stream.respond`.
 
-The assistant-ui package is 0.15.18. Moldy's transport is retained; no AG-UI
-protocol migration or right-rail document viewer replacement was made. M73~M76
+Moldy uses `@assistant-ui/react` 0.15.38. The `ag_ui` chat runtime uses
+`@assistant-ui/react-ag-ui` 0.1.13 and `@ag-ui/client` 1.0.5. Migration
+`i51_ag_ui_commands` binds public run IDs to executions and queued inputs. M73~M76
 persist queued inputs, run metrics, MCP Apps provenance and pinned summaries.
 Queued priority input can cancel and restart a run; it is not same-run Steer.
 `ScopedOffloadBackend` already subclasses CompositeBackend for scoped offloads;

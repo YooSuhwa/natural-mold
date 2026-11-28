@@ -137,6 +137,9 @@ describe('attachCompactionToMessages + compactionFromMessage', () => {
     const attached = attachCompactionToMessages(messages, map)
 
     expect(compactionFromMessage(attached[1])).toEqual({ historyId: 'hist_opaque', cutoffIndex: 1 })
+    expect(attached[1].additional_kwargs.metadata).toMatchObject({
+      compactionMessageId: 'answer-msg',
+    })
     expect(compactionFromMessage(attached[0])).toBeNull()
   })
 
@@ -147,6 +150,9 @@ describe('attachCompactionToMessages + compactionFromMessage', () => {
     const attached = attachCompactionToMessages(messages, map)
 
     expect(compactionFromMessage(attached[0])).toEqual({ historyId: 'hist_stale' })
+    expect(attached[0].additional_kwargs.metadata).toMatchObject({
+      compactionMessageId: 'stale-id',
+    })
   })
 
   it('마커가 없으면 같은 배열 참조를 반환한다', () => {

@@ -13,22 +13,55 @@ import { useSharedSubagentRuntime } from '@/lib/chat/langgraph-runtime/subagent-
 import type { SubagentPayload } from '@/lib/stores/chat-right-rail'
 import { chatSubagentNamesAtom, resolveSubagentDisplayName } from '@/lib/stores/chat-subagent-names'
 
+import { useChildTasks } from '@/lib/hooks/use-child-tasks'
+import { AgUiSubagentDetails } from '../ag-ui-subagent-details'
+import { ManagedChildTask } from './managed-child-task'
+
 interface Props {
   payload: SubagentPayload
 }
 
 export function SubagentPanelContent({ payload }: Props) {
+  if (payload.conversationId && payload.childTaskId) {
+    return <ManagedChildTask conversationId={payload.conversationId} taskId={payload.childTaskId} />
+  }
+  return payload.conversationId ? (
+    <LegacyChildPanel conversationId={payload.conversationId} payload={payload} />
+  ) : (
+    <StreamSubagentPanel payload={payload} />
+  )
+}
+
+function LegacyChildPanel({ conversationId, payload }: Props & { conversationId: string }) {
+  const t = useTranslations('chat.childTasks')
+  const list = useChildTasks(conversationId)
+  if (list.isPending) return <p role="status">{t('loading')}</p>
+  if (!list.allowLegacyDetails) return <p role="status">{t('unavailable')}</p>
+  return <StreamSubagentPanel payload={payload} />
+}
+
+function StreamSubagentPanel({ payload }: Props) {
   const t = useTranslations('chat.rightRail')
   const runtime = useSharedSubagentRuntime(payload.conversationId)
-  const subagent = runtime?.subagentsByToolCallId.get(payload.toolCallId) ?? null
+  const selected = payload.subagentRunId
+    ? runtime?.subagentsByRunId?.get(payload.subagentRunId)
+    : null
+  const projected = selected?.id === payload.toolCallId ? selected : null
+  const subagent = projected ?? runtime?.subagentsByToolCallId.get(payload.toolCallId) ?? null
   const subagentNames = useAtomValue(chatSubagentNamesAtom)
+  const tChildren = useTranslations('chat.childTasks')
+  if (
+    (payload.subagentRunId || runtime?.subagentsByRunId) &&
+    (!payload.conversationId || !projected)
+  ) {
+    return <p role="status">{tChildren('unavailable')}</p>
+  }
   const agentName = resolveSubagentDisplayName(
     payload.conversationId ? subagentNames[payload.conversationId] : undefined,
     subagent?.name ?? payload.agentName,
   )
   const input = subagent?.taskInput ?? payload.input
   const hasInput = Boolean(input && input.trim().length > 0)
-  const hasRuntimeDetails = runtime !== null && subagent !== null
 
   return (
     <div className="space-y-4">
@@ -59,7 +92,9 @@ export function SubagentPanelContent({ payload }: Props) {
         <h3 className="mb-2 moldy-ui-micro font-semibold uppercase tracking-wider text-muted-foreground">
           {t('output')}
         </h3>
-        {hasRuntimeDetails ? (
+        {projected ? (
+          <AgUiSubagentDetails child={projected} />
+        ) : runtime?.stream && subagent ? (
           <ScopedSubagentDetails stream={runtime.stream} subagent={subagent} />
         ) : (
           <p className="rounded-md border border-dashed border-border/60 bg-muted/40 p-3 text-xs text-muted-foreground">

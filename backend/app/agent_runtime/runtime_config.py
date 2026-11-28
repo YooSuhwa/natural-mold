@@ -16,6 +16,7 @@ from app.config import settings
 
 if TYPE_CHECKING:
     from app.agent_runtime.attachment_inputs import AttachmentInputs
+    from app.agent_runtime.chat_steer_protocol import ChatSteerStore
     from app.authz.runtime_access_planner import RuntimeAccessPlan
     from app.guardrails.rules import RuleSet
     from app.guardrails.tool_risk import ToolRiskPolicy
@@ -65,6 +66,11 @@ class AgentConfig:
         default=LEGACY_RUNTIME_POLICY,
         kw_only=True,
     )
+    steer_store: ChatSteerStore | None = field(
+        default=None, kw_only=True, repr=False, compare=False
+    )
+    goal_context: str | None = field(default=None, kw_only=True)
+    goal_followup: bool = field(default=False, kw_only=True)
     model_params: dict[str, Any] | None = None
     middleware_configs: list[dict[str, Any]] | None = None
     agent_skills: list[dict[str, Any]] | None = None
@@ -87,6 +93,8 @@ class AgentConfig:
     llm_credential_id: str | None = None
     agent_owner_user_id: str | None = None
     caller_user_id: str | None = None
+    # Private conversation row owner verified during interactive chat hydration.
+    archive_owner_user_id: str | None = field(default=None, kw_only=True)
     credential_subject_user_id: str | None = None
     identity_mode: str | None = None
     agent_runtime_name: str | None = None
@@ -146,6 +154,8 @@ class AgentConfig:
     usage_root_agent_id: str | None = None
     # "personal" / "tenant": whose key the LLM runs on (copied to token usage; plan P2 Q2).
     llm_credential_scope: str | None = None
+    # Includes automatic matches and model defaults; llm_credential_id is the agent binding.
+    resolved_model_credential_id: str | None = field(default=None, kw_only=True)
     # 1A: this conversation's attachment files and the model's vision support, loaded
     # by the run worker so preparation stays DB-free. ``None``: no attachments.
     attachment_inputs: AttachmentInputs | None = None
@@ -163,6 +173,8 @@ class AgentConfig:
     # Memory policy plan 15 (5.2): the execution path that decides which memory the run may
     # read and write (``memory_paths``). Set by each entry; a resume takes its chain's origin.
     run_path: str = field(default="chat", kw_only=True)
+    # Set only by the server after it resolves the child conversation and its delegation.
+    independent_job: bool = field(default=False, kw_only=True)
     # Plan 15 (PR-B2, 5.4): the run whose chain keys automatic recall, the one-off recall
     # block the root agent's model calls carry (never the system prompt, the checkpoint or
     # a child agent), and the scopes ``search_memory`` may read (``None``: no tool).
@@ -231,6 +243,7 @@ class PreparedRunBinding:
     run_id: uuid.UUID
     thread_id: str
     participant_paths: tuple[str, ...] = ()
+    independent_job: bool = field(default=False, kw_only=True)
 
 
 @dataclass(frozen=True, eq=False, slots=True)

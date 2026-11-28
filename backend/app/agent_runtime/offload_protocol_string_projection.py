@@ -16,7 +16,7 @@ from app.agent_runtime.offload_storage_types import (
 INTERNAL_REFERENCE_REDACTED: Final = "internal_reference_redacted"
 
 _SCOPE_DIGEST = r"[0-9a-f]{32}"
-_SESSION = r"session_[0-9a-f]{32}\.md"
+_SESSION = r"(?:session|archive)_[0-9a-f]{32}\.md"
 _MEDIA = r"media/[0-9a-f]{16}\.[a-z0-9]{1,10}"
 _SAFE_SPILL_LEAF = r"[^/\x00\r\n]+"
 _REFERENCE_BOUNDARY = r"(?<![A-Za-z0-9_./-])"

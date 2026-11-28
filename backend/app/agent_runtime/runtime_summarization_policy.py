@@ -11,6 +11,11 @@ from deepagents.middleware.summarization import (
 )
 from langchain_core.language_models import BaseChatModel
 
+from app.agent_runtime.archive_summarization import (
+    ArchiveSummarizationMiddleware,
+    LegacyArchiveSummarizationMiddleware,
+    chat_archive_writes_for,
+)
 from app.agent_runtime.runtime_policy import (
     ResolvedRuntimePolicy,
     SummarizationAutoPolicyV1,
@@ -37,13 +42,21 @@ def create_stored_summarization_middleware(
     if policy.source != "stored":
         raise RuntimeSummarizationPolicyError
 
+    middleware = SummarizationMiddleware
+    archive_chat_history = chat_archive_writes_for(backend)
+    if archive_chat_history is not None:
+        middleware = (
+            ArchiveSummarizationMiddleware
+            if archive_chat_history
+            else LegacyArchiveSummarizationMiddleware
+        )
     match policy.effective.summarization:
         case SummarizationAutoPolicyV1():
             # The upstream mapping is the complete 0.7.11 contract. Passing it
             # through unchanged also leaves omitted constructor defaults under
             # Deep Agents' ownership.
             defaults = compute_summarization_defaults(model)
-            return SummarizationMiddleware(
+            return middleware(
                 model=model,
                 backend=backend,
                 trim_tokens_to_summarize=None,
@@ -56,7 +69,7 @@ def create_stored_summarization_middleware(
             )
             if type(max_input_tokens) is not int or max_input_tokens <= 0:
                 raise RuntimeSummarizationPolicyError
-            return SummarizationMiddleware(
+            return middleware(
                 model=model,
                 backend=backend,
                 trigger=("fraction", 0.80),

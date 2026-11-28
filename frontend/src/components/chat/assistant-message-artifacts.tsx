@@ -14,21 +14,57 @@ import {
   isArtifactPreviewOpen,
   toggleArtifactPreviewRailState,
 } from '@/lib/stores/chat-right-rail'
+import { sourceMessageIdFromThreadMessageId } from '@/lib/chat/langgraph-runtime/message-list'
 import type { ArtifactSummary } from '@/lib/types'
-import type { CompactionMarker } from '@/lib/chat/langgraph-runtime/compaction-events'
+import { isRecord } from '@/lib/chat/langgraph-runtime/usage-normalization'
+import { useAgUiMessageActivity } from '@/lib/ag-ui/activity-context'
+import { mergeActivityFiles } from '@/lib/ag-ui/activity-projection'
 
 function useMessageArtifacts(): readonly ArtifactSummary[] {
-  return useAuiState((s) => selectMessageArtifactsFromMessage(s.message))
+  const activity = useAgUiMessageActivity()
+  const saved = useAuiState((s) => selectMessageArtifactsFromMessage(s.message))
+  return mergeActivityFiles(saved, activity?.fileEvents)
 }
 
 export function AssistantCompactionMarker() {
-  const compaction = useAuiState(
-    (s) =>
-      (s.message?.metadata as { custom?: { compaction?: CompactionMarker } } | undefined)?.custom
-        ?.compaction ?? null,
-  )
-  if (!compaction) return null
-  return <CompactionSummary className="mt-2" />
+  const conversationId = useChatConversationId()
+  const messageId = useAuiState((s) => {
+    const agui = s.message?.metadata?.custom?.agui
+    const wireId = isRecord(agui) && typeof agui.messageId === 'string' ? agui.messageId : undefined
+    return sourceMessageIdFromThreadMessageId(wireId ?? s.message?.id)
+  })
+  const metadata = useAuiState((s) => s.message?.metadata?.custom)
+  const activity = useAgUiMessageActivity()
+  const compaction = activity?.compaction ?? metadata?.compaction
+  if (!isRecord(compaction)) return null
+  const historyId = compaction.historyId
+  const cutoff = compaction.cutoffIndex
+
+  const source = activity?.compaction ? activity.compactionMessageId : metadata?.compactionMessageId
+  const checkpoint = metadata?.checkpoint_id ?? metadata?.branchCheckpointId
+  const evidence =
+    conversationId &&
+    typeof source === 'string' &&
+    source.length > 0 &&
+    typeof historyId === 'string' &&
+    /^history_[a-f0-9]{24}$/.test(historyId)
+      ? {
+          conversationId,
+          messageId: source,
+          historyId,
+          activityId: typeof compaction.activityId === 'string' ? compaction.activityId : undefined,
+          cutoffIndex:
+            typeof cutoff === 'number' && Number.isSafeInteger(cutoff) ? cutoff : undefined,
+          checkpointId:
+            source === messageId &&
+            typeof checkpoint === 'string' &&
+            !checkpoint.startsWith('pending-') &&
+            /^[A-Za-z0-9_-]{1,64}$/.test(checkpoint)
+              ? checkpoint
+              : undefined,
+        }
+      : undefined
+  return <CompactionSummary className="mt-2" evidence={evidence} />
 }
 
 export function AssistantArtifactCards() {

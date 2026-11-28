@@ -47,6 +47,25 @@ def test_projected_summary_is_idempotent() -> None:
     assert second == first
 
 
+def test_private_summary_message_stays_in_checkpoint_only() -> None:
+    path = f"/conversation_history/{_SESSION}"
+    summary = {"type": "human", "content": "private summary canary"}
+    event = {"file_path": path, "cutoff_index": 4, "summary_message": summary}
+    state = {"_summarization_event": event, "summary_message": "ordinary app data"}
+
+    public = project_offload_egress_data(state)
+
+    assert public == {
+        "_summarization_event": {
+            "history_id": logical_offload_id(OffloadKind.HISTORY, path),
+            "cutoff_index": 4,
+        },
+        "summary_message": "ordinary app data",
+    }
+    assert event["summary_message"] is summary
+    assert summary["content"] == "private summary canary"
+
+
 def test_replayed_structural_summary_is_idempotent_without_trusting_spill_ids() -> None:
     path = f"/.moldy-offload/{_OWNER}/{_CONVERSATION}/{_ACTOR}/conversation_history/{_SESSION}"
     stored = {

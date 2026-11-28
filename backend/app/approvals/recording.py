@@ -16,16 +16,21 @@ from collections.abc import Iterable, Mapping
 from dataclasses import replace
 from typing import Any
 
-from sqlalchemy import select
+from sqlalchemy import or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.approvals import service
+from app.authz.conversation_run_scope import owned_run_predicate
+from app.authz.notification_delivery_scope import lock_active_notice_recipient
 from app.authz.notifications import Target, notify
 from app.authz.org_context import OrgContext
+from app.authz.scoping import private_scope_predicate
 from app.database import async_session, tenant_session
 from app.models.agent import Agent
 from app.models.approval_request import ApprovalRequest
+from app.models.conversation import INDEPENDENT_JOB_SOURCE, Conversation
 from app.models.conversation_run import ConversationRun
+from app.models.independent_chat_job import IndependentChatJob
 
 logger = logging.getLogger(__name__)
 
@@ -68,20 +73,152 @@ async def notify_requested(db: AsyncSession, rows: Iterable[ApprovalRequest]) ->
         )
 
 
+async def record_independent_approvals(
+    db: AsyncSession,
+    *,
+    job: IndependentChatJob,
+    run: ConversationRun,
+    context: OrgContext,
+    secret_values: Iterable[str] | None = None,
+) -> list[ApprovalRequest] | None:
+    """Record the locked job's current interrupt, or return None until its checkpoint exists."""
+    if (
+        run.id != job.pending_approval_run_id
+        or run.status != "interrupted"
+        or job.cancel_requested_at is not None
+        or run.conversation_id != job.child_conversation_id
+        or run.agent_id != job.child_agent_id
+        or (run.user_id, run.org_id, run.tenant_id)
+        != (context.user_id, context.org_id, context.tenant_id)
+        or (job.user_id, job.org_id, job.tenant_id)
+        != (context.user_id, context.org_id, context.tenant_id)
+    ):
+        return []
+    interrupts = await checkpoint_interrupts(job.child_conversation_id)
+    if not run.interrupt_id or not any(i.interrupt_id == run.interrupt_id for i in interrupts):
+        return None
+    name = await db.scalar(
+        select(Conversation.agent_name_snapshot).where(
+            Conversation.id == run.conversation_id,
+            Conversation.source == INDEPENDENT_JOB_SOURCE,
+            private_scope_predicate(Conversation, context),
+        )
+    )
+    if name is None:
+        return []
+    rows = await service.record_pending(
+        db,
+        run,
+        interrupts,
+        origin=service.RunOrigin(agent_name=name, source="subagent"),
+        secret_values=secret_values,
+    )
+    await notify_requested(db, rows)
+    return rows
+
+
+async def _record_independent_run(
+    db: AsyncSession,
+    run_id: uuid.UUID,
+    context: OrgContext,
+    secret_values: Iterable[str] | None,
+) -> list[ApprovalRequest]:
+    from app.services.independent_job_notifications import job_can_receive, lock_job_for_terminal
+    from app.services.independent_job_runs import current_job_run
+
+    job = await lock_job_for_terminal(db, run_id)
+    if (
+        job is None
+        or job.pending_approval_run_id != run_id
+        or not await job_can_receive(db, job, context)
+    ):
+        return []
+    current = await current_job_run(db, job, context)
+    if current is None or current.id != run_id or current.status != "interrupted":
+        return []
+    rows = await record_independent_approvals(
+        db,
+        job=job,
+        run=current,
+        context=context,
+        secret_values=secret_values,
+    )
+    if rows is not None:
+        job.pending_approval_run_id = None
+        await db.commit()
+    return rows or []
+
+
 async def record_interrupted_run(
     run_id: uuid.UUID,
     context: OrgContext,
     *,
-    secret_values: Iterable[str] = (),
+    secret_values: Iterable[str] | None = None,
     origin: service.RunOrigin | None = None,
 ) -> list[ApprovalRequest]:
     """Record the approval interrupts of a committed ``interrupted`` run (own session)."""
     async with tenant_session(context, maker=async_session) as db:
-        run = await db.get(ConversationRun, run_id)
-        if run is None or run.status != "interrupted":
+        target = (
+            await db.execute(
+                select(Conversation.id, Conversation.source, ConversationRun.created_at)
+                .join(ConversationRun, Conversation.id == ConversationRun.conversation_id)
+                .where(
+                    ConversationRun.id == run_id,
+                    ConversationRun.status == "interrupted",
+                    private_scope_predicate(Conversation, context),
+                    private_scope_predicate(ConversationRun, context),
+                )
+            )
+        ).one_or_none()
+        if target is None:
+            return []
+        if target.source == INDEPENDENT_JOB_SOURCE:
+            return await _record_independent_run(db, run_id, context, secret_values)
+        if not await lock_active_notice_recipient(db, context, nowait=False):
+            return []
+        # Admission locks the conversation before creating any new run. A resume can
+        # already exist while its parent remains "interrupted" in permanent history.
+        # Read the checkpoint only while this run still owns the conversation's turn.
+        held = await db.scalar(
+            select(Conversation.id)
+            .where(
+                Conversation.id == target.id,
+                Conversation.source == target.source,
+                private_scope_predicate(Conversation, context),
+            )
+            .with_for_update()
+        )
+        if held is None:
+            return []
+        successor = await db.scalar(
+            select(ConversationRun.id)
+            .where(
+                ConversationRun.conversation_id == held,
+                owned_run_predicate(context),
+                ConversationRun.id != run_id,
+                or_(
+                    ConversationRun.parent_run_id == run_id,
+                    ConversationRun.created_at >= target.created_at,
+                ),
+            )
+            .limit(1)
+        )
+        if successor is not None:
+            return []
+        run = await db.scalar(
+            select(ConversationRun).where(
+                ConversationRun.id == run_id,
+                ConversationRun.conversation_id == held,
+                ConversationRun.status == "interrupted",
+                private_scope_predicate(ConversationRun, context),
+            )
+        )
+        if run is None:
             return []
         interrupts = await checkpoint_interrupts(run.conversation_id)
-        if not interrupts:
+        if not interrupts or (
+            run.interrupt_id and all(i.interrupt_id != run.interrupt_id for i in interrupts)
+        ):
             return []
         name = ""
         if run.agent_id is not None:
@@ -92,7 +229,7 @@ async def record_interrupted_run(
             run,
             interrupts,
             origin=replace(base, agent_name=name),
-            secret_values=secret_values,
+            secret_values=secret_values or (),
         )
         unattended = [row for row in rows if row.source != "chat"]
         if unattended:
@@ -102,7 +239,7 @@ async def record_interrupted_run(
 
 
 async def record_interrupted_run_best_effort(
-    run_id: uuid.UUID, context: OrgContext, *, secret_values: Iterable[str] = ()
+    run_id: uuid.UUID, context: OrgContext, *, secret_values: Iterable[str] | None = None
 ) -> None:
     try:
         await record_interrupted_run(run_id, context, secret_values=secret_values)
@@ -171,6 +308,7 @@ __all__ = [
     "decision_types",
     "notify_requested",
     "pause",
+    "record_independent_approvals",
     "record_interrupted_run",
     "record_interrupted_run_best_effort",
     "waiting_interrupts",

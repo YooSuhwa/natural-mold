@@ -3,6 +3,36 @@
   "as_of": "2026-09-05",
   "rules": [
     {
+      "id": "chat-goal-notifications",
+      "path_glob": "e2e/chat-goal-notifications.spec.ts",
+      "condition": "process.env.E2E_CHAT_GOAL_NOTIFICATIONS !== '1'",
+      "reason": "Requires the goal and notification enabled scripted lane",
+      "category": "infrastructure",
+      "owner": "chat-runtime",
+      "expires": "2027-03-31",
+      "expected_count": 1
+    },
+    {
+      "id": "chat-goal-approval-notification",
+      "path_glob": "e2e/chat-goal-approval-notification.spec.ts",
+      "condition": "process.env.E2E_CHAT_GOAL_NOTIFICATIONS !== '1'",
+      "reason": "Requires the goal and notification enabled scripted lane",
+      "category": "infrastructure",
+      "owner": "chat-runtime",
+      "expires": "2027-03-31",
+      "expected_count": 1
+    },
+    {
+      "id": "chat-goal-steer-notice",
+      "path_glob": "e2e/chat-goal-steer-notice.spec.ts",
+      "condition": "process.env.E2E_CHAT_GOAL_NOTIFICATIONS !== '1'",
+      "reason": "Requires the goal and notification enabled scripted lane",
+      "category": "infrastructure",
+      "owner": "chat-runtime",
+      "expires": "2027-03-31",
+      "expected_count": 1
+    },
+    {
       "id": "backend-required",
       "path_glob": "e2e/**",
       "condition": "process.env.PW_SKIP_BACKEND === '1'",

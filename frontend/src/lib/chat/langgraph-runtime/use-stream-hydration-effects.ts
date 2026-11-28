@@ -31,6 +31,7 @@ const TIMEOUT_MS = 10_000
 export function useStreamHydrationEffects({
   conversationId,
   activateTransportHydration,
+  onBranchSelected,
   streamLoading,
   pendingEdit,
   pendingReload,
@@ -43,6 +44,7 @@ export function useStreamHydrationEffects({
 }: {
   readonly conversationId: string
   readonly activateTransportHydration: () => void
+  readonly onBranchSelected: (checkpointId: string) => void
   readonly streamLoading: boolean
   readonly pendingEdit: PendingHydrationOperation<PendingEditRenderState> | null
   readonly pendingReload: PendingHydrationOperation<PendingReloadRenderState> | null
@@ -80,11 +82,19 @@ export function useStreamHydrationEffects({
   useEffect(activateTransportHydration, [activateTransportHydration])
   useEffect(() => {
     let active = true
+    let revision = 0
     const onBranchSwitched = (event: Event): void => {
       if (!isMoldyBranchSwitchedEvent(event) || event.detail.conversationId !== conversationId)
         return
+      const selectedRevision = ++revision
+      onBranchSelected(event.detail.checkpointId)
       void loadServerThreadState(conversationId)
-        .then((state) => active && handleThreadState(state, { replaceMessages: true }))
+        .then(
+          (state) =>
+            active &&
+            revision === selectedRevision &&
+            handleThreadState(state, { replaceMessages: true }),
+        )
         .catch((caught: unknown) => {
           if (active) reportRuntimeFailure(caught, 'branch_hydration_failed')
         })
@@ -94,7 +104,7 @@ export function useStreamHydrationEffects({
       active = false
       window.removeEventListener(MOLDY_BRANCH_SWITCHED_EVENT, onBranchSwitched)
     }
-  }, [conversationId, handleThreadState])
+  }, [conversationId, handleThreadState, onBranchSelected])
   useEffect(() => {
     let active = true
     queueMicrotask(() => {

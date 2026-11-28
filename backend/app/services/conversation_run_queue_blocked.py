@@ -30,15 +30,15 @@ async def pause_blocked_queue(
     agent_id: uuid.UUID,
     context: OrgContext,
     denial: BaseException,
-) -> None:
+) -> bool:
     reason = block_reason(denial)
     if reason is None or reason in TRANSIENT:
-        return
+        return False
     conversation = await lock_owned_conversation(
         db, conversation_id=conversation_id, context=context
     )
     if conversation.queue_paused:
-        return
+        return False
     conversation.queue_paused = True
     conversation.queue_paused_at = utc_now_naive()
     code = getattr(denial, "code", None)
@@ -52,7 +52,7 @@ async def pause_blocked_queue(
         code=code if isinstance(code, str) else None,
         source_id=conversation_id,
     )
-    await db.commit()
+    return True
 
 
 __all__ = ["pause_blocked_queue"]

@@ -10,7 +10,7 @@ const CLAIM_POLL_INTERVAL_MS = 1_000
 
 type UseServerMessageQueueOptions = Pick<
   ServerMessageQueueOptions,
-  'conversationId' | 'submit' | 'onClaimedRun'
+  'conversationId' | 'submit' | 'onClaimedRun' | 'resolveRequestInputId'
 > & {
   readonly createRequestId?: () => string
   readonly pollIntervalMs?: number
@@ -29,6 +29,7 @@ export function useServerMessageQueue({
   conversationId,
   submit,
   onClaimedRun,
+  resolveRequestInputId,
   createRequestId = randomRequestId,
   pollIntervalMs = CLAIM_POLL_INTERVAL_MS,
 }: UseServerMessageQueueOptions) {
@@ -44,8 +45,8 @@ export function useServerMessageQueue({
     [conversationId],
   )
   useLayoutEffect(() => {
-    controller.updateCallbacks({ submit, onClaimedRun, createRequestId })
-  }, [controller, createRequestId, onClaimedRun, submit])
+    controller.updateCallbacks({ submit, onClaimedRun, createRequestId, resolveRequestInputId })
+  }, [controller, createRequestId, onClaimedRun, submit, resolveRequestInputId])
   const snapshot = useSyncExternalStore(
     controller.subscribe,
     controller.getSnapshot,

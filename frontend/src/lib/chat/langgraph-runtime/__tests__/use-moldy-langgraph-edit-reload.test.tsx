@@ -4,6 +4,7 @@ import { AIMessage, HumanMessage, type BaseMessage } from '@langchain/core/messa
 import type { MessageMetadataMap } from '@langchain/react'
 import type { ReactNode } from 'react'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { conversationRunInputsApi } from '@/lib/api/conversation-run-inputs'
 import { useMoldyLangGraphStream } from '../use-moldy-langgraph-stream'
 
 interface MockStream {
@@ -181,6 +182,7 @@ function messageWithCheckpoint(id: string, checkpointId: string): BaseMessage {
 
 describe('useMoldyLangGraphStream edit and reload checkpoint forks', () => {
   beforeEach(() => {
+    vi.spyOn(conversationRunInputsApi, 'list').mockResolvedValue({ queue_paused: false, items: [] })
     mocks.stream.messages = []
     mocks.stream.values = { messages: [] }
     mocks.stream.isLoading = false

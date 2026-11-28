@@ -50,8 +50,11 @@ from app.routers.conversation_agent_protocol_runtime import (
     input_preview,
 )
 from app.routers.conversation_protocol_fork import (
+    _RESUME_INTERRUPT_WAIT_INTERVAL_S,
+    _RESUME_INTERRUPT_WAIT_TIMEOUT_S,
     _fork_overwrite_input,
     _handle_input_respond_command,
+    _wait_for_interrupted_parent_run,
     seed_run_start,
 )
 from app.routers.conversation_protocol_messages import (
@@ -65,9 +68,6 @@ from app.routers.conversation_protocol_persistence import (
     persist_queued_run_start,
 )
 from app.routers.conversation_protocol_response import (
-    _RESUME_INTERRUPT_WAIT_INTERVAL_S,
-    _RESUME_INTERRUPT_WAIT_TIMEOUT_S,
-    _wait_for_interrupted_parent_run,
     dispatch_direct_run_start,
     dispatch_queued_run_start,
     finalize_direct_run_start,
@@ -200,6 +200,18 @@ async def handle_thread_command(
     run_start_executor: AgentStreamExecutor = execute_agent_stream_langgraph,
     input_respond_executor: AgentStreamExecutor = resume_agent_stream_langgraph,
 ) -> JSONResponse:
+    if command.method == "input.respond":
+        return await _handle_input_respond_command(
+            conversation=conversation,
+            command=command,
+            request=request,
+            db=db,
+            user=user,
+            context=context,
+            start_run=start_run,
+            executor_fn=input_respond_executor,
+            wait_for_parent=True,
+        )
     # agent#can_run is decided once, in prepare_executable_conversation (start/fork).
     await chat_service.require_executable_conversation(db, conversation.id, context)
     if command.method == "run.start":
@@ -212,17 +224,6 @@ async def handle_thread_command(
             context=context,
             start_run=start_run,
             executor_fn=run_start_executor,
-        )
-    if command.method == "input.respond":
-        return await _handle_input_respond_command(
-            conversation=conversation,
-            command=command,
-            request=request,
-            db=db,
-            user=user,
-            context=context,
-            start_run=start_run,
-            executor_fn=input_respond_executor,
         )
     return command_error(
         command,

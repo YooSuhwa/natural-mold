@@ -18,7 +18,7 @@
 
 [기능](#기능) · [빠른 시작](#빠른-시작) · [로컬 개발](#로컬-개발) · [설정](#설정) · [아키텍처](#아키텍처) · [테스트](#테스트) · [문서](#문서)
 
-<!-- project-current-source: migration=i09_token_usage_credential_scope; deepagents=0.7.11; ruff=0.16.5; refreshed=2026-10-21 -->
+<!-- project-current-source: migration=i52_ag_ui_queue_claim_guard; deepagents=0.7.42; ruff=0.16.5; refreshed=2026-11-27 -->
 
 </div>
 
@@ -38,8 +38,8 @@ OpenFGA 모델로 단계적으로 옮길 수 있습니다.
 |---|---|
 | 프론트엔드 | Next.js 16 (App Router), React 19, TailwindCSS v4, shadcn/ui, assistant-ui, TanStack Query, Jotai, next-intl |
 | 백엔드 | FastAPI, SQLAlchemy 2.0 async, Alembic, APScheduler, Python 3.12 |
-| 에이전트 런타임 | LangChain 1.x, LangGraph 1.x, `deepagents` 0.7.11 (`create_deep_agent`), LangGraph `AsyncPostgresSaver` |
-| 데이터 | PostgreSQL 16, Alembic head `i09_token_usage_credential_scope` |
+| 에이전트 런타임 | LangChain 1.x, LangGraph 1.2.24, `deepagents` 0.7.42 (`create_deep_agent`), LangGraph `AsyncPostgresSaver` |
+| 데이터 | PostgreSQL 16, Alembic head `i52_ag_ui_queue_claim_guard` |
 | 권한 | 소유자 판정(legacy) 또는 OpenFGA(shadow / enforce), 선택적 PostgreSQL 행 단위 보안(RLS) |
 | 라이선스 | MIT |
 
@@ -47,17 +47,21 @@ OpenFGA 모델로 단계적으로 옮길 수 있습니다.
 
 ### 채팅
 
-- **스트리밍 실행.** v3 채팅은 에이전트 프로토콜의 `run.start` 명령으로 실행을
-  시작하고 SSE로 이벤트를 받습니다. 연결이 끊기면 이벤트 커서부터 이어 받고, 실행
-  중에 입력한 메시지는 대기열에 들어갑니다.
+- **스트리밍 실행.** 일반 채팅과 사이드 채팅은 assistant-ui와 AG-UI 1.0을 사용합니다.
+  실행 중인 채팅을 다시 열면 저장된 메시지, 도구 결과, 미결 승인이 복원됩니다.
+  실행 중에 입력한 메시지는 대기열에 넣을 수 있습니다.
+- **목표와 백그라운드 작업.** 관련 설정을 켜면 완료 조건을 정해 목표를 맡기고,
+  실행 중인 에이전트나 특정 서브에이전트에 보충 지시를 보낼 수 있습니다. 별도 작업은
+  부모가 응답한 뒤에도 계속되며, 완료 알림에서 결과나 특정 파일 버전을 열 수 있습니다.
 - **분기.** 사용자 메시지를 고치거나 답변을 다시 생성하면 LangGraph 체크포인트가
   갈라집니다. `<N/M>` 화살표로 형제 분기를 오갑니다.
 - **사람 승인(HITL).** 위험한 도구 호출은 승인 카드에서 승인·거부하거나 인자를 고칠
   수 있고, 도구마다 허용된 결정만 보입니다. 대기 중인 호출 여러 건을 한 번에 승인할
   수도 있습니다. 에이전트가 사용자에게 질문(`ask_user`)할 수도 있습니다.
 - **생성형 UI.** 도구 결과를 JSON 대신 표, 차트, 수치 카드, 터미널 출력으로 보여 줍니다.
-- **첨부.** 올린 파일은 메시지의 썸네일과 대화 파일 목록에 나옵니다. 텍스트 파일은
-  모델에 맥락으로 들어가고, 이미지는 화면에만 보이며 아직 모델에 전달되지 않습니다.
+- **첨부.** 올린 파일은 메시지와 대화 파일 목록에 나옵니다. 텍스트 파일은 모델에
+  맥락으로 전달됩니다. 조직에서 별도 비전 모델을 설정하면 텍스트 전용 채팅에서도
+  첨부 이미지의 설명을 사용할 수 있습니다.
 - **찾기, 내보내기, 다시 시도.** Ctrl/Cmd+F로 대화 안을 찾고, 대화를 Markdown이나
   JSON으로 내보내며, 실패한 실행은 오류와 함께 다시 시도 버튼을 보여 줍니다.
 - **긴 대화.** 맥락 압축(compaction) 뒤에는 요약 표시가 남고, 입력창에 컨텍스트 창
@@ -236,7 +240,7 @@ docker compose up -d postgres
 cd backend
 cp .env.example .env            # ENCRYPTION_KEYS, JWT_SECRET 설정
 uv sync
-uv run alembic upgrade head     # head: i09_token_usage_credential_scope
+uv run alembic upgrade head     # head: i52_ag_ui_queue_claim_guard
 uv run uvicorn app.main:app --reload --reload-dir app --port 8001
 
 # 프론트엔드 (http://localhost:3000), 다른 터미널에서
@@ -258,6 +262,19 @@ pnpm dev
 `pnpm dev -- --port <port>`로 포트를 고정합니다. 한 DB에 백엔드가 여럿 붙으면 예약
 작업이 두 번 돌 수 있습니다.
 
+### 채팅 통신과 원복
+
+기존 설치를 갱신할 때는 백엔드 마이그레이션을 `i52_ag_ui_queue_claim_guard`까지
+적용합니다. 갱신된 백엔드에 기존 채팅 통신을 다시 연결하려면 프런트엔드를
+다음과 같이 빌드합니다.
+
+```bash
+NEXT_PUBLIC_CHAT_RUNTIME=langgraph_v3 docker compose up -d --build frontend
+```
+
+프런트엔드를 별도로 빌드할 때는 `pnpm build`에 같은 환경변수를 지정합니다. 두 방식은
+같은 DB에 저장된 대화를 사용합니다.
+
 ## 설정
 
 전체 목록은 [`backend/.env.example`](backend/.env.example)에 있습니다. 주요 설정:
@@ -277,6 +294,11 @@ pnpm dev
 | `DB_RLS_ENABLED` | `false` | 회사 단위 RLS. 운영 가이드의 DB 역할 분리 뒤에만 켭니다. |
 | `CORS_ALLOWED_ORIGINS` | `http://localhost:3000,...` | 모든 프론트엔드 origin을 넣습니다. |
 | `NEXT_PUBLIC_API_BASE_URL` | `http://localhost:8001` | 프론트엔드. 빌드할 때 번들에 들어갑니다. |
+| `NEXT_PUBLIC_CHAT_RUNTIME` | `ag_ui` | 일반·사이드 채팅 통신 방식. 이전 방식은 빌드할 때 `langgraph_v3`를 지정합니다. |
+| `CONVERSATION_GOAL_ORG_IDS` | `[]` | 완료 조건이 있는 목표를 사용할 조직 UUID의 JSON 배열. |
+| `CHAT_STEER_ENABLED`, `NEXT_PUBLIC_CHAT_STEER_ENABLED` | `false`, `false` | 백엔드와 프런트엔드 빌드에서 실행 중 보충 지시를 켭니다. |
+| `INDEPENDENT_CHAT_JOBS_ENABLED`, `CHAT_WORK_NOTIFICATIONS_ENABLED` | `false`, `false` | 독립 작업과 작업 알림함을 켭니다. |
+| `OPENAI_PROMPT_CACHE_ORG_IDS` | `[]` | 공식 OpenAI API에서 대화별 프롬프트 캐시 라우팅을 사용할 조직 UUID의 JSON 배열. |
 | `SKILL_SANDBOX_ENABLED` | `false` (Docker 스택은 `true`) | 스킬 스크립트를 호출마다 새 OpenSandbox 샌드박스에서 실행. 서버가 없으면 호스트로 대신 실행하지 않고 실패합니다. |
 | `SKILL_SANDBOX_DOMAIN`, `SKILL_SANDBOX_API_KEY` | `127.0.0.1:18080`, 빈 값 | 샌드박스 서버 주소와 키. Docker 스택이 둘 다 설정합니다(`opensandbox:8090`, 생성된 키). |
 | `SKILL_SANDBOX_USE_SERVER_PROXY` | `false` (Docker 스택은 `true`) | 서버를 거쳐 샌드박스에 접속. 백엔드가 컨테이너 안에 있을 때 필요합니다. |
@@ -309,7 +331,8 @@ flowchart LR
 - 백엔드 계층: `routers/`(HTTP와 권한 정책) → `services/`(업무 로직) →
   `models/`(SQLAlchemy).
 - `agent_runtime/`은 모델, 도구, 스킬, 기억, 서브에이전트, 미들웨어를 조립해
-  `create_deep_agent`로 실행하고 LangGraph 이벤트를 SSE로 바꿉니다.
+  `create_deep_agent`로 실행합니다. 채팅 서비스는 저장된 LangGraph 실행 이벤트를
+  AG-UI로 변환해 SSE로 전송합니다.
 - 권한 원본은 PostgreSQL에 있고, OpenFGA는 아웃박스로 동기화되는 파생 사본입니다.
 - 프론트엔드: `lib/api/` → TanStack Query 훅 → 컴포넌트, 클라이언트 상태는 Jotai.
 

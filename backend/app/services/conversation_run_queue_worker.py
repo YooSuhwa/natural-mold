@@ -11,6 +11,7 @@ from app.agent_runtime.runtime_config import AgentConfig
 from app.authz.agent_execution_scope import AgentExecutionTarget, load_agent_tree_for_execution
 from app.authz.conversation_input_scope import conversation_input_parent
 from app.authz.conversation_scope import resolve_conversation_actor
+from app.authz.run_decisions import fresh_run_decision_scope
 from app.authz.scoping import private_parent_scoped
 from app.database import SessionTenant, platform_session, platform_sessions, tenant_session
 from app.database import async_session as database_session
@@ -83,14 +84,19 @@ async def dispatch_next_for_conversation(
     async with _company_session(scope) as db:
         try:
             context = await resolve_conversation_actor(db, conversation_id, owner_id)
-        except AppError:
+        except AppError as exc:
+            from app.services.conversation_goal_worker import stop_reservations_on_denial
+
+            if await stop_reservations_on_denial(db, conversation_id, scope, exc):
+                await db.commit()
             return None
         try:
-            claimed = await conversation_run_queue_service.claim_next_input(
-                db,
-                conversation_id=conversation_id,
-                context=context,
-            )
+            with fresh_run_decision_scope():
+                claimed = await conversation_run_queue_service.claim_next_input(
+                    db,
+                    conversation_id=conversation_id,
+                    context=context,
+                )
         except HTTPException as exc:
             # The conversation stopped being executable (e.g. its organization was archived
             # while the previous run finished): nothing to dispatch, not a teardown error.
@@ -98,6 +104,8 @@ async def dispatch_next_for_conversation(
                 raise
             return None
         if claimed is None:
+            # A paused queue or a held branch rollover is durable even without a new run.
+            await db.commit()
             return None
         input_id = claimed.input.id
         await db.commit()

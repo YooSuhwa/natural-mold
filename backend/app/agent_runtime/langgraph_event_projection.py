@@ -5,6 +5,7 @@ from dataclasses import dataclass
 from typing import Any
 
 from app.agent_runtime import event_names
+from app.agent_runtime.langgraph_compaction_start import is_internal_summary
 from app.agent_runtime.offload_protocol_projection import project_offload_egress_data
 from app.agent_runtime.protocol_events import (
     StoredProtocolEvent,
@@ -55,18 +56,13 @@ def _compaction_summarization_event(event: StoredProtocolEvent) -> Mapping[str, 
     return value if isinstance(value, Mapping) else None
 
 
-def compaction_signal(event: StoredProtocolEvent) -> str | None:
+def is_summary_token_event(event: StoredProtocolEvent) -> bool:
     data = event["data"]
-    if event["method"] == "messages" and isinstance(data, Mapping):
-        metadata = data.get("metadata")
-        if isinstance(metadata, Mapping) and metadata.get("lc_source") == "summarization":
-            return "summary_token"
-    summarization = _compaction_summarization_event(event)
-    if summarization is not None:
-        cutoff = summarization.get("cutoff_index")
-        if isinstance(cutoff, int) and cutoff > 0:
-            return "committed"
-    return None
+    return (
+        event["method"] == "messages"
+        and isinstance(data, Mapping)
+        and is_internal_summary(data.get("metadata"))
+    )
 
 
 def compaction_history_id(event: StoredProtocolEvent) -> str | None:
@@ -79,12 +75,16 @@ def compaction_history_id(event: StoredProtocolEvent) -> str | None:
     return history_id if isinstance(history_id, str) else None
 
 
-def compaction_cutoff_index(event: StoredProtocolEvent) -> int | None:
+def compaction_cutoff(event: StoredProtocolEvent) -> tuple[int, str | None] | None:
     summarization = _compaction_summarization_event(event)
     if summarization is None:
         return None
-    cutoff = summarization.get("cutoff_index")
-    return cutoff if isinstance(cutoff, int) else None
+    index = summarization.get("cutoff_index")
+    if not isinstance(index, int) or index <= 0:
+        return None
+    # Newer checkpoints retain the message ID across deletions before the cutoff.
+    message_id = summarization.get("cutoff_message_id")
+    return index, message_id if isinstance(message_id, str) else None
 
 
 def compaction_event(

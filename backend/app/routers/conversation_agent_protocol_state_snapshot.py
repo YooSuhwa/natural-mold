@@ -18,10 +18,11 @@ from app.agent_runtime.protocol_egress import project_and_redact_protocol_data
 from app.authz.org_context import OrgContext
 from app.models.conversation import Conversation
 from app.routers.conversation_agent_protocol_checkpoint_state import (
-    load_checkpoint_channel_values,
+    load_checkpoint_values_and_run,
 )
 from app.routers.conversation_agent_protocol_legacy import legacy_state_messages
 from app.schemas.conversation_history import ConversationHistoryCheckpointResponse
+from app.services import trace_storage
 from app.services.conversation_protocol_projection import (
     MessageProjectionRequest,
 )
@@ -39,6 +40,7 @@ class ThreadStateSnapshot:
     values: dict[str, Any]
     checkpoint_by_message_id: dict[str, str]
     parent_checkpoint_by_message_id: dict[str, str]
+    checkpoint_run_id: str | None = None
 
 
 def project_todo_policy_values(
@@ -129,19 +131,21 @@ async def load_thread_state_snapshot(
         (
             checkpoint_by_message_id,
             parent_checkpoint_by_message_id,
-        ) = await _checkpoint_maps_by_message_id(checkpointer, str(conversation.id), conversation)
+            selection_proven,
+        ) = await _checkpoint_maps_by_message_id(
+            checkpointer, str(conversation.id), conversation, tree.active_checkpoint_id
+        )
     except RuntimeError:
-        return await _legacy_thread_state_snapshot(conversation, db, secret_values=secrets)
+        return await _legacy_thread_state_snapshot(conversation, db, context, secret_values=secrets)
     if not tree.nodes:
-        return await _legacy_thread_state_snapshot(conversation, db, secret_values=secrets)
+        return await _legacy_thread_state_snapshot(conversation, db, context, secret_values=secrets)
 
+    channel_values, checkpoint_run_id = await load_checkpoint_values_and_run(
+        checkpointer, thread_id=str(conversation.id), checkpoint_id=tree.active_checkpoint_id
+    )
     values = project_and_redact_protocol_data(
         "values",
-        await load_checkpoint_channel_values(
-            checkpointer,
-            thread_id=str(conversation.id),
-            checkpoint_id=tree.active_checkpoint_id,
-        ),
+        channel_values,
         secret_values=secrets,
     )
     if not isinstance(values, dict):
@@ -191,12 +195,14 @@ async def load_thread_state_snapshot(
         values={**values, "messages": messages},
         checkpoint_by_message_id=checkpoint_by_message_id,
         parent_checkpoint_by_message_id=parent_checkpoint_by_message_id,
+        checkpoint_run_id=checkpoint_run_id if selection_proven else None,
     )
 
 
 async def _legacy_thread_state_snapshot(
     conversation: Conversation,
     db: AsyncSession | None,
+    context: OrgContext,
     *,
     secret_values: Iterable[str] | None = None,
 ) -> ThreadStateSnapshot:
@@ -206,9 +212,10 @@ async def _legacy_thread_state_snapshot(
             checkpoint_by_message_id={},
             parent_checkpoint_by_message_id={},
         )
+    records = await trace_storage.get_readable_conversation_traces(db, conversation, context)
     messages = project_and_redact_protocol_data(
         "messages",
-        await legacy_state_messages(db, conversation.id),
+        legacy_state_messages(records),
         secret_values=secret_values,
     )
     return ThreadStateSnapshot(
@@ -222,7 +229,8 @@ async def _checkpoint_maps_by_message_id(
     checkpointer: Any,
     thread_id: str,
     conversation: Conversation,
-) -> tuple[dict[str, str], dict[str, str]]:
+    active_tip: str | None,
+) -> tuple[dict[str, str], dict[str, str], bool]:
     checkpoints = await _collect_checkpoints(checkpointer, thread_id)
     checkpoint_by_message_id: dict[str, str] = {}
     parent_checkpoint_by_message_id: dict[str, str] = {}
@@ -238,7 +246,20 @@ async def _checkpoint_maps_by_message_id(
                 checkpoint_by_message_id[alias] = checkpoint.checkpoint_id
                 if checkpoint.parent_checkpoint_id is not None:
                     parent_checkpoint_by_message_id[alias] = checkpoint.parent_checkpoint_id
-    return checkpoint_by_message_id, parent_checkpoint_by_message_id
+    # The normal history reader falls back to its newest leaf when a stored
+    # branch no longer exists. Partial provider output has no checkpointed
+    # message, so require that the requested branch truly reaches this leaf.
+    selected = conversation.active_branch_checkpoint_id
+    selection_proven = selected is None
+    if selected is not None and active_tip is not None:
+        parents = {item.checkpoint_id: item.parent_checkpoint_id for item in checkpoints}
+        cursor: str | None = active_tip
+        while cursor is not None and cursor in parents:
+            if cursor == selected:
+                selection_proven = True
+                break
+            cursor = parents.pop(cursor)
+    return checkpoint_by_message_id, parent_checkpoint_by_message_id, selection_proven
 
 
 def _message_id_from_message(message: Any) -> str | None:

@@ -25,7 +25,7 @@ from app.authz.audit_actions import (
     MEMORY_RECORD_UNPIN,
 )
 from app.authz.memory_agent_access import memory_agent, shared_memory_agent_ids
-from app.authz.memory_scope import memory_owned_by, private_memory_record_predicate
+from app.authz.memory_scope import memory_owned_by, recallable_memory_record_predicate
 from app.authz.org_context import OrgContext
 from app.exceptions import NotFoundError, ValidationError
 from app.models.agent_trigger import AgentTrigger
@@ -152,7 +152,7 @@ async def _active_sources(
     rows = await db.scalars(
         select(MemoryRecord.id).where(
             MemoryRecord.id.in_(wanted),
-            private_memory_record_predicate(context, shared),
+            recallable_memory_record_predicate(context, shared),
             MemoryRecord.status == "active",
         )
     )

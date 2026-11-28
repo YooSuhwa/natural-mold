@@ -16,13 +16,13 @@ const LANE_PROJECTS = Object.freeze({
 const DEFAULT_PROJECTS = Object.freeze({ scripted: 'scripted-full', live: 'live-manual' })
 
 const SAFE_ENVIRONMENT_NAMES = Object.freeze(
-  'CI DATABASE_URL DATABASE_URL_SYNC E2E_API_BASE_URL E2E_AUTH_STATE_PATH E2E_BACKEND_PORT E2E_BASE_URL E2E_CAPTURE_TOUR E2E_EXPORT_SLUG E2E_FRONTEND_PORT E2E_NEXT_BUILD_DIR E2E_ORG_AUTHZ E2E_PROJECT E2E_RESULTS_DIR E2E_RUN_MANIFEST E2E_SELECTION_ONLY E2E_SEED_USER_ENABLED E2E_SKILL_EVALUATION_ENABLED E2E_TEST_HELPERS_ENABLED E2E_TEST_TIMEOUT_MS E2E_USER_EMAIL E2E_USER_NAME E2E_USER_PASSWORD E2E_EMAIL E2E_NAME E2E_PASSWORD ENCRYPTION_KEYS HOME INTEGRATION_DATABASE_URL JWT_SECRET LANG LC_ALL LOGNAME MOLDY_BACKEND_SOURCE_ROOT MOLDY_DISABLE_ENV_FILE MOLDY_FRONTEND_SOURCE_ROOT MOLDY_GATE_PYTHON MOLDY_TEST_RUN_ROOT NEXT_PUBLIC_CHAT_RUNTIME PATH PLAYWRIGHT_JUNIT_OUTPUT_NAME PNPM_HOME PYTHON_DOTENV_DISABLED RATE_LIMIT_ENABLED CHECKPOINTER_POOL_MIN_SIZE CHECKPOINTER_POOL_MAX_SIZE TEMP TMP TMPDIR TZ USER'.split(
+  'CI DATABASE_URL DATABASE_URL_SYNC E2E_API_BASE_URL E2E_AUTH_STATE_PATH E2E_BACKEND_PORT E2E_BASE_URL E2E_CAPTURE_TOUR E2E_CHAT_GOAL_NOTIFICATIONS E2E_EXPORT_SLUG E2E_FRONTEND_PORT E2E_NEXT_BUILD_DIR E2E_ORG_AUTHZ E2E_PROJECT E2E_RESULTS_DIR E2E_RUN_MANIFEST E2E_SELECTION_ONLY E2E_SEED_USER_ENABLED E2E_SKILL_EVALUATION_ENABLED E2E_TEST_HELPERS_ENABLED E2E_TEST_TIMEOUT_MS E2E_USER_EMAIL E2E_USER_NAME E2E_USER_PASSWORD E2E_EMAIL E2E_NAME E2E_PASSWORD ENCRYPTION_KEYS HOME INTEGRATION_DATABASE_URL JWT_SECRET LANG LC_ALL LOGNAME MOLDY_BACKEND_SOURCE_ROOT MOLDY_DISABLE_ENV_FILE MOLDY_FRONTEND_SOURCE_ROOT MOLDY_GATE_PYTHON MOLDY_TEST_RUN_ROOT NEXT_PUBLIC_CHAT_RUNTIME PATH PLAYWRIGHT_JUNIT_OUTPUT_NAME PNPM_HOME PYTHON_DOTENV_DISABLED RATE_LIMIT_ENABLED CHECKPOINTER_POOL_MIN_SIZE CHECKPOINTER_POOL_MAX_SIZE TEMP TMP TMPDIR TZ USER'.split(
     ' ',
   ),
 )
 
 const LAUNCHER_ENVIRONMENT_NAMES = Object.freeze(
-  'CI E2E_CAPTURE_TOUR E2E_EXPORT_SLUG E2E_ORG_AUTHZ E2E_RUN_MANIFEST E2E_SKILL_EVALUATION_ENABLED E2E_TEST_TIMEOUT_MS HOME LANG LC_ALL LOGNAME MOLDY_GATE_DOCKER MOLDY_GATE_DOCKER_IDENTITY PATH PNPM_HOME TEMP TMP TMPDIR TZ USER XDG_RUNTIME_DIR'.split(
+  'CI E2E_CAPTURE_TOUR E2E_CHAT_GOAL_NOTIFICATIONS E2E_EXPORT_SLUG E2E_ORG_AUTHZ E2E_RUN_MANIFEST E2E_SKILL_EVALUATION_ENABLED E2E_TEST_TIMEOUT_MS HOME LANG LC_ALL LOGNAME MOLDY_GATE_DOCKER MOLDY_GATE_DOCKER_IDENTITY PATH PNPM_HOME TEMP TMP TMPDIR TZ USER XDG_RUNTIME_DIR'.split(
     ' ',
   ),
 )
@@ -182,8 +182,36 @@ export function buildExactLiveTitleFilter(cases = LIVE_E2E_CASES) {
   return escapedTitles.length === 1 ? `${escapedTitles[0]}$` : `(?:${escapedTitles.join('|')})$`
 }
 
+export const INDEPENDENT_JOB_SPEC = 'e2e/independent-chat-jobs.spec.ts'
+
+/** Only this dedicated scripted stack accepts the loopback completion fixture. */
+export function independentJobBackendEnvironment(project, arguments_) {
+  const selections = arguments_.filter((argument) => argument.startsWith('e2e/'))
+  if (!selections.includes(INDEPENDENT_JOB_SPEC)) return undefined
+  if (project !== 'scripted-full' || selections.length !== 1) {
+    throw new Error('Run the independent chat job spec alone in scripted-full.')
+  }
+  return {
+    INDEPENDENT_CHAT_JOBS_ENABLED: 'true',
+    CHAT_WORK_NOTIFICATIONS_ENABLED: 'true',
+    CREDENTIAL_HTTP_ALLOWED_HOSTS: '127.0.0.1',
+    OUTBOUND_PRIVATE_ALLOWED_HOSTS: '127.0.0.1',
+  }
+}
+
+export function resolveE2EChatRuntime(runtime = 'langgraph_v3') {
+  switch (runtime) {
+    case 'legacy':
+    case 'langgraph_v3':
+    case 'ag_ui':
+      return runtime
+    default:
+      throw new Error('NEXT_PUBLIC_CHAT_RUNTIME must be legacy, langgraph_v3, or ag_ui.')
+  }
+}
+
 export function buildFrontendWebServerCommand(chatRuntime, apiBaseURL, frontendPort) {
-  const runtimeEnvironment = `NEXT_PUBLIC_CHAT_RUNTIME=${chatRuntime} NEXT_PUBLIC_API_BASE_URL=${apiBaseURL}`
+  const runtimeEnvironment = `NEXT_PUBLIC_CHAT_RUNTIME=${resolveE2EChatRuntime(chatRuntime)} NEXT_PUBLIC_API_BASE_URL=${apiBaseURL}`
   return `pnpm prepare:assets && ${runtimeEnvironment} pnpm exec next build --webpack && ${runtimeEnvironment} pnpm exec next start --port ${frontendPort}`
 }
 
@@ -264,11 +292,9 @@ export function buildE2ELauncherEnvironment(lane, project, inheritedEnvironment)
     if (hasNonEmptyValue(inheritedEnvironment, name)) environment[name] = inheritedEnvironment[name]
   }
   if (hasNonEmptyValue(inheritedEnvironment, 'NEXT_PUBLIC_CHAT_RUNTIME')) {
-    const runtime = inheritedEnvironment.NEXT_PUBLIC_CHAT_RUNTIME
-    if (runtime !== 'legacy' && runtime !== 'langgraph_v3') {
-      throw new Error('NEXT_PUBLIC_CHAT_RUNTIME must be legacy or langgraph_v3.')
-    }
-    environment.NEXT_PUBLIC_CHAT_RUNTIME = runtime
+    environment.NEXT_PUBLIC_CHAT_RUNTIME = resolveE2EChatRuntime(
+      inheritedEnvironment.NEXT_PUBLIC_CHAT_RUNTIME,
+    )
   }
   if (lane === 'live') {
     if (

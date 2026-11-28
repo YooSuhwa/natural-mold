@@ -14,12 +14,7 @@ from app.models.conversation import Conversation
 from app.routers.conversation_agent_protocol_replay import load_protocol_events
 from app.routers.conversation_resume_decisions import STALE, decision_problem
 from app.services import conversation_run_service
-
-
-class ThreadInterrupt(TypedDict):
-    id: str
-    value: Any
-    ns: list[str]
+from app.services.conversation_resume_types import ThreadInterrupt as ThreadInterrupt
 
 
 class ThreadTask(TypedDict):
@@ -64,10 +59,14 @@ async def load_pending_interrupt_tasks(
     user_id: uuid.UUID,
     context: OrgContext,
 ) -> list[ThreadTask]:
+    readable_run_ids = await conversation_run_service.readable_conversation_run_ids(
+        db, conversation, context
+    )
     run = await conversation_run_service.get_latest_interrupted_run(
         db,
         conversation_id=conversation.id,
         context=context,
+        readable_run_ids=readable_run_ids,
     )
     if run is None:
         return []

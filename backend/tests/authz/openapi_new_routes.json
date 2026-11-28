@@ -5096,6 +5096,16 @@
               "title": "Conversation Id",
               "type": "string"
             }
+          },
+          {
+            "in": "query",
+            "name": "only_if_draft",
+            "required": false,
+            "schema": {
+              "default": false,
+              "title": "Only If Draft",
+              "type": "boolean"
+            }
           }
         ],
         "responses": {
@@ -5208,6 +5218,460 @@
           }
         },
         "summary": "Update Conversation",
+        "tags": [
+          "conversations",
+          "conversations"
+        ]
+      }
+    },
+    "/api/conversations/{conversation_id}/ag-ui/events": {
+      "get": {
+        "operationId": "read_events_by_query_api_conversations__conversation_id__ag_ui_events_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "conversation_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Conversation Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "runId",
+            "required": true,
+            "schema": {
+              "maxLength": 200,
+              "minLength": 1,
+              "title": "Runid",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "after",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maxLength": 200,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "After"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 64,
+              "maximum": 256,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Read Events By Query Api Conversations  Conversation Id  Ag Ui Events Get",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Read Events By Query",
+        "tags": [
+          "conversations",
+          "conversations"
+        ]
+      }
+    },
+    "/api/conversations/{conversation_id}/ag-ui/runs": {
+      "post": {
+        "operationId": "post_ag_ui_run_api_conversations__conversation_id__ag_ui_runs_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "conversation_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Conversation Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RunAgentInput"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "text/event-stream": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Post Ag Ui Run",
+        "tags": [
+          "conversations",
+          "conversations"
+        ]
+      }
+    },
+    "/api/conversations/{conversation_id}/ag-ui/runs/{public_run_id}/events": {
+      "get": {
+        "operationId": "read_events_by_path_api_conversations__conversation_id__ag_ui_runs__public_run_id__events_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "conversation_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Conversation Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "public_run_id",
+            "required": true,
+            "schema": {
+              "title": "Public Run Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "after",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maxLength": 200,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "After"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 64,
+              "maximum": 256,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Read Events By Path Api Conversations  Conversation Id  Ag Ui Runs  Public Run Id  Events Get",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Read Events By Path",
+        "tags": [
+          "conversations",
+          "conversations"
+        ]
+      }
+    },
+    "/api/conversations/{conversation_id}/ag-ui/runs/{public_run_id}/stream": {
+      "get": {
+        "operationId": "attach_by_path_api_conversations__conversation_id__ag_ui_runs__public_run_id__stream_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "conversation_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Conversation Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "public_run_id",
+            "required": true,
+            "schema": {
+              "title": "Public Run Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "after",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maxLength": 200,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "After"
+            }
+          },
+          {
+            "in": "header",
+            "name": "Last-Event-ID",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maxLength": 200,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Last-Event-Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "text/event-stream": {}
+            },
+            "description": "Committed AG-UI lifecycle"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Attach By Path",
+        "tags": [
+          "conversations",
+          "conversations"
+        ]
+      }
+    },
+    "/api/conversations/{conversation_id}/ag-ui/snapshot": {
+      "get": {
+        "operationId": "read_snapshot_api_conversations__conversation_id__ag_ui_snapshot_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "conversation_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Conversation Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "runId",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maxLength": 200,
+                  "minLength": 1,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Runid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AgUiSnapshot"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Read Snapshot",
+        "tags": [
+          "conversations",
+          "conversations"
+        ]
+      }
+    },
+    "/api/conversations/{conversation_id}/ag-ui/stream": {
+      "get": {
+        "operationId": "attach_by_query_api_conversations__conversation_id__ag_ui_stream_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "conversation_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Conversation Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "runId",
+            "required": true,
+            "schema": {
+              "maxLength": 200,
+              "minLength": 1,
+              "title": "Runid",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "after",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maxLength": 200,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "After"
+            }
+          },
+          {
+            "in": "header",
+            "name": "Last-Event-ID",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maxLength": 200,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Last-Event-Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "text/event-stream": {}
+            },
+            "description": "Committed AG-UI lifecycle"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Attach By Query",
         "tags": [
           "conversations",
           "conversations"
@@ -5457,6 +5921,258 @@
         "summary": "Download Conversation Artifact",
         "tags": [
           "artifacts"
+        ]
+      }
+    },
+    "/api/conversations/{conversation_id}/child-tasks": {
+      "get": {
+        "operationId": "list_conversation_child_tasks_api_conversations__conversation_id__child_tasks_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "conversation_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Conversation Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 50,
+              "maximum": 100,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "offset",
+            "required": false,
+            "schema": {
+              "default": 0,
+              "maximum": 2147483647,
+              "minimum": 0,
+              "title": "Offset",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ChildTaskPage"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "List Conversation Child Tasks",
+        "tags": [
+          "conversations",
+          "conversation-child-tasks"
+        ]
+      }
+    },
+    "/api/conversations/{conversation_id}/child-tasks/{child_id}/cancel": {
+      "post": {
+        "operationId": "cancel_conversation_child_task_api_conversations__conversation_id__child_tasks__child_id__cancel_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "conversation_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Conversation Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "child_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Child Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ChildTaskResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Cancel Conversation Child Task",
+        "tags": [
+          "conversations",
+          "conversation-child-tasks"
+        ]
+      }
+    },
+    "/api/conversations/{conversation_id}/child-tasks/{child_id}/instructions": {
+      "post": {
+        "operationId": "add_conversation_child_instruction_api_conversations__conversation_id__child_tasks__child_id__instructions_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "conversation_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Conversation Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "child_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Child Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ChildInstructionCreate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ChildTaskResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Add Conversation Child Instruction",
+        "tags": [
+          "conversations",
+          "conversation-child-tasks"
+        ]
+      }
+    },
+    "/api/conversations/{conversation_id}/child-tasks/{child_id}/wait": {
+      "get": {
+        "operationId": "wait_for_conversation_child_task_api_conversations__conversation_id__child_tasks__child_id__wait_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "conversation_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Conversation Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "child_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Child Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "timeout_seconds",
+            "required": false,
+            "schema": {
+              "default": 10,
+              "maximum": 20,
+              "minimum": 0,
+              "title": "Timeout Seconds",
+              "type": "number"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ChildTaskResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Wait For Conversation Child Task",
+        "tags": [
+          "conversations",
+          "conversation-child-tasks"
         ]
       }
     },
@@ -5763,6 +6479,300 @@
         ]
       }
     },
+    "/api/conversations/{conversation_id}/goal": {
+      "get": {
+        "operationId": "read_conversation_goal_api_conversations__conversation_id__goal_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "conversation_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Conversation Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GoalResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Read Conversation Goal",
+        "tags": [
+          "conversations",
+          "conversation-goals"
+        ]
+      },
+      "put": {
+        "operationId": "put_conversation_goal_api_conversations__conversation_id__goal_put",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "conversation_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Conversation Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/GoalWriteRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GoalResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Put Conversation Goal",
+        "tags": [
+          "conversations",
+          "conversation-goals"
+        ]
+      }
+    },
+    "/api/conversations/{conversation_id}/goal/actions": {
+      "post": {
+        "operationId": "change_conversation_goal_state_api_conversations__conversation_id__goal_actions_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "conversation_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Conversation Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/GoalActionRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GoalResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Change Conversation Goal State",
+        "tags": [
+          "conversations",
+          "conversation-goals"
+        ]
+      }
+    },
+    "/api/conversations/{conversation_id}/goal/artifacts/{artifact_id}/versions/{version_id}/download": {
+      "get": {
+        "operationId": "download_goal_evidence_api_conversations__conversation_id__goal_artifacts__artifact_id__versions__version_id__download_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "conversation_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Conversation Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "artifact_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Artifact Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "version_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Version Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Download Goal Evidence",
+        "tags": [
+          "conversations",
+          "conversation-goals"
+        ]
+      }
+    },
+    "/api/conversations/{conversation_id}/goal/evidence/{version_id}/history-reference": {
+      "get": {
+        "operationId": "read_goal_history_reference_api_conversations__conversation_id__goal_evidence__version_id__history_reference_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "conversation_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Conversation Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "version_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Version Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "goal_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Goal Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "goal_version",
+            "required": true,
+            "schema": {
+              "minimum": 1,
+              "title": "Goal Version",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/RunHistoryReference"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ],
+                  "title": "Response Read Goal History Reference Api Conversations  Conversation Id  Goal Evidence  Version Id  History Reference Get"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Read Goal History Reference",
+        "tags": [
+          "conversations",
+          "conversation-goals"
+        ]
+      }
+    },
     "/api/conversations/{conversation_id}/history": {
       "get": {
         "operationId": "get_conversation_history_api_conversations__conversation_id__history_get",
@@ -5806,6 +6816,216 @@
         ]
       }
     },
+    "/api/conversations/{conversation_id}/history-evidence/{checkpoint_id}": {
+      "get": {
+        "description": "Read display-safe evidence at an authenticated conversation's exact checkpoint.",
+        "operationId": "get_history_evidence_api_conversations__conversation_id__history_evidence__checkpoint_id__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "conversation_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Conversation Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "checkpoint_id",
+            "required": true,
+            "schema": {
+              "pattern": "^[A-Za-z0-9_-]{1,64}$",
+              "title": "Checkpoint Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "offset",
+            "required": false,
+            "schema": {
+              "default": 0,
+              "minimum": 0,
+              "title": "Offset",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 10,
+              "maximum": 32,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "expected_sha256",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "pattern": "^[a-f0-9]{64}$",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Expected Sha256"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HistoryEvidence"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get History Evidence",
+        "tags": [
+          "conversations",
+          "conversations"
+        ]
+      }
+    },
+    "/api/conversations/{conversation_id}/independent-jobs": {
+      "get": {
+        "operationId": "list_jobs_api_conversations__conversation_id__independent_jobs_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "conversation_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Conversation Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "run_id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "uuid",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Run Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/IndependentJobsOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "List Jobs",
+        "tags": [
+          "conversations",
+          "conversations"
+        ]
+      }
+    },
+    "/api/conversations/{conversation_id}/independent-jobs/{job_id}/cancel": {
+      "post": {
+        "operationId": "cancel_job_api_conversations__conversation_id__independent_jobs__job_id__cancel_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "conversation_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Conversation Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "job_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Job Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/IndependentJobOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Cancel Job",
+        "tags": [
+          "conversations",
+          "conversations"
+        ]
+      }
+    },
     "/api/conversations/{conversation_id}/langgraph/state": {
       "get": {
         "operationId": "get_compat_thread_state_api_conversations__conversation_id__langgraph_state_get",
@@ -5818,6 +7038,16 @@
               "format": "uuid",
               "title": "Conversation Id",
               "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "read_only",
+            "required": false,
+            "schema": {
+              "default": false,
+              "title": "Read Only",
+              "type": "boolean"
             }
           }
         ],
@@ -6001,6 +7231,16 @@
             "schema": {
               "title": "Thread Id",
               "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "read_only",
+            "required": false,
+            "schema": {
+              "default": false,
+              "title": "Read Only",
+              "type": "boolean"
             }
           }
         ],
@@ -7272,6 +8512,16 @@
               "title": "Run Id",
               "type": "string"
             }
+          },
+          {
+            "in": "query",
+            "name": "cancel_independent_jobs",
+            "required": false,
+            "schema": {
+              "default": false,
+              "title": "Cancel Independent Jobs",
+              "type": "boolean"
+            }
           }
         ],
         "responses": {
@@ -7303,7 +8553,143 @@
         ]
       }
     },
+    "/api/conversations/{conversation_id}/runs/{run_id}/independent-jobs": {
+      "post": {
+        "operationId": "create_job_api_conversations__conversation_id__runs__run_id__independent_jobs_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "conversation_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Conversation Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "run_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Run Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/IndependentJobCreate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/IndependentJobOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Create Job",
+        "tags": [
+          "conversations",
+          "conversations"
+        ]
+      }
+    },
     "/api/conversations/{conversation_id}/runs/{run_id}/mcp-apps/{tool_call_id}": {
+      "get": {
+        "operationId": "read_mcp_app_widget_result_api_conversations__conversation_id__runs__run_id__mcp_apps__tool_call_id__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "conversation_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Conversation Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "run_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Run Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "tool_call_id",
+            "required": true,
+            "schema": {
+              "maxLength": 255,
+              "minLength": 1,
+              "title": "Tool Call Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "binding_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Binding Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/McpAppWidgetResult"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Read Mcp App Widget Result",
+        "tags": [
+          "mcp-apps"
+        ]
+      },
       "post": {
         "operationId": "execute_mcp_apps_command_api_conversations__conversation_id__runs__run_id__mcp_apps__tool_call_id__post",
         "parameters": [
@@ -7396,6 +8782,155 @@
         "summary": "Execute Mcp Apps Command",
         "tags": [
           "mcp-apps"
+        ]
+      }
+    },
+    "/api/conversations/{conversation_id}/runs/{run_id}/steers": {
+      "get": {
+        "operationId": "list_run_steers_api_conversations__conversation_id__runs__run_id__steers_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "conversation_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Conversation Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "run_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Run Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "before_sequence",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "minimum": 1,
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Before Sequence"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 50,
+              "maximum": 100,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/ConversationRunSteerResponse"
+                  },
+                  "title": "Response List Run Steers Api Conversations  Conversation Id  Runs  Run Id  Steers Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "List Run Steers",
+        "tags": [
+          "conversations",
+          "conversation-run-steers"
+        ]
+      },
+      "post": {
+        "operationId": "submit_run_steer_api_conversations__conversation_id__runs__run_id__steers_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "conversation_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Conversation Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "run_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Run Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ConversationRunSteerCreate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ConversationRunSteerResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Submit Run Steer",
+        "tags": [
+          "conversations",
+          "conversation-run-steers"
         ]
       }
     },
@@ -7699,6 +9234,83 @@
         "tags": [
           "conversations",
           "conversations"
+        ]
+      }
+    },
+    "/api/conversations/{conversation_id}/steers": {
+      "get": {
+        "operationId": "list_conversation_steers_api_conversations__conversation_id__steers_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "conversation_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Conversation Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "before_sequence",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "minimum": 1,
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Before Sequence"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 50,
+              "maximum": 100,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/ConversationRunSteerResponse"
+                  },
+                  "title": "Response List Conversation Steers Api Conversations  Conversation Id  Steers Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "List Conversation Steers",
+        "tags": [
+          "conversations",
+          "conversation-run-steers"
         ]
       }
     },
@@ -13901,6 +15513,49 @@
         ]
       }
     },
+    "/api/notifications/{notification_id}/destination": {
+      "get": {
+        "operationId": "get_chat_destination_api_notifications__notification_id__destination_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "notification_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Notification Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ChatNotificationDestination"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Chat Destination",
+        "tags": [
+          "notifications"
+        ]
+      }
+    },
     "/api/notifications/{notification_id}/read": {
       "post": {
         "operationId": "read_notification_api_notifications__notification_id__read_post",
@@ -13932,6 +15587,45 @@
           }
         },
         "summary": "Read Notification",
+        "tags": [
+          "notifications"
+        ]
+      }
+    },
+    "/api/notifications/{notification_id}/result": {
+      "get": {
+        "operationId": "download_chat_result_api_notifications__notification_id__result_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "notification_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Notification Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/octet-stream": {}
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Download Chat Result",
         "tags": [
           "notifications"
         ]
@@ -16298,6 +17992,116 @@
         "summary": "Find Principals",
         "tags": [
           "organization principal search"
+        ]
+      }
+    },
+    "/api/orgs/{org_id}/research-search-policy": {
+      "get": {
+        "operationId": "get_research_search_policy_api_orgs__org_id__research_search_policy_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "org_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Org Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ResearchSearchPolicyView"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Research Search Policy",
+        "tags": [
+          "organization administration"
+        ]
+      },
+      "put": {
+        "operationId": "put_research_search_policy_api_orgs__org_id__research_search_policy_put",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "org_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Org Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "If-Match",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "If-Match"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ResearchSearchPolicy"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ResearchSearchPolicyView"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Put Research Search Policy",
+        "tags": [
+          "organization administration"
         ]
       }
     },
@@ -29156,6 +30960,61 @@
       "title": "ActiveOrganizationResponse",
       "type": "object"
     },
+    "ActivityMessage": {
+      "additionalProperties": true,
+      "description": "Structured progress that is not conversation content, materialised as a\nmessage so it keeps its place in the sequence. Stands alone rather than\ncomposing BaseMessage, because its content is an object rather than a\nstring.",
+      "properties": {
+        "activityType": {
+          "title": "Activitytype",
+          "type": "string"
+        },
+        "content": {
+          "additionalProperties": true,
+          "title": "Content",
+          "type": "object"
+        },
+        "id": {
+          "title": "Id",
+          "type": "string"
+        },
+        "metadata": {
+          "anyOf": [
+            {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Metadata"
+        },
+        "role": {
+          "const": "activity",
+          "default": "activity",
+          "title": "Role",
+          "type": "string"
+        },
+        "subagentRunId": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Subagentrunid"
+        }
+      },
+      "required": [
+        "id",
+        "activityType",
+        "content"
+      ],
+      "title": "ActivityMessage",
+      "type": "object"
+    },
     "AdminTenantDetail": {
       "additionalProperties": false,
       "properties": {
@@ -29215,6 +31074,459 @@
         "active_member_count"
       ],
       "title": "AdminTenantDetail",
+      "type": "object"
+    },
+    "AgUiApprovalDecision": {
+      "additionalProperties": false,
+      "properties": {
+        "actionIndex": {
+          "minimum": 0.0,
+          "title": "Actionindex",
+          "type": "integer"
+        },
+        "decision": {
+          "enum": [
+            "approve",
+            "edit",
+            "reject"
+          ],
+          "title": "Decision",
+          "type": "string"
+        },
+        "interruptId": {
+          "title": "Interruptid",
+          "type": "string"
+        },
+        "messageId": {
+          "title": "Messageid",
+          "type": "string"
+        },
+        "physicalRunId": {
+          "title": "Physicalrunid",
+          "type": "string"
+        },
+        "subagentRunId": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Subagentrunid"
+        },
+        "toolCallId": {
+          "title": "Toolcallid",
+          "type": "string"
+        }
+      },
+      "required": [
+        "messageId",
+        "toolCallId",
+        "physicalRunId",
+        "interruptId",
+        "actionIndex",
+        "decision"
+      ],
+      "title": "AgUiApprovalDecision",
+      "type": "object"
+    },
+    "AgUiSnapshot": {
+      "additionalProperties": false,
+      "properties": {
+        "activeRunId": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Activerunid"
+        },
+        "activeTipMessageId": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Activetipmessageid"
+        },
+        "approvalDecisions": {
+          "items": {
+            "$ref": "#/components/schemas/AgUiApprovalDecision"
+          },
+          "title": "Approvaldecisions",
+          "type": "array"
+        },
+        "checkpointId": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Checkpointid"
+        },
+        "cursor": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Cursor"
+        },
+        "errorCode": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Errorcode"
+        },
+        "failedPhysicalRunId": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Failedphysicalrunid"
+        },
+        "inputId": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Inputid"
+        },
+        "inputRevision": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Inputrevision"
+        },
+        "inputStatus": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Inputstatus"
+        },
+        "interruptRunId": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Interruptrunid"
+        },
+        "interrupts": {
+          "items": {
+            "$ref": "#/components/schemas/Interrupt"
+          },
+          "title": "Interrupts",
+          "type": "array"
+        },
+        "latestPhysicalRunId": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Latestphysicalrunid"
+        },
+        "messageLinks": {
+          "items": {
+            "$ref": "#/components/schemas/AgUiSnapshotMessageLink"
+          },
+          "title": "Messagelinks",
+          "type": "array"
+        },
+        "messages": {
+          "items": {
+            "$ref": "#/components/schemas/PublicMessage"
+          },
+          "title": "Messages",
+          "type": "array"
+        },
+        "partialOutput": {
+          "anyOf": [
+            {
+              "$ref": "#/components/schemas/PartialOutput"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "physicalInterruptRunId": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Physicalinterruptrunid"
+        },
+        "physicalRunId": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Physicalrunid"
+        },
+        "position": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Position"
+        },
+        "projectionVersion": {
+          "const": "1",
+          "default": "1",
+          "title": "Projectionversion",
+          "type": "string"
+        },
+        "protocolVersion": {
+          "const": "1.0",
+          "default": "1.0",
+          "title": "Protocolversion",
+          "type": "string"
+        },
+        "queueStatus": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Queuestatus"
+        },
+        "runId": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Runid"
+        },
+        "runStatus": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Runstatus"
+        },
+        "selectedPhysicalRunId": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Selectedphysicalrunid"
+        },
+        "subagents": {
+          "items": {
+            "$ref": "#/components/schemas/SnapshotSubagent"
+          },
+          "title": "Subagents",
+          "type": "array"
+        },
+        "threadId": {
+          "title": "Threadid",
+          "type": "string"
+        },
+        "todos": {
+          "items": {
+            "$ref": "#/components/schemas/SnapshotTodo"
+          },
+          "title": "Todos",
+          "type": "array"
+        }
+      },
+      "required": [
+        "threadId"
+      ],
+      "title": "AgUiSnapshot",
+      "type": "object"
+    },
+    "AgUiSnapshotMessageLink": {
+      "additionalProperties": false,
+      "properties": {
+        "checkpointId": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Checkpointid"
+        },
+        "createdAt": {
+          "anyOf": [
+            {
+              "format": "date-time",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Createdat"
+        },
+        "messageId": {
+          "title": "Messageid",
+          "type": "string"
+        },
+        "parentCheckpointId": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Parentcheckpointid"
+        },
+        "parentMessageId": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Parentmessageid"
+        },
+        "parentToolCallId": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Parenttoolcallid"
+        },
+        "physicalRunId": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Physicalrunid"
+        },
+        "runId": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Runid"
+        },
+        "siblingCheckpointIds": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Siblingcheckpointids",
+          "type": "array"
+        },
+        "subagentRunId": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Subagentrunid"
+        },
+        "uiMessageId": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Uimessageid"
+        }
+      },
+      "required": [
+        "messageId"
+      ],
+      "title": "AgUiSnapshotMessageLink",
       "type": "object"
     },
     "AgentAccessResponse": {
@@ -33215,6 +35527,188 @@
       "title": "ArtifactTextContent",
       "type": "object"
     },
+    "AssistantMessage-Input": {
+      "additionalProperties": true,
+      "description": "A message from the agent. Content is optional because a turn may consist\nonly of tool calls.",
+      "properties": {
+        "content": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Content"
+        },
+        "encryptedValue": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Encryptedvalue"
+        },
+        "id": {
+          "title": "Id",
+          "type": "string"
+        },
+        "metadata": {
+          "anyOf": [
+            {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Metadata"
+        },
+        "name": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Name"
+        },
+        "role": {
+          "const": "assistant",
+          "default": "assistant",
+          "title": "Role",
+          "type": "string"
+        },
+        "subagentRunId": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Subagentrunid"
+        },
+        "toolCalls": {
+          "anyOf": [
+            {
+              "items": {
+                "$ref": "#/components/schemas/ToolCall"
+              },
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Toolcalls"
+        }
+      },
+      "required": [
+        "id"
+      ],
+      "title": "AssistantMessage",
+      "type": "object"
+    },
+    "AssistantMessage-Output": {
+      "additionalProperties": true,
+      "description": "A message from the agent. Content is optional because a turn may consist\nonly of tool calls.",
+      "properties": {
+        "content": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Content"
+        },
+        "encryptedValue": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Encryptedvalue"
+        },
+        "id": {
+          "title": "Id",
+          "type": "string"
+        },
+        "metadata": {
+          "anyOf": [
+            {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Metadata"
+        },
+        "name": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Name"
+        },
+        "role": {
+          "const": "assistant",
+          "default": "assistant",
+          "title": "Role",
+          "type": "string"
+        },
+        "subagentRunId": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Subagentrunid"
+        },
+        "toolCalls": {
+          "anyOf": [
+            {
+              "items": {
+                "$ref": "#/components/schemas/ToolCall"
+              },
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Toolcalls"
+        }
+      },
+      "required": [
+        "id"
+      ],
+      "title": "AssistantMessage",
+      "type": "object"
+    },
     "AssistantMessageRequest": {
       "description": "POST /api/agents/{agent_id}/assistant/message \u2014 \uba54\uc2dc\uc9c0 \uc694\uccad.",
       "properties": {
@@ -33291,6 +35785,65 @@
         "decisions"
       ],
       "title": "AssistantResumeRequest",
+      "type": "object"
+    },
+    "AudioPart": {
+      "additionalProperties": true,
+      "description": "An audio part.",
+      "properties": {
+        "id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Id"
+        },
+        "metadata": {
+          "anyOf": [
+            {},
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Metadata"
+        },
+        "source": {
+          "discriminator": {
+            "mapping": {
+              "data": "#/components/schemas/DataSource",
+              "file": "#/components/schemas/FileSource",
+              "url": "#/components/schemas/UrlSource"
+            },
+            "propertyName": "type"
+          },
+          "oneOf": [
+            {
+              "$ref": "#/components/schemas/DataSource"
+            },
+            {
+              "$ref": "#/components/schemas/UrlSource"
+            },
+            {
+              "$ref": "#/components/schemas/FileSource"
+            }
+          ],
+          "title": "Source"
+        },
+        "type": {
+          "const": "audio",
+          "default": "audio",
+          "title": "Type",
+          "type": "string"
+        }
+      },
+      "required": [
+        "source"
+      ],
+      "title": "AudioPart",
       "type": "object"
     },
     "AuditEventPageResponse": {
@@ -34192,6 +36745,316 @@
       "title": "CatalogPolicyView",
       "type": "object"
     },
+    "ChatNotificationDestination": {
+      "properties": {
+        "agent_id": {
+          "anyOf": [
+            {
+              "format": "uuid",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Agent Id"
+        },
+        "artifact_id": {
+          "anyOf": [
+            {
+              "format": "uuid",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Artifact Id"
+        },
+        "conversation_id": {
+          "format": "uuid",
+          "title": "Conversation Id",
+          "type": "string"
+        },
+        "filename": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Filename"
+        },
+        "goal_id": {
+          "anyOf": [
+            {
+              "format": "uuid",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Goal Id"
+        },
+        "job_id": {
+          "anyOf": [
+            {
+              "format": "uuid",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Job Id"
+        },
+        "run_id": {
+          "format": "uuid",
+          "title": "Run Id",
+          "type": "string"
+        },
+        "version_id": {
+          "anyOf": [
+            {
+              "format": "uuid",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Version Id"
+        }
+      },
+      "required": [
+        "conversation_id",
+        "agent_id",
+        "run_id",
+        "goal_id",
+        "job_id",
+        "artifact_id",
+        "version_id",
+        "filename"
+      ],
+      "title": "ChatNotificationDestination",
+      "type": "object"
+    },
+    "ChildInstructionCreate": {
+      "additionalProperties": false,
+      "properties": {
+        "client_request_id": {
+          "maxLength": 200,
+          "minLength": 1,
+          "title": "Client Request Id",
+          "type": "string"
+        },
+        "text": {
+          "maxLength": 8000,
+          "minLength": 1,
+          "title": "Text",
+          "type": "string"
+        }
+      },
+      "required": [
+        "client_request_id",
+        "text"
+      ],
+      "title": "ChildInstructionCreate",
+      "type": "object"
+    },
+    "ChildInstructionResponse": {
+      "properties": {
+        "applied_at": {
+          "anyOf": [
+            {
+              "format": "date-time",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Applied At"
+        },
+        "client_request_id": {
+          "title": "Client Request Id",
+          "type": "string"
+        },
+        "created_at": {
+          "format": "date-time",
+          "title": "Created At",
+          "type": "string"
+        },
+        "id": {
+          "format": "uuid",
+          "title": "Id",
+          "type": "string"
+        },
+        "status": {
+          "enum": [
+            "pending",
+            "delivering",
+            "applied",
+            "cancelled",
+            "review_required"
+          ],
+          "title": "Status",
+          "type": "string"
+        },
+        "text": {
+          "title": "Text",
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "client_request_id",
+        "text",
+        "status",
+        "created_at",
+        "applied_at"
+      ],
+      "title": "ChildInstructionResponse",
+      "type": "object"
+    },
+    "ChildTaskPage": {
+      "properties": {
+        "allow_legacy_details": {
+          "title": "Allow Legacy Details",
+          "type": "boolean"
+        },
+        "enabled": {
+          "title": "Enabled",
+          "type": "boolean"
+        },
+        "items": {
+          "items": {
+            "$ref": "#/components/schemas/ChildTaskResponse"
+          },
+          "title": "Items",
+          "type": "array"
+        },
+        "next_offset": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Next Offset"
+        }
+      },
+      "required": [
+        "items",
+        "next_offset",
+        "enabled",
+        "allow_legacy_details"
+      ],
+      "title": "ChildTaskPage",
+      "type": "object"
+    },
+    "ChildTaskResponse": {
+      "properties": {
+        "brief": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Brief"
+        },
+        "checkpointed": {
+          "title": "Checkpointed",
+          "type": "boolean"
+        },
+        "child_agent_id": {
+          "format": "uuid",
+          "title": "Child Agent Id",
+          "type": "string"
+        },
+        "created_at": {
+          "format": "date-time",
+          "title": "Created At",
+          "type": "string"
+        },
+        "id": {
+          "format": "uuid",
+          "title": "Id",
+          "type": "string"
+        },
+        "instructions": {
+          "items": {
+            "$ref": "#/components/schemas/ChildInstructionResponse"
+          },
+          "title": "Instructions",
+          "type": "array"
+        },
+        "result": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Result"
+        },
+        "role": {
+          "title": "Role",
+          "type": "string"
+        },
+        "run_id": {
+          "format": "uuid",
+          "title": "Run Id",
+          "type": "string"
+        },
+        "status": {
+          "enum": [
+            "running",
+            "awaiting_approval",
+            "completed",
+            "cancelled",
+            "failed"
+          ],
+          "title": "Status",
+          "type": "string"
+        },
+        "tool_call_id": {
+          "title": "Tool Call Id",
+          "type": "string"
+        },
+        "updated_at": {
+          "format": "date-time",
+          "title": "Updated At",
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "run_id",
+        "tool_call_id",
+        "role",
+        "child_agent_id",
+        "brief",
+        "status",
+        "checkpointed",
+        "created_at",
+        "updated_at",
+        "result",
+        "instructions"
+      ],
+      "title": "ChildTaskResponse",
+      "type": "object"
+    },
     "Clause": {
       "additionalProperties": false,
       "properties": {
@@ -34375,6 +37238,26 @@
         }
       },
       "title": "Condition",
+      "type": "object"
+    },
+    "Context": {
+      "additionalProperties": true,
+      "description": "A named piece of ambient information given to the agent for the run,\ndistinct from the conversation.",
+      "properties": {
+        "description": {
+          "title": "Description",
+          "type": "string"
+        },
+        "value": {
+          "title": "Value",
+          "type": "string"
+        }
+      },
+      "required": [
+        "description",
+        "value"
+      ],
+      "title": "Context",
       "type": "object"
     },
     "ConversationAgentBrief": {
@@ -35983,6 +38866,114 @@
       "title": "ConversationRunResponse",
       "type": "object"
     },
+    "ConversationRunSteerCreate": {
+      "additionalProperties": false,
+      "properties": {
+        "client_request_id": {
+          "format": "uuid",
+          "title": "Client Request Id",
+          "type": "string"
+        },
+        "text": {
+          "maxLength": 12000,
+          "minLength": 1,
+          "pattern": "^[^\\x00]*$",
+          "title": "Text",
+          "type": "string"
+        }
+      },
+      "required": [
+        "client_request_id",
+        "text"
+      ],
+      "title": "ConversationRunSteerCreate",
+      "type": "object"
+    },
+    "ConversationRunSteerResponse": {
+      "properties": {
+        "applied_at": {
+          "anyOf": [
+            {
+              "format": "date-time",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Applied At"
+        },
+        "client_request_id": {
+          "format": "uuid",
+          "title": "Client Request Id",
+          "type": "string"
+        },
+        "conversation_id": {
+          "format": "uuid",
+          "title": "Conversation Id",
+          "type": "string"
+        },
+        "created_at": {
+          "format": "date-time",
+          "title": "Created At",
+          "type": "string"
+        },
+        "id": {
+          "format": "uuid",
+          "title": "Id",
+          "type": "string"
+        },
+        "queued_input_id": {
+          "anyOf": [
+            {
+              "format": "uuid",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Queued Input Id"
+        },
+        "run_id": {
+          "format": "uuid",
+          "title": "Run Id",
+          "type": "string"
+        },
+        "sequence": {
+          "title": "Sequence",
+          "type": "integer"
+        },
+        "status": {
+          "enum": [
+            "pending",
+            "applied",
+            "queued",
+            "needs_review"
+          ],
+          "title": "Status",
+          "type": "string"
+        },
+        "text": {
+          "title": "Text",
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "run_id",
+        "conversation_id",
+        "client_request_id",
+        "sequence",
+        "text",
+        "status",
+        "created_at",
+        "applied_at",
+        "queued_input_id"
+      ],
+      "title": "ConversationRunSteerResponse",
+      "type": "object"
+    },
     "ConversationUpdate": {
       "properties": {
         "is_pinned": {
@@ -36965,6 +39956,111 @@
       "title": "CredentialUpdate",
       "type": "object"
     },
+    "CsvTableCriterion": {
+      "additionalProperties": false,
+      "properties": {
+        "column_equals": {
+          "additionalProperties": {
+            "maxLength": 120,
+            "minLength": 1,
+            "type": "string"
+          },
+          "maxProperties": 32,
+          "propertyNames": {
+            "maxLength": 120,
+            "minLength": 1
+          },
+          "title": "Column Equals",
+          "type": "object"
+        },
+        "kind": {
+          "const": "csv_table",
+          "title": "Kind",
+          "type": "string"
+        },
+        "logical_path": {
+          "maxLength": 500,
+          "minLength": 1,
+          "title": "Logical Path",
+          "type": "string"
+        },
+        "minimum_rows": {
+          "maximum": 10000.0,
+          "minimum": 1.0,
+          "title": "Minimum Rows",
+          "type": "integer"
+        },
+        "reference_rows": {
+          "items": {
+            "additionalProperties": {
+              "maxLength": 2048,
+              "minLength": 1,
+              "type": "string"
+            },
+            "propertyNames": {
+              "maxLength": 120,
+              "minLength": 1
+            },
+            "type": "object"
+          },
+          "maxItems": 100,
+          "title": "Reference Rows",
+          "type": "array"
+        },
+        "required_columns": {
+          "items": {
+            "maxLength": 120,
+            "minLength": 1,
+            "type": "string"
+          },
+          "maxItems": 32,
+          "minItems": 1,
+          "title": "Required Columns",
+          "type": "array"
+        },
+        "unique_by": {
+          "maxLength": 120,
+          "minLength": 1,
+          "title": "Unique By",
+          "type": "string"
+        }
+      },
+      "required": [
+        "logical_path",
+        "kind",
+        "required_columns",
+        "unique_by",
+        "minimum_rows"
+      ],
+      "title": "CsvTableCriterion",
+      "type": "object"
+    },
+    "DataSource": {
+      "additionalProperties": true,
+      "description": "Bytes carried inline.",
+      "properties": {
+        "mimeType": {
+          "title": "Mimetype",
+          "type": "string"
+        },
+        "type": {
+          "const": "data",
+          "default": "data",
+          "title": "Type",
+          "type": "string"
+        },
+        "value": {
+          "title": "Value",
+          "type": "string"
+        }
+      },
+      "required": [
+        "value",
+        "mimeType"
+      ],
+      "title": "DataSource",
+      "type": "object"
+    },
     "DebugTraceDetailResponse": {
       "properties": {
         "conversation_id": {
@@ -37382,6 +40478,77 @@
       "title": "DelegationStats",
       "type": "object"
     },
+    "DeveloperMessage": {
+      "additionalProperties": true,
+      "description": "Instructions from the application developer.",
+      "properties": {
+        "content": {
+          "title": "Content",
+          "type": "string"
+        },
+        "encryptedValue": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Encryptedvalue"
+        },
+        "id": {
+          "title": "Id",
+          "type": "string"
+        },
+        "metadata": {
+          "anyOf": [
+            {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Metadata"
+        },
+        "name": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Name"
+        },
+        "role": {
+          "const": "developer",
+          "default": "developer",
+          "title": "Role",
+          "type": "string"
+        },
+        "subagentRunId": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Subagentrunid"
+        }
+      },
+      "required": [
+        "id",
+        "content"
+      ],
+      "title": "DeveloperMessage",
+      "type": "object"
+    },
     "DirectoryPage_CapabilityGrantView_": {
       "properties": {
         "has_more": {
@@ -37762,6 +40929,65 @@
       "title": "DiscoveredModelSchema",
       "type": "object"
     },
+    "DocumentPart": {
+      "additionalProperties": true,
+      "description": "A document part.",
+      "properties": {
+        "id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Id"
+        },
+        "metadata": {
+          "anyOf": [
+            {},
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Metadata"
+        },
+        "source": {
+          "discriminator": {
+            "mapping": {
+              "data": "#/components/schemas/DataSource",
+              "file": "#/components/schemas/FileSource",
+              "url": "#/components/schemas/UrlSource"
+            },
+            "propertyName": "type"
+          },
+          "oneOf": [
+            {
+              "$ref": "#/components/schemas/DataSource"
+            },
+            {
+              "$ref": "#/components/schemas/UrlSource"
+            },
+            {
+              "$ref": "#/components/schemas/FileSource"
+            }
+          ],
+          "title": "Source"
+        },
+        "type": {
+          "const": "document",
+          "default": "document",
+          "title": "Type",
+          "type": "string"
+        }
+      },
+      "required": [
+        "source"
+      ],
+      "title": "DocumentPart",
+      "type": "object"
+    },
     "DraftAgentConfig": {
       "description": "\ube4c\ub4dc \ud30c\uc774\ud504\ub77c\uc778 \ucd5c\uc885 \uc0b0\ucd9c\ubb3c \u2014 \uc0ac\uc6a9\uc790 \ud655\uc778\uc6a9 \uc5d0\uc774\uc804\ud2b8 \uc124\uc815 \ud504\ub9ac\ubdf0.",
       "properties": {
@@ -38076,6 +41302,33 @@
       "title": "EmergencyStopView",
       "type": "object"
     },
+    "EvidenceExcerpt": {
+      "properties": {
+        "role": {
+          "enum": [
+            "user",
+            "assistant"
+          ],
+          "title": "Role",
+          "type": "string"
+        },
+        "text": {
+          "title": "Text",
+          "type": "string"
+        },
+        "truncated": {
+          "title": "Truncated",
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "role",
+        "text",
+        "truncated"
+      ],
+      "title": "EvidenceExcerpt",
+      "type": "object"
+    },
     "ExitResolution": {
       "additionalProperties": false,
       "properties": {
@@ -38208,6 +41461,27 @@
           "title": "Id",
           "type": "string"
         },
+        "image_description": {
+          "anyOf": [
+            {
+              "$ref": "#/components/schemas/ImageDescriptionReady"
+            },
+            {
+              "$ref": "#/components/schemas/ImageDescriptionUnavailable"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Image Description"
+        },
+        "image_description_uses": {
+          "items": {
+            "$ref": "#/components/schemas/ImageDescriptionUse"
+          },
+          "title": "Image Description Uses",
+          "type": "array"
+        },
         "kind": {
           "anyOf": [
             {
@@ -38286,6 +41560,49 @@
       "title": "FileItem",
       "type": "object"
     },
+    "FileSource": {
+      "additionalProperties": true,
+      "description": "Bytes already at the provider, named by a handle the provider issued: an\nOpenAI or Anthropic file id, a Gemini file URI, a storage URL only that\nprovider can read. No bytes travel and nothing is fetched. Only the\nprovider that minted the handle can resolve it; a peer that cannot drops\nthe part as it drops any part it cannot use.",
+      "properties": {
+        "mimeType": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Mimetype"
+        },
+        "provider": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Provider"
+        },
+        "type": {
+          "const": "file",
+          "default": "file",
+          "title": "Type",
+          "type": "string"
+        },
+        "value": {
+          "title": "Value",
+          "type": "string"
+        }
+      },
+      "required": [
+        "value"
+      ],
+      "title": "FileSource",
+      "type": "object"
+    },
     "FilesystemPolicyV1": {
       "additionalProperties": false,
       "description": "Filesystem capability selection persisted in RuntimePolicyV1.",
@@ -38323,6 +41640,26 @@
       "title": "FollowupSuggestionResponse",
       "type": "object"
     },
+    "FunctionCall": {
+      "additionalProperties": true,
+      "description": "The name and arguments of a tool call.",
+      "properties": {
+        "arguments": {
+          "title": "Arguments",
+          "type": "string"
+        },
+        "name": {
+          "title": "Name",
+          "type": "string"
+        }
+      },
+      "required": [
+        "name",
+        "arguments"
+      ],
+      "title": "FunctionCall",
+      "type": "object"
+    },
     "GenerateImageResponse": {
       "properties": {
         "image_url": {
@@ -38334,6 +41671,318 @@
         "image_url"
       ],
       "title": "GenerateImageResponse",
+      "type": "object"
+    },
+    "GoalActionRequest": {
+      "additionalProperties": false,
+      "properties": {
+        "action": {
+          "enum": [
+            "pause",
+            "resume",
+            "cancel"
+          ],
+          "title": "Action",
+          "type": "string"
+        },
+        "expected_revision": {
+          "minimum": 1.0,
+          "title": "Expected Revision",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "expected_revision",
+        "action"
+      ],
+      "title": "GoalActionRequest",
+      "type": "object"
+    },
+    "GoalDetails": {
+      "properties": {
+        "auto_followups": {
+          "title": "Auto Followups",
+          "type": "integer"
+        },
+        "blocked_reason": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Blocked Reason"
+        },
+        "criteria": {
+          "items": {
+            "discriminator": {
+              "mapping": {
+                "csv_table": "#/components/schemas/CsvTableCriterion",
+                "manual": "#/components/schemas/ManualCriterion",
+                "nonempty_file": "#/components/schemas/NonemptyFileCriterion"
+              },
+              "propertyName": "kind"
+            },
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/NonemptyFileCriterion"
+              },
+              {
+                "$ref": "#/components/schemas/CsvTableCriterion"
+              },
+              {
+                "$ref": "#/components/schemas/ManualCriterion"
+              }
+            ]
+          },
+          "title": "Criteria",
+          "type": "array"
+        },
+        "id": {
+          "format": "uuid",
+          "title": "Id",
+          "type": "string"
+        },
+        "last_evidence": {
+          "anyOf": [
+            {
+              "$ref": "#/components/schemas/GoalEvidence"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "revision": {
+          "title": "Revision",
+          "type": "integer"
+        },
+        "status": {
+          "enum": [
+            "active",
+            "paused",
+            "blocked",
+            "completed",
+            "canceled"
+          ],
+          "title": "Status",
+          "type": "string"
+        },
+        "title": {
+          "title": "Title",
+          "type": "string"
+        },
+        "version": {
+          "title": "Version",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "id",
+        "title",
+        "criteria",
+        "version",
+        "revision",
+        "status",
+        "auto_followups",
+        "blocked_reason",
+        "last_evidence"
+      ],
+      "title": "GoalDetails",
+      "type": "object"
+    },
+    "GoalEvidence": {
+      "properties": {
+        "all_passed": {
+          "title": "All Passed",
+          "type": "boolean"
+        },
+        "checks": {
+          "items": {
+            "$ref": "#/components/schemas/GoalEvidenceCheck"
+          },
+          "title": "Checks",
+          "type": "array"
+        },
+        "progress": {
+          "title": "Progress",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "all_passed",
+        "progress",
+        "checks"
+      ],
+      "title": "GoalEvidence",
+      "type": "object"
+    },
+    "GoalEvidenceCheck": {
+      "properties": {
+        "artifact_id": {
+          "anyOf": [
+            {
+              "format": "uuid",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Artifact Id"
+        },
+        "criterion_index": {
+          "title": "Criterion Index",
+          "type": "integer"
+        },
+        "logical_path": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Logical Path"
+        },
+        "passed": {
+          "default": false,
+          "title": "Passed",
+          "type": "boolean"
+        },
+        "reason": {
+          "title": "Reason",
+          "type": "string"
+        },
+        "sha256": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Sha256"
+        },
+        "source_run_id": {
+          "anyOf": [
+            {
+              "format": "uuid",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Source Run Id"
+        },
+        "version_id": {
+          "anyOf": [
+            {
+              "format": "uuid",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Version Id"
+        },
+        "version_number": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Version Number"
+        }
+      },
+      "required": [
+        "criterion_index",
+        "reason"
+      ],
+      "title": "GoalEvidenceCheck",
+      "type": "object"
+    },
+    "GoalResponse": {
+      "properties": {
+        "enabled": {
+          "title": "Enabled",
+          "type": "boolean"
+        },
+        "goal": {
+          "anyOf": [
+            {
+              "$ref": "#/components/schemas/GoalDetails"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "required": [
+        "enabled",
+        "goal"
+      ],
+      "title": "GoalResponse",
+      "type": "object"
+    },
+    "GoalWriteRequest": {
+      "additionalProperties": false,
+      "properties": {
+        "criteria": {
+          "items": {
+            "discriminator": {
+              "mapping": {
+                "csv_table": "#/components/schemas/CsvTableCriterion",
+                "manual": "#/components/schemas/ManualCriterion",
+                "nonempty_file": "#/components/schemas/NonemptyFileCriterion"
+              },
+              "propertyName": "kind"
+            },
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/NonemptyFileCriterion"
+              },
+              {
+                "$ref": "#/components/schemas/CsvTableCriterion"
+              },
+              {
+                "$ref": "#/components/schemas/ManualCriterion"
+              }
+            ]
+          },
+          "maxItems": 12,
+          "minItems": 1,
+          "title": "Criteria",
+          "type": "array"
+        },
+        "expected_revision": {
+          "minimum": 0.0,
+          "title": "Expected Revision",
+          "type": "integer"
+        },
+        "title": {
+          "maxLength": 500,
+          "minLength": 1,
+          "title": "Title",
+          "type": "string"
+        }
+      },
+      "required": [
+        "expected_revision",
+        "title",
+        "criteria"
+      ],
+      "title": "GoalWriteRequest",
       "type": "object"
     },
     "GrantCreate": {
@@ -39535,6 +43184,77 @@
       "title": "HeldGrant",
       "type": "object"
     },
+    "HistoryEvidence": {
+      "properties": {
+        "byte_length": {
+          "title": "Byte Length",
+          "type": "integer"
+        },
+        "checkpoint_id": {
+          "title": "Checkpoint Id",
+          "type": "string"
+        },
+        "content_sha256": {
+          "description": "SHA-256 of verified JSONL records or of one legacy Markdown file, according to format. JSONL excludes a legacy predecessor.",
+          "title": "Content Sha256",
+          "type": "string"
+        },
+        "cutoff_index": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Cutoff Index"
+        },
+        "excerpts": {
+          "description": "Previously published owner-visible text. User entries are limited to submitted run previews; assistant entries require a matching published final text block.",
+          "items": {
+            "$ref": "#/components/schemas/EvidenceExcerpt"
+          },
+          "title": "Excerpts",
+          "type": "array"
+        },
+        "format": {
+          "enum": [
+            "jsonl",
+            "legacy_markdown"
+          ],
+          "title": "Format",
+          "type": "string"
+        },
+        "history_id": {
+          "title": "History Id",
+          "type": "string"
+        },
+        "next_offset": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Next Offset"
+        }
+      },
+      "required": [
+        "checkpoint_id",
+        "history_id",
+        "cutoff_index",
+        "format",
+        "content_sha256",
+        "byte_length",
+        "excerpts",
+        "next_offset"
+      ],
+      "title": "HistoryEvidence",
+      "type": "object"
+    },
     "HistoryRequest": {
       "additionalProperties": false,
       "properties": {
@@ -39581,6 +43301,266 @@
         }
       },
       "title": "HistoryRequest",
+      "type": "object"
+    },
+    "ImageDescriptionPolicy-Input": {
+      "additionalProperties": false,
+      "properties": {
+        "base_url": {
+          "maxLength": 500,
+          "minLength": 1,
+          "title": "Base Url",
+          "type": "string"
+        },
+        "max_cost_usd": {
+          "anyOf": [
+            {
+              "exclusiveMinimum": 0.0,
+              "maximum": 10.0,
+              "type": "number"
+            },
+            {
+              "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d{0,8}0*$",
+              "type": "string"
+            }
+          ],
+          "default": "0.50",
+          "title": "Max Cost Usd"
+        },
+        "max_input_bytes": {
+          "default": 4194304,
+          "maximum": 8388608.0,
+          "minimum": 1.0,
+          "title": "Max Input Bytes",
+          "type": "integer"
+        },
+        "max_output_tokens": {
+          "default": 256,
+          "maximum": 1024.0,
+          "minimum": 1.0,
+          "title": "Max Output Tokens",
+          "type": "integer"
+        },
+        "model_id": {
+          "format": "uuid",
+          "title": "Model Id",
+          "type": "string"
+        },
+        "provider": {
+          "enum": [
+            "openai",
+            "openai_compatible",
+            "openrouter"
+          ],
+          "title": "Provider",
+          "type": "string"
+        },
+        "timeout_seconds": {
+          "default": 15,
+          "maximum": 60.0,
+          "minimum": 1.0,
+          "title": "Timeout Seconds",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "model_id",
+        "provider",
+        "base_url"
+      ],
+      "title": "ImageDescriptionPolicy",
+      "type": "object"
+    },
+    "ImageDescriptionPolicy-Output": {
+      "additionalProperties": false,
+      "properties": {
+        "base_url": {
+          "maxLength": 500,
+          "minLength": 1,
+          "title": "Base Url",
+          "type": "string"
+        },
+        "max_cost_usd": {
+          "default": "0.50",
+          "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d{0,8}0*$",
+          "title": "Max Cost Usd",
+          "type": "string"
+        },
+        "max_input_bytes": {
+          "default": 4194304,
+          "maximum": 8388608.0,
+          "minimum": 1.0,
+          "title": "Max Input Bytes",
+          "type": "integer"
+        },
+        "max_output_tokens": {
+          "default": 256,
+          "maximum": 1024.0,
+          "minimum": 1.0,
+          "title": "Max Output Tokens",
+          "type": "integer"
+        },
+        "model_id": {
+          "format": "uuid",
+          "title": "Model Id",
+          "type": "string"
+        },
+        "provider": {
+          "enum": [
+            "openai",
+            "openai_compatible",
+            "openrouter"
+          ],
+          "title": "Provider",
+          "type": "string"
+        },
+        "timeout_seconds": {
+          "default": 15,
+          "maximum": 60.0,
+          "minimum": 1.0,
+          "title": "Timeout Seconds",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "model_id",
+        "provider",
+        "base_url"
+      ],
+      "title": "ImageDescriptionPolicy",
+      "type": "object"
+    },
+    "ImageDescriptionReady": {
+      "properties": {
+        "status": {
+          "const": "ready",
+          "default": "ready",
+          "title": "Status",
+          "type": "string"
+        },
+        "text": {
+          "title": "Text",
+          "type": "string"
+        }
+      },
+      "required": [
+        "text"
+      ],
+      "title": "ImageDescriptionReady",
+      "type": "object"
+    },
+    "ImageDescriptionUnavailable": {
+      "properties": {
+        "reason": {
+          "title": "Reason",
+          "type": "string"
+        },
+        "status": {
+          "const": "unavailable",
+          "default": "unavailable",
+          "title": "Status",
+          "type": "string"
+        }
+      },
+      "required": [
+        "reason"
+      ],
+      "title": "ImageDescriptionUnavailable",
+      "type": "object"
+    },
+    "ImageDescriptionUse": {
+      "properties": {
+        "image_description": {
+          "anyOf": [
+            {
+              "$ref": "#/components/schemas/ImageDescriptionReady"
+            },
+            {
+              "$ref": "#/components/schemas/ImageDescriptionUnavailable"
+            }
+          ],
+          "title": "Image Description"
+        },
+        "message_id": {
+          "title": "Message Id",
+          "type": "string"
+        },
+        "runtime_message_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Runtime Message Id"
+        }
+      },
+      "required": [
+        "message_id",
+        "image_description"
+      ],
+      "title": "ImageDescriptionUse",
+      "type": "object"
+    },
+    "ImagePart": {
+      "additionalProperties": true,
+      "description": "An image part.",
+      "properties": {
+        "id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Id"
+        },
+        "metadata": {
+          "anyOf": [
+            {},
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Metadata"
+        },
+        "source": {
+          "discriminator": {
+            "mapping": {
+              "data": "#/components/schemas/DataSource",
+              "file": "#/components/schemas/FileSource",
+              "url": "#/components/schemas/UrlSource"
+            },
+            "propertyName": "type"
+          },
+          "oneOf": [
+            {
+              "$ref": "#/components/schemas/DataSource"
+            },
+            {
+              "$ref": "#/components/schemas/UrlSource"
+            },
+            {
+              "$ref": "#/components/schemas/FileSource"
+            }
+          ],
+          "title": "Source"
+        },
+        "type": {
+          "const": "image",
+          "default": "image",
+          "title": "Type",
+          "type": "string"
+        }
+      },
+      "required": [
+        "source"
+      ],
+      "title": "ImagePart",
       "type": "object"
     },
     "InboxDecision": {
@@ -39641,6 +43621,183 @@
         "decisions"
       ],
       "title": "InboxDecisionRequest",
+      "type": "object"
+    },
+    "IndependentJobCreate": {
+      "additionalProperties": false,
+      "properties": {
+        "instruction": {
+          "maxLength": 16000,
+          "minLength": 1,
+          "title": "Instruction",
+          "type": "string"
+        },
+        "request_id": {
+          "format": "uuid",
+          "title": "Request Id",
+          "type": "string"
+        },
+        "source_child_task_id": {
+          "anyOf": [
+            {
+              "format": "uuid",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Source Child Task Id"
+        },
+        "target_id": {
+          "format": "uuid",
+          "title": "Target Id",
+          "type": "string"
+        }
+      },
+      "required": [
+        "request_id",
+        "target_id",
+        "instruction"
+      ],
+      "title": "IndependentJobCreate",
+      "type": "object"
+    },
+    "IndependentJobOut": {
+      "properties": {
+        "child_agent_id": {
+          "format": "uuid",
+          "title": "Child Agent Id",
+          "type": "string"
+        },
+        "child_agent_name": {
+          "title": "Child Agent Name",
+          "type": "string"
+        },
+        "child_conversation_id": {
+          "format": "uuid",
+          "title": "Child Conversation Id",
+          "type": "string"
+        },
+        "child_run_id": {
+          "format": "uuid",
+          "title": "Child Run Id",
+          "type": "string"
+        },
+        "id": {
+          "format": "uuid",
+          "title": "Id",
+          "type": "string"
+        },
+        "parent_agent_id": {
+          "format": "uuid",
+          "title": "Parent Agent Id",
+          "type": "string"
+        },
+        "parent_conversation_id": {
+          "format": "uuid",
+          "title": "Parent Conversation Id",
+          "type": "string"
+        },
+        "parent_run_id": {
+          "format": "uuid",
+          "title": "Parent Run Id",
+          "type": "string"
+        },
+        "reason_code": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Reason Code"
+        },
+        "status": {
+          "enum": [
+            "queued",
+            "running",
+            "waiting_for_approval",
+            "canceling",
+            "canceled",
+            "completed",
+            "failed",
+            "needs_review"
+          ],
+          "title": "Status",
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "parent_agent_id",
+        "parent_conversation_id",
+        "parent_run_id",
+        "child_agent_id",
+        "child_agent_name",
+        "child_conversation_id",
+        "child_run_id",
+        "status"
+      ],
+      "title": "IndependentJobOut",
+      "type": "object"
+    },
+    "IndependentJobsOut": {
+      "properties": {
+        "enabled": {
+          "title": "Enabled",
+          "type": "boolean"
+        },
+        "jobs": {
+          "items": {
+            "$ref": "#/components/schemas/IndependentJobOut"
+          },
+          "title": "Jobs",
+          "type": "array"
+        },
+        "parent_job": {
+          "anyOf": [
+            {
+              "$ref": "#/components/schemas/IndependentJobOut"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "targets": {
+          "items": {
+            "$ref": "#/components/schemas/IndependentTargetOut"
+          },
+          "title": "Targets",
+          "type": "array"
+        }
+      },
+      "required": [
+        "enabled"
+      ],
+      "title": "IndependentJobsOut",
+      "type": "object"
+    },
+    "IndependentTargetOut": {
+      "properties": {
+        "id": {
+          "format": "uuid",
+          "title": "Id",
+          "type": "string"
+        },
+        "name": {
+          "title": "Name",
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "name"
+      ],
+      "title": "IndependentTargetOut",
       "type": "object"
     },
     "InputRespondEntry": {
@@ -39750,6 +43907,94 @@
         "platform_tenant_management_enabled"
       ],
       "title": "InstallationResponse",
+      "type": "object"
+    },
+    "Interrupt": {
+      "additionalProperties": true,
+      "description": "Something a run needs from outside before it can continue, such as an\napproval or a missing value.",
+      "properties": {
+        "expiresAt": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Expiresat"
+        },
+        "id": {
+          "title": "Id",
+          "type": "string"
+        },
+        "message": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Message"
+        },
+        "metadata": {
+          "anyOf": [
+            {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Metadata"
+        },
+        "reason": {
+          "title": "Reason",
+          "type": "string"
+        },
+        "responseSchema": {
+          "anyOf": [
+            {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Responseschema"
+        },
+        "subagentRunId": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Subagentrunid"
+        },
+        "toolCallId": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Toolcallid"
+        }
+      },
+      "required": [
+        "id",
+        "reason"
+      ],
+      "title": "Interrupt",
       "type": "object"
     },
     "InvitationAccept": {
@@ -40346,6 +44591,28 @@
         }
       },
       "title": "LogoutResponse",
+      "type": "object"
+    },
+    "ManualCriterion": {
+      "additionalProperties": false,
+      "properties": {
+        "description": {
+          "maxLength": 2000,
+          "minLength": 1,
+          "title": "Description",
+          "type": "string"
+        },
+        "kind": {
+          "const": "manual",
+          "title": "Kind",
+          "type": "string"
+        }
+      },
+      "required": [
+        "kind",
+        "description"
+      ],
+      "title": "ManualCriterion",
       "type": "object"
     },
     "MarketplaceAclEntry": {
@@ -41250,6 +45517,81 @@
         "created_at"
       ],
       "title": "MarketplaceVersionSummary",
+      "type": "object"
+    },
+    "McpAppArtifact": {
+      "additionalProperties": false,
+      "properties": {
+        "binding_id": {
+          "format": "uuid",
+          "title": "Binding Id",
+          "type": "string"
+        },
+        "resource_uri": {
+          "title": "Resource Uri",
+          "type": "string"
+        },
+        "result_meta": {
+          "anyOf": [
+            {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Result Meta"
+        },
+        "run_id": {
+          "format": "uuid",
+          "title": "Run Id",
+          "type": "string"
+        },
+        "tool_meta": {
+          "additionalProperties": true,
+          "title": "Tool Meta",
+          "type": "object"
+        },
+        "version": {
+          "const": 1,
+          "default": 1,
+          "title": "Version",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "binding_id",
+        "run_id",
+        "resource_uri",
+        "tool_meta"
+      ],
+      "title": "McpAppArtifact",
+      "type": "object"
+    },
+    "McpAppWidgetResult": {
+      "additionalProperties": false,
+      "properties": {
+        "mcp_app": {
+          "$ref": "#/components/schemas/McpAppArtifact"
+        },
+        "structured_content": {
+          "anyOf": [
+            {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Structured Content"
+        }
+      },
+      "required": [
+        "mcp_app"
+      ],
+      "title": "McpAppWidgetResult",
       "type": "object"
     },
     "McpAppsCallParams": {
@@ -45083,6 +49425,27 @@
           "title": "Other Vectors",
           "type": "integer"
         },
+        "quality_floor": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Quality Floor"
+        },
+        "recall_mode": {
+          "default": "off",
+          "enum": [
+            "off",
+            "shadow",
+            "serve"
+          ],
+          "title": "Recall Mode",
+          "type": "string"
+        },
         "total": {
           "title": "Total",
           "type": "integer"
@@ -45121,6 +49484,22 @@
             }
           ],
           "title": "Model Id"
+        },
+        "recall_mode": {
+          "anyOf": [
+            {
+              "enum": [
+                "off",
+                "shadow",
+                "serve"
+              ],
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Recall Mode"
         }
       },
       "required": [
@@ -45522,6 +49901,17 @@
             }
           ],
           "title": "Active Tip Message Id"
+        },
+        "conversation_source": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Conversation Source"
         },
         "latest_run": {
           "anyOf": [
@@ -46367,6 +50757,28 @@
       "title": "MyUsageLimit",
       "type": "object"
     },
+    "NonemptyFileCriterion": {
+      "additionalProperties": false,
+      "properties": {
+        "kind": {
+          "const": "nonempty_file",
+          "title": "Kind",
+          "type": "string"
+        },
+        "logical_path": {
+          "maxLength": 500,
+          "minLength": 1,
+          "title": "Logical Path",
+          "type": "string"
+        }
+      },
+      "required": [
+        "logical_path",
+        "kind"
+      ],
+      "title": "NonemptyFileCriterion",
+      "type": "object"
+    },
     "NotificationActor": {
       "properties": {
         "display_name": {
@@ -47122,6 +51534,21 @@
           "title": "Default Member Role",
           "type": "string"
         },
+        "goal_sandbox_enabled": {
+          "default": false,
+          "title": "Goal Sandbox Enabled",
+          "type": "boolean"
+        },
+        "image_description": {
+          "anyOf": [
+            {
+              "$ref": "#/components/schemas/ImageDescriptionPolicy-Output"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
         "registration_policy": {
           "anyOf": [
             {
@@ -47170,6 +51597,27 @@
             }
           ],
           "title": "Default Member Role"
+        },
+        "goal_sandbox_enabled": {
+          "anyOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Goal Sandbox Enabled"
+        },
+        "image_description": {
+          "anyOf": [
+            {
+              "$ref": "#/components/schemas/ImageDescriptionPolicy-Input"
+            },
+            {
+              "type": "null"
+            }
+          ]
         },
         "registration_policy": {
           "anyOf": [
@@ -47616,6 +52064,55 @@
       "title": "OwnershipTransferResult",
       "type": "object"
     },
+    "PartialOutput": {
+      "additionalProperties": false,
+      "properties": {
+        "text": {
+          "maxLength": 16384,
+          "title": "Text",
+          "type": "string"
+        },
+        "tools": {
+          "items": {
+            "$ref": "#/components/schemas/PartialTool"
+          },
+          "maxItems": 32,
+          "title": "Tools",
+          "type": "array"
+        },
+        "truncated": {
+          "title": "Truncated",
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "text",
+        "tools",
+        "truncated"
+      ],
+      "title": "PartialOutput",
+      "type": "object"
+    },
+    "PartialTool": {
+      "additionalProperties": false,
+      "properties": {
+        "name": {
+          "maxLength": 128,
+          "minLength": 1,
+          "title": "Name",
+          "type": "string"
+        },
+        "state": {
+          "$ref": "#/components/schemas/ToolState"
+        }
+      },
+      "required": [
+        "name",
+        "state"
+      ],
+      "title": "PartialTool",
+      "type": "object"
+    },
     "PendingCount": {
       "properties": {
         "count": {
@@ -47632,6 +52129,15 @@
     "PinConversationSummaryRequest": {
       "description": "Select an existing assistant message as the conversation summary.",
       "properties": {
+        "id_kind": {
+          "default": "source",
+          "enum": [
+            "source",
+            "public"
+          ],
+          "title": "Id Kind",
+          "type": "string"
+        },
         "message_id": {
           "maxLength": 255,
           "minLength": 1,
@@ -47687,6 +52193,17 @@
         "source_message_id": {
           "title": "Source Message Id",
           "type": "string"
+        },
+        "source_public_message_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Source Public Message Id"
         },
         "source_status": {
           "enum": [
@@ -48194,6 +52711,31 @@
       ],
       "title": "PublicChatResourceReference",
       "type": "object"
+    },
+    "PublicMessage": {
+      "discriminator": {
+        "mapping": {
+          "activity": "#/components/schemas/ActivityMessage",
+          "assistant": "#/components/schemas/AssistantMessage-Output",
+          "tool": "#/components/schemas/ToolMessage-Output",
+          "user": "#/components/schemas/UserMessage-Output"
+        },
+        "propertyName": "role"
+      },
+      "oneOf": [
+        {
+          "$ref": "#/components/schemas/UserMessage-Output"
+        },
+        {
+          "$ref": "#/components/schemas/AssistantMessage-Output"
+        },
+        {
+          "$ref": "#/components/schemas/ToolMessage-Output"
+        },
+        {
+          "$ref": "#/components/schemas/ActivityMessage"
+        }
+      ]
     },
     "PublicationRejection": {
       "additionalProperties": false,
@@ -48932,6 +53474,66 @@
       "title": "ReadinessSummaryRequest",
       "type": "object"
     },
+    "ReasoningMessage": {
+      "additionalProperties": true,
+      "description": "A span of the agent's reasoning, materialised as a message. Stands alone\nrather than composing BaseMessage, because it carries no name.",
+      "properties": {
+        "content": {
+          "title": "Content",
+          "type": "string"
+        },
+        "encryptedValue": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Encryptedvalue"
+        },
+        "id": {
+          "title": "Id",
+          "type": "string"
+        },
+        "metadata": {
+          "anyOf": [
+            {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Metadata"
+        },
+        "role": {
+          "const": "reasoning",
+          "default": "reasoning",
+          "title": "Role",
+          "type": "string"
+        },
+        "subagentRunId": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Subagentrunid"
+        }
+      },
+      "required": [
+        "id",
+        "content"
+      ],
+      "title": "ReasoningMessage",
+      "type": "object"
+    },
     "ReconcileCounts": {
       "properties": {
         "changed": {
@@ -49478,6 +54080,74 @@
       "title": "RequestUser",
       "type": "object"
     },
+    "ResearchSearchPolicy": {
+      "additionalProperties": false,
+      "description": "Providers are attempted in the configured order. Each dispatch consumes one attempt.",
+      "properties": {
+        "monthly_attempt_limit": {
+          "maximum": 2147483647.0,
+          "minimum": 0.0,
+          "title": "Monthly Attempt Limit",
+          "type": "integer"
+        },
+        "providers": {
+          "items": {
+            "enum": [
+              "tavily",
+              "searxng"
+            ],
+            "type": "string"
+          },
+          "maxItems": 2,
+          "title": "Providers",
+          "type": "array"
+        },
+        "searxng_endpoint": {
+          "anyOf": [
+            {
+              "maxLength": 2048,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Searxng Endpoint"
+        }
+      },
+      "required": [
+        "providers",
+        "monthly_attempt_limit"
+      ],
+      "title": "ResearchSearchPolicy",
+      "type": "object"
+    },
+    "ResearchSearchPolicyView": {
+      "description": "An absent policy is distinguishable from an explicitly empty provider list.",
+      "properties": {
+        "policy": {
+          "anyOf": [
+            {
+              "$ref": "#/components/schemas/ResearchSearchPolicy"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "updated_at": {
+          "format": "date-time",
+          "title": "Updated At",
+          "type": "string"
+        }
+      },
+      "required": [
+        "policy",
+        "updated_at"
+      ],
+      "title": "ResearchSearchPolicyView",
+      "type": "object"
+    },
     "ResourceOriginSummaryOut": {
       "description": "Where the current user's installed resource came from.",
       "properties": {
@@ -49692,6 +54362,51 @@
         "state"
       ],
       "title": "ResourcePublicationSummaryOut",
+      "type": "object"
+    },
+    "ResumeEntry": {
+      "additionalProperties": true,
+      "description": "An answer to one interrupt, sent on the run that continues from it.",
+      "properties": {
+        "interruptId": {
+          "title": "Interruptid",
+          "type": "string"
+        },
+        "metadata": {
+          "anyOf": [
+            {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Metadata"
+        },
+        "payload": {
+          "anyOf": [
+            {},
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Payload"
+        },
+        "status": {
+          "enum": [
+            "resolved",
+            "cancelled"
+          ],
+          "title": "Status",
+          "type": "string"
+        }
+      },
+      "required": [
+        "interruptId",
+        "status"
+      ],
+      "title": "ResumeEntry",
       "type": "object"
     },
     "ResumeRequest": {
@@ -49927,6 +54642,179 @@
       "title": "RoleGrantView",
       "type": "object"
     },
+    "RunAgentInput": {
+      "additionalProperties": true,
+      "description": "A request to run an agent. Also echoed back as RUN_STARTED.input. Only\nthreadId, runId and messages are required: those are the three the SDKs\nalready agree on, and for tools and context an absent key and an empty\narray mean the same thing, so requiring them would catch nothing a\nproducer could get wrong.",
+      "properties": {
+        "context": {
+          "anyOf": [
+            {
+              "items": {
+                "$ref": "#/components/schemas/Context"
+              },
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Context"
+        },
+        "forwardedProps": {
+          "anyOf": [
+            {},
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Forwardedprops"
+        },
+        "messages": {
+          "items": {
+            "discriminator": {
+              "mapping": {
+                "activity": "#/components/schemas/ActivityMessage",
+                "assistant": "#/components/schemas/AssistantMessage-Input",
+                "developer": "#/components/schemas/DeveloperMessage",
+                "reasoning": "#/components/schemas/ReasoningMessage",
+                "system": "#/components/schemas/SystemMessage",
+                "tool": "#/components/schemas/ToolMessage-Input",
+                "user": "#/components/schemas/UserMessage-Input"
+              },
+              "propertyName": "role"
+            },
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/DeveloperMessage"
+              },
+              {
+                "$ref": "#/components/schemas/SystemMessage"
+              },
+              {
+                "$ref": "#/components/schemas/AssistantMessage-Input"
+              },
+              {
+                "$ref": "#/components/schemas/UserMessage-Input"
+              },
+              {
+                "$ref": "#/components/schemas/ToolMessage-Input"
+              },
+              {
+                "$ref": "#/components/schemas/ActivityMessage"
+              },
+              {
+                "$ref": "#/components/schemas/ReasoningMessage"
+              }
+            ]
+          },
+          "title": "Messages",
+          "type": "array"
+        },
+        "parentRunId": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Parentrunid"
+        },
+        "protocolVersion": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Protocolversion"
+        },
+        "resume": {
+          "anyOf": [
+            {
+              "items": {
+                "$ref": "#/components/schemas/ResumeEntry"
+              },
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Resume"
+        },
+        "runId": {
+          "title": "Runid",
+          "type": "string"
+        },
+        "state": {
+          "anyOf": [
+            {},
+            {
+              "type": "null"
+            }
+          ],
+          "title": "State"
+        },
+        "threadId": {
+          "title": "Threadid",
+          "type": "string"
+        },
+        "tools": {
+          "anyOf": [
+            {
+              "items": {
+                "$ref": "#/components/schemas/Tool"
+              },
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Tools"
+        }
+      },
+      "required": [
+        "threadId",
+        "runId",
+        "messages"
+      ],
+      "title": "RunAgentInput",
+      "type": "object"
+    },
+    "RunHistoryReference": {
+      "properties": {
+        "checkpoint_id": {
+          "title": "Checkpoint Id",
+          "type": "string"
+        },
+        "cutoff_index": {
+          "title": "Cutoff Index",
+          "type": "integer"
+        },
+        "history_id": {
+          "title": "History Id",
+          "type": "string"
+        },
+        "source_run_id": {
+          "format": "uuid",
+          "title": "Source Run Id",
+          "type": "string"
+        }
+      },
+      "required": [
+        "source_run_id",
+        "checkpoint_id",
+        "history_id",
+        "cutoff_index"
+      ],
+      "title": "RunHistoryReference",
+      "type": "object"
+    },
     "RunMetadata": {
       "properties": {
         "error_code": {
@@ -49940,6 +54828,13 @@
         "id": {
           "title": "Id",
           "type": "string"
+        },
+        "partial_output": {
+          "additionalProperties": {
+            "$ref": "#/components/schemas/app__schemas__conversation_refs__JsonValue-Output"
+          },
+          "title": "Partial Output",
+          "type": "object"
         },
         "status": {
           "title": "Status",
@@ -52818,6 +57713,195 @@
       "title": "SkillUsageSummaryResponse",
       "type": "object"
     },
+    "SnapshotSubagent": {
+      "additionalProperties": false,
+      "properties": {
+        "childTaskId": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Childtaskid"
+        },
+        "description": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Description"
+        },
+        "error": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Error"
+        },
+        "interruptIds": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Interruptids",
+          "type": "array"
+        },
+        "legacyInterruptAccess": {
+          "default": false,
+          "title": "Legacyinterruptaccess",
+          "type": "boolean"
+        },
+        "name": {
+          "title": "Name",
+          "type": "string"
+        },
+        "parentMessageId": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Parentmessageid"
+        },
+        "parentRunId": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Parentrunid"
+        },
+        "parentSubagentRunId": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Parentsubagentrunid"
+        },
+        "parentToolCallId": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Parenttoolcallid"
+        },
+        "physicalRunId": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Physicalrunid"
+        },
+        "result": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Result"
+        },
+        "runId": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Runid"
+        },
+        "status": {
+          "enum": [
+            "running",
+            "completed",
+            "failed",
+            "interrupted",
+            "cancelled"
+          ],
+          "title": "Status",
+          "type": "string"
+        },
+        "subagentRunId": {
+          "title": "Subagentrunid",
+          "type": "string"
+        },
+        "todos": {
+          "items": {
+            "$ref": "#/components/schemas/SnapshotTodo"
+          },
+          "title": "Todos",
+          "type": "array"
+        }
+      },
+      "required": [
+        "subagentRunId",
+        "name",
+        "status"
+      ],
+      "title": "SnapshotSubagent",
+      "type": "object"
+    },
+    "SnapshotTodo": {
+      "additionalProperties": false,
+      "properties": {
+        "content": {
+          "title": "Content",
+          "type": "string"
+        },
+        "id": {
+          "title": "Id",
+          "type": "string"
+        },
+        "status": {
+          "enum": [
+            "pending",
+            "in_progress",
+            "completed"
+          ],
+          "title": "Status",
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "content",
+        "status"
+      ],
+      "title": "SnapshotTodo",
+      "type": "object"
+    },
     "SsoConnectionList": {
       "properties": {
         "items": {
@@ -53821,6 +58905,77 @@
         }
       },
       "title": "SystemLlmSettingUpdate",
+      "type": "object"
+    },
+    "SystemMessage": {
+      "additionalProperties": true,
+      "description": "Instructions from the system.",
+      "properties": {
+        "content": {
+          "title": "Content",
+          "type": "string"
+        },
+        "encryptedValue": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Encryptedvalue"
+        },
+        "id": {
+          "title": "Id",
+          "type": "string"
+        },
+        "metadata": {
+          "anyOf": [
+            {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Metadata"
+        },
+        "name": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Name"
+        },
+        "role": {
+          "const": "system",
+          "default": "system",
+          "title": "Role",
+          "type": "string"
+        },
+        "subagentRunId": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Subagentrunid"
+        }
+      },
+      "required": [
+        "id",
+        "content"
+      ],
+      "title": "SystemMessage",
       "type": "object"
     },
     "SystemStatusOut": {
@@ -56545,6 +61700,47 @@
       "title": "TenantUsageSummary",
       "type": "object"
     },
+    "TextPart": {
+      "additionalProperties": true,
+      "description": "A text part.",
+      "properties": {
+        "id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Id"
+        },
+        "metadata": {
+          "anyOf": [
+            {},
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Metadata"
+        },
+        "text": {
+          "title": "Text",
+          "type": "string"
+        },
+        "type": {
+          "const": "text",
+          "default": "text",
+          "title": "Type",
+          "type": "string"
+        }
+      },
+      "required": [
+        "text"
+      ],
+      "title": "TextPart",
+      "type": "object"
+    },
     "ThreadCheckpoint": {
       "additionalProperties": true,
       "properties": {
@@ -56860,6 +62056,47 @@
         "cache_read_tokens"
       ],
       "title": "TokenUsageBreakdown",
+      "type": "object"
+    },
+    "Tool": {
+      "additionalProperties": true,
+      "description": "A tool the agent may call.",
+      "properties": {
+        "description": {
+          "title": "Description",
+          "type": "string"
+        },
+        "metadata": {
+          "anyOf": [
+            {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Metadata"
+        },
+        "name": {
+          "title": "Name",
+          "type": "string"
+        },
+        "parameters": {
+          "anyOf": [
+            {},
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Parameters"
+        }
+      },
+      "required": [
+        "name",
+        "description"
+      ],
+      "title": "Tool",
       "type": "object"
     },
     "ToolApprovalCell": {
@@ -57281,6 +62518,54 @@
       "title": "ToolBrief",
       "type": "object"
     },
+    "ToolCall": {
+      "additionalProperties": true,
+      "description": "A call an assistant message made. Carries no subagent attribution of its\nown and inherits its containing message's, since several calls can share\none parent.",
+      "properties": {
+        "encryptedValue": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Encryptedvalue"
+        },
+        "function": {
+          "$ref": "#/components/schemas/FunctionCall"
+        },
+        "id": {
+          "title": "Id",
+          "type": "string"
+        },
+        "metadata": {
+          "anyOf": [
+            {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Metadata"
+        },
+        "type": {
+          "const": "function",
+          "default": "function",
+          "title": "Type",
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "function"
+      ],
+      "title": "ToolCall",
+      "type": "object"
+    },
     "ToolCreate": {
       "properties": {
         "credential_id": {
@@ -57646,6 +62931,230 @@
         "updated_at"
       ],
       "title": "ToolInstanceResponse",
+      "type": "object"
+    },
+    "ToolMessage-Input": {
+      "additionalProperties": true,
+      "description": "What a tool returned, as a message in the conversation. Stands alone\nrather than composing BaseMessage, because it carries no name.",
+      "properties": {
+        "content": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "items": {
+                "discriminator": {
+                  "mapping": {
+                    "audio": "#/components/schemas/AudioPart",
+                    "document": "#/components/schemas/DocumentPart",
+                    "image": "#/components/schemas/ImagePart",
+                    "text": "#/components/schemas/TextPart",
+                    "video": "#/components/schemas/VideoPart"
+                  },
+                  "propertyName": "type"
+                },
+                "oneOf": [
+                  {
+                    "$ref": "#/components/schemas/TextPart"
+                  },
+                  {
+                    "$ref": "#/components/schemas/ImagePart"
+                  },
+                  {
+                    "$ref": "#/components/schemas/AudioPart"
+                  },
+                  {
+                    "$ref": "#/components/schemas/VideoPart"
+                  },
+                  {
+                    "$ref": "#/components/schemas/DocumentPart"
+                  }
+                ]
+              },
+              "type": "array"
+            }
+          ],
+          "title": "Content"
+        },
+        "encryptedValue": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Encryptedvalue"
+        },
+        "error": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Error"
+        },
+        "id": {
+          "title": "Id",
+          "type": "string"
+        },
+        "metadata": {
+          "anyOf": [
+            {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Metadata"
+        },
+        "role": {
+          "const": "tool",
+          "default": "tool",
+          "title": "Role",
+          "type": "string"
+        },
+        "subagentRunId": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Subagentrunid"
+        },
+        "toolCallId": {
+          "title": "Toolcallid",
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "content",
+        "toolCallId"
+      ],
+      "title": "ToolMessage",
+      "type": "object"
+    },
+    "ToolMessage-Output": {
+      "additionalProperties": true,
+      "description": "What a tool returned, as a message in the conversation. Stands alone\nrather than composing BaseMessage, because it carries no name.",
+      "properties": {
+        "content": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "items": {
+                "discriminator": {
+                  "mapping": {
+                    "audio": "#/components/schemas/AudioPart",
+                    "document": "#/components/schemas/DocumentPart",
+                    "image": "#/components/schemas/ImagePart",
+                    "text": "#/components/schemas/TextPart",
+                    "video": "#/components/schemas/VideoPart"
+                  },
+                  "propertyName": "type"
+                },
+                "oneOf": [
+                  {
+                    "$ref": "#/components/schemas/TextPart"
+                  },
+                  {
+                    "$ref": "#/components/schemas/ImagePart"
+                  },
+                  {
+                    "$ref": "#/components/schemas/AudioPart"
+                  },
+                  {
+                    "$ref": "#/components/schemas/VideoPart"
+                  },
+                  {
+                    "$ref": "#/components/schemas/DocumentPart"
+                  }
+                ]
+              },
+              "type": "array"
+            }
+          ],
+          "title": "Content"
+        },
+        "encryptedValue": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Encryptedvalue"
+        },
+        "error": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Error"
+        },
+        "id": {
+          "title": "Id",
+          "type": "string"
+        },
+        "metadata": {
+          "anyOf": [
+            {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Metadata"
+        },
+        "role": {
+          "const": "tool",
+          "default": "tool",
+          "title": "Role",
+          "type": "string"
+        },
+        "subagentRunId": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Subagentrunid"
+        },
+        "toolCallId": {
+          "title": "Toolcallid",
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "content",
+        "toolCallId"
+      ],
+      "title": "ToolMessage",
       "type": "object"
     },
     "ToolPatch": {
@@ -58161,6 +63670,14 @@
       ],
       "title": "ToolRunResponse",
       "type": "object"
+    },
+    "ToolState": {
+      "enum": [
+        "unknown",
+        "started",
+        "completed"
+      ],
+      "type": "string"
     },
     "TraceEvent": {
       "additionalProperties": true,
@@ -59246,6 +64763,38 @@
       "title": "UploadResponse",
       "type": "object"
     },
+    "UrlSource": {
+      "additionalProperties": true,
+      "description": "Bytes referenced by URL, fetched by whoever needs them.",
+      "properties": {
+        "mimeType": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Mimetype"
+        },
+        "type": {
+          "const": "url",
+          "default": "url",
+          "title": "Type",
+          "type": "string"
+        },
+        "value": {
+          "title": "Value",
+          "type": "string"
+        }
+      },
+      "required": [
+        "value"
+      ],
+      "title": "UrlSource",
+      "type": "object"
+    },
     "UsageLimitUpdate": {
       "additionalProperties": false,
       "description": "A full replacement of the scope's limits; omitted fields keep their value.\n\n``member_limit``, ``concurrent_run_limit`` and ``request_rate_limit`` are company-only\nand ``default_member_limit`` organization-only (422 elsewhere).",
@@ -59722,6 +65271,220 @@
       "title": "UserMemorySettingsUpdate",
       "type": "object"
     },
+    "UserMessage-Input": {
+      "additionalProperties": true,
+      "description": "A message from the person using the application.",
+      "properties": {
+        "content": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "items": {
+                "discriminator": {
+                  "mapping": {
+                    "audio": "#/components/schemas/AudioPart",
+                    "document": "#/components/schemas/DocumentPart",
+                    "image": "#/components/schemas/ImagePart",
+                    "text": "#/components/schemas/TextPart",
+                    "video": "#/components/schemas/VideoPart"
+                  },
+                  "propertyName": "type"
+                },
+                "oneOf": [
+                  {
+                    "$ref": "#/components/schemas/TextPart"
+                  },
+                  {
+                    "$ref": "#/components/schemas/ImagePart"
+                  },
+                  {
+                    "$ref": "#/components/schemas/AudioPart"
+                  },
+                  {
+                    "$ref": "#/components/schemas/VideoPart"
+                  },
+                  {
+                    "$ref": "#/components/schemas/DocumentPart"
+                  }
+                ]
+              },
+              "type": "array"
+            }
+          ],
+          "title": "Content"
+        },
+        "encryptedValue": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Encryptedvalue"
+        },
+        "id": {
+          "title": "Id",
+          "type": "string"
+        },
+        "metadata": {
+          "anyOf": [
+            {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Metadata"
+        },
+        "name": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Name"
+        },
+        "role": {
+          "const": "user",
+          "default": "user",
+          "title": "Role",
+          "type": "string"
+        },
+        "subagentRunId": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Subagentrunid"
+        }
+      },
+      "required": [
+        "id",
+        "content"
+      ],
+      "title": "UserMessage",
+      "type": "object"
+    },
+    "UserMessage-Output": {
+      "additionalProperties": true,
+      "description": "A message from the person using the application.",
+      "properties": {
+        "content": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "items": {
+                "discriminator": {
+                  "mapping": {
+                    "audio": "#/components/schemas/AudioPart",
+                    "document": "#/components/schemas/DocumentPart",
+                    "image": "#/components/schemas/ImagePart",
+                    "text": "#/components/schemas/TextPart",
+                    "video": "#/components/schemas/VideoPart"
+                  },
+                  "propertyName": "type"
+                },
+                "oneOf": [
+                  {
+                    "$ref": "#/components/schemas/TextPart"
+                  },
+                  {
+                    "$ref": "#/components/schemas/ImagePart"
+                  },
+                  {
+                    "$ref": "#/components/schemas/AudioPart"
+                  },
+                  {
+                    "$ref": "#/components/schemas/VideoPart"
+                  },
+                  {
+                    "$ref": "#/components/schemas/DocumentPart"
+                  }
+                ]
+              },
+              "type": "array"
+            }
+          ],
+          "title": "Content"
+        },
+        "encryptedValue": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Encryptedvalue"
+        },
+        "id": {
+          "title": "Id",
+          "type": "string"
+        },
+        "metadata": {
+          "anyOf": [
+            {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Metadata"
+        },
+        "name": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Name"
+        },
+        "role": {
+          "const": "user",
+          "default": "user",
+          "title": "Role",
+          "type": "string"
+        },
+        "subagentRunId": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Subagentrunid"
+        }
+      },
+      "required": [
+        "id",
+        "content"
+      ],
+      "title": "UserMessage",
+      "type": "object"
+    },
     "UserPrincipal": {
       "additionalProperties": false,
       "properties": {
@@ -59890,6 +65653,65 @@
         "type"
       ],
       "title": "ValidationError",
+      "type": "object"
+    },
+    "VideoPart": {
+      "additionalProperties": true,
+      "description": "A video part.",
+      "properties": {
+        "id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Id"
+        },
+        "metadata": {
+          "anyOf": [
+            {},
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Metadata"
+        },
+        "source": {
+          "discriminator": {
+            "mapping": {
+              "data": "#/components/schemas/DataSource",
+              "file": "#/components/schemas/FileSource",
+              "url": "#/components/schemas/UrlSource"
+            },
+            "propertyName": "type"
+          },
+          "oneOf": [
+            {
+              "$ref": "#/components/schemas/DataSource"
+            },
+            {
+              "$ref": "#/components/schemas/UrlSource"
+            },
+            {
+              "$ref": "#/components/schemas/FileSource"
+            }
+          ],
+          "title": "Source"
+        },
+        "type": {
+          "const": "video",
+          "default": "video",
+          "title": "Type",
+          "type": "string"
+        }
+      },
+      "required": [
+        "source"
+      ],
+      "title": "VideoPart",
       "type": "object"
     },
     "WorkerOut": {

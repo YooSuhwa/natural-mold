@@ -1,7 +1,7 @@
 'use client'
 
-import { useCallback, useState, type ReactNode } from 'react'
-import { ActionBarPrimitive, useAuiState } from '@assistant-ui/react'
+import { useCallback, useState, type ComponentProps, type ReactNode } from 'react'
+import { ActionBarPrimitive, useAui, useAuiState } from '@assistant-ui/react'
 import {
   CheckIcon,
   CopyIcon,
@@ -16,8 +16,11 @@ import { cn } from '@/lib/utils'
 import { formatRelativeShort } from '@/lib/utils/format-relative-time'
 import { copyTextToClipboard, getMessageCopyText } from '@/components/chat/message-copy'
 import { reportClientWarning } from '@/lib/logging/client-logger'
+import { useMoldyAgUiActivities } from '@/lib/ag-ui/activity-context'
+import { storedChatMessageId, storedFeedbackTarget } from '@/lib/ag-ui/chat-message-identity'
 import { useChatConversationId } from '@/components/chat/conversation-context'
 import { PinConversationSummaryButton } from '@/components/chat/pin-conversation-summary-button'
+import { PartialStreamRecovery } from '@/components/chat/partial-stream-recovery'
 import {
   FailedMessageRetryButton,
   useFailedMessageRetryAction,
@@ -25,6 +28,8 @@ import {
 import {
   MessageEditComposerInput,
   MessageEditComposerRoot,
+  useBranchActionReady,
+  useMessageBranchAction,
   useMessageEditComposerControls,
 } from '@/components/chat/message-edit-composer'
 
@@ -107,8 +112,10 @@ export function CopyButton() {
 
 export function EditButton() {
   const t = useTranslations('chat.message')
+  const ready = useBranchActionReady()
   return (
     <ActionBarPrimitive.Edit
+      disabled={!ready}
       className={MESSAGE_ACTION_CLASS}
       aria-label={t('edit')}
       title={t('edit')}
@@ -119,17 +126,35 @@ export function EditButton() {
   )
 }
 
+function MessageReloadButton(props: ComponentProps<typeof ActionBarPrimitive.Reload>) {
+  const aui = useAui()
+  const runBranchAction = useMessageBranchAction()
+  const ready = useBranchActionReady()
+  return (
+    <ActionBarPrimitive.Reload
+      {...props}
+      disabled={props.disabled || !ready}
+      onClick={(event) => {
+        props.onClick?.(event)
+        if (event.defaultPrevented || !runBranchAction) return
+        event.preventDefault()
+        void runBranchAction('regenerate', (runConfig) => aui.message.reload({ runConfig }))
+      }}
+    />
+  )
+}
+
 export function RegenerateButton() {
   const t = useTranslations('chat.message')
   return (
-    <ActionBarPrimitive.Reload
+    <MessageReloadButton
       className={MESSAGE_ACTION_CLASS}
       aria-label={t('regenerate')}
       title={t('regenerate')}
     >
       <RotateCcwIcon className="size-3" />
       <span className="sr-only">{t('regenerate')}</span>
-    </ActionBarPrimitive.Reload>
+    </MessageReloadButton>
   )
 }
 
@@ -156,6 +181,9 @@ export function RetryButton() {
     </>
   )
   if (retryResolution.kind === 'unavailable') return null
+  if (retryResolution.kind === 'partial') {
+    return <PartialStreamRecovery output={retryResolution.output} />
+  }
   if (retryResolution.kind === 'available') {
     return (
       <FailedMessageRetryButton
@@ -168,18 +196,22 @@ export function RetryButton() {
     )
   }
   return (
-    <ActionBarPrimitive.Reload
-      className={RETRY_BUTTON_CLASS}
-      aria-label={t('retry')}
-      title={t('retry')}
-    >
+    <MessageReloadButton className={RETRY_BUTTON_CLASS} aria-label={t('retry')} title={t('retry')}>
       {content}
-    </ActionBarPrimitive.Reload>
+    </MessageReloadButton>
   )
 }
 
 export function FeedbackButtons() {
   const t = useTranslations('chat.message')
+  const activity = useMoldyAgUiActivities()
+  const ready = useAuiState((s) => {
+    if (!activity) return true
+    if (!s.thread.capabilities.feedback) return false
+    // The live SDK row can be replaced when the selected history supplies its stored identity.
+    const publicId = s.message && storedChatMessageId(s.message)
+    return !!publicId && publicId === storedFeedbackTarget(s.message, activity.links)
+  })
   const submitted = useAuiState(
     (s) =>
       (s.message?.metadata as { submittedFeedback?: { type: 'positive' | 'negative' } } | undefined)
@@ -188,6 +220,7 @@ export function FeedbackButtons() {
   return (
     <>
       <ActionBarPrimitive.FeedbackPositive
+        disabled={!ready}
         className={cn(
           MESSAGE_ACTION_CLASS,
           submitted === 'positive'
@@ -200,6 +233,7 @@ export function FeedbackButtons() {
         <ThumbsUpIcon className="size-3" />
       </ActionBarPrimitive.FeedbackPositive>
       <ActionBarPrimitive.FeedbackNegative
+        disabled={!ready}
         className={cn(
           MESSAGE_ACTION_CLASS,
           submitted === 'negative'
@@ -219,7 +253,10 @@ export function UserMessageEditor() {
   const t = useTranslations('chat.message')
   const { canCancel, canSend, cancel } = useMessageEditComposerControls()
   return (
-    <MessageEditComposerRoot className="moldy-chat-card flex flex-col gap-2 p-2">
+    <MessageEditComposerRoot
+      canSubmit={canSend}
+      className="moldy-chat-card flex flex-col gap-2 p-2"
+    >
       <MessageEditComposerInput
         className="min-h-10 w-full resize-none bg-transparent px-2 py-1 text-sm leading-relaxed outline-hidden"
         autoFocus

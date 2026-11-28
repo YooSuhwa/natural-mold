@@ -24,19 +24,24 @@ import asyncio
 import base64
 import io
 import logging
-from collections.abc import Iterable, Mapping, Sequence
+from collections.abc import Awaitable, Callable, Iterable, Mapping, Sequence
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Literal
 
 from langchain.agents.middleware import AgentMiddleware, ModelRequest
 from langchain_core.messages import AnyMessage, BaseMessage, HumanMessage
+from langgraph.types import Overwrite
 
 logger = logging.getLogger(__name__)
 
 ATTACHMENT_REFS_KEY = "moldy_attachments"
+FORK_APPEND_COUNT = "_moldy_attachment_append_count"
+MAX_DESCRIPTION_INPUT_CHARS = 8000
 
-AttachmentForm = Literal["image", "image_no_vision", "text", "pdf", "unsupported"]
+AttachmentForm = Literal[
+    "image", "image_no_vision", "image_description", "text", "pdf", "unsupported"
+]
 
 # Provider image limits differ (Anthropic 5 MB, OpenAI 20 MB); stay under the lowest.
 MAX_IMAGE_BYTES = 3_750_000
@@ -63,6 +68,7 @@ class AttachmentInputs:
 
     files: Mapping[str, AttachmentFile]
     supports_vision: bool | None
+    describe_image: Callable[[Mapping[str, Any], str], Awaitable[str]] | None = None
 
 
 def _base_mime(mime: str) -> str:
@@ -124,24 +130,66 @@ def _with_refs(message: Any, refs: list[dict[str, str]]) -> Any:
     return {**message, "additional_kwargs": nested}
 
 
-def tag_input_with_attachments(payload: Any, refs: list[dict[str, str]]) -> Any:
-    """Put ``refs`` on the input's last human message; drop client-supplied refs.
-
-    ``payload`` is either a LangGraph input dict (``{"messages": [...]}``) or the
-    legacy list of ``{"role", "content"}`` messages. Only the server writes refs.
-    """
-
+def _input_parts(payload: Any) -> tuple[list[Any], list[Any]] | None:
     messages = payload.get("messages") if isinstance(payload, Mapping) else payload
-    if not isinstance(messages, list):
+    if isinstance(messages, list):
+        return [], messages
+    if isinstance(messages, Overwrite) and isinstance(messages.value, list):
+        # Only build_fork_overwrite_input can construct this Python object. Its history came
+        # from the checkpointer. The untrusted tail starts at the recorded append boundary.
+        count = payload.get(FORK_APPEND_COUNT, 0)
+        if type(count) is int and 0 <= count <= len(messages.value):
+            split = len(messages.value) - count
+            return messages.value[:split], messages.value[split:]
+    return None
+
+
+def _last_new_human(payload: Any) -> Any:
+    parts = _input_parts(payload)
+    if parts:
+        return next((m for m in reversed(parts[1]) if _is_human(m)), None)
+    return None
+
+
+def last_attachment_message_id(payload: Any) -> str | None:
+    message = _last_new_human(payload)
+    if message is None:
+        return None
+    value = message.id if isinstance(message, BaseMessage) else message.get("id")
+    return value if isinstance(value, str) and value else None
+
+
+def tag_input_with_attachments(
+    payload: Any,
+    refs: list[dict[str, str]],
+    *,
+    default_message_id: str | None = None,
+) -> Any:
+    """Only submitted messages get new refs. Preserve the trusted checkpoint part of an edit."""
+    parts = _input_parts(payload)
+    if parts is None:
         return payload
-    tagged = [_strip_refs(message) for message in messages]
+    history, submitted = parts
+    tagged = [_strip_refs(message) for message in submitted]
     if refs:
         for index in range(len(tagged) - 1, -1, -1):
             if _is_human(tagged[index]):
-                tagged[index] = _with_refs(tagged[index], refs)
+                message = _with_refs(tagged[index], refs)
+                if default_message_id and not last_attachment_message_id(payload):
+                    message = (
+                        message.model_copy(update={"id": default_message_id})
+                        if isinstance(message, BaseMessage)
+                        else {**message, "id": default_message_id}
+                    )
+                tagged[index] = message
                 break
     if isinstance(payload, Mapping):
-        return {**payload, "messages": tagged}
+        messages = (
+            Overwrite(value=[*history, *tagged])
+            if isinstance(payload.get("messages"), Overwrite)
+            else tagged
+        )
+        return {**payload, "messages": messages}
     return tagged
 
 
@@ -219,6 +267,29 @@ def _refs_of(message: BaseMessage) -> list[Mapping[str, Any]]:
     return [ref for ref in refs if isinstance(ref, Mapping) and isinstance(ref.get("id"), str)]
 
 
+def attachment_question(content: Any) -> str:
+    """Only the text submitted with this attachment can reach its auxiliary model."""
+    if isinstance(content, str):
+        return content.strip()
+    if isinstance(content, list):
+        return "\n".join(
+            block["text"]
+            for block in content
+            if isinstance(block, dict)
+            and block.get("type") == "text"
+            and isinstance(block.get("text"), str)
+        ).strip()
+    return ""
+
+
+def last_attachment_question(payload: Any) -> str:
+    message = _last_new_human(payload)
+    if message is None:
+        return ""
+    content = message.content if isinstance(message, BaseMessage) else message.get("content")
+    return attachment_question(content)
+
+
 def _content_blocks(content: Any) -> list[Any]:
     if isinstance(content, str):
         return [{"type": "text", "text": content}] if content else []
@@ -236,12 +307,15 @@ class AttachmentInputMiddleware(AgentMiddleware):
         self._files = dict(inputs.files)
         self._supports_vision = inputs.supports_vision
         self._blocks: dict[str, dict[str, Any]] = {}
+        self._describe_image = inputs.describe_image
 
     def _block(self, ref: Mapping[str, Any], *, image_allowed: bool) -> dict[str, Any]:
         attachment = self._files.get(str(ref["id"]))
         form = ref.get("form")
         if attachment is None:
             return _note(ref, "파일을 찾을 수 없어 전달하지 못했습니다")
+        if form == "image_description":
+            return _note(ref, "이전 이미지 설명은 생략했습니다")
         if form == "image_no_vision" or (form == "image" and self._supports_vision is not True):
             return _note(ref, "현재 모델이 이미지를 지원하지 않아 내용을 전달하지 못했습니다")
         if form == "image" and not image_allowed:
@@ -289,7 +363,11 @@ class AttachmentInputMiddleware(AgentMiddleware):
             return _note(ref, "PDF에 추출할 텍스트가 없습니다(스캔 문서일 수 있음)")
         return _text_block(attachment.filename, text, truncated)
 
-    def _expand(self, messages: Sequence[AnyMessage]) -> list[AnyMessage] | None:
+    def _expand(
+        self,
+        messages: Sequence[AnyMessage],
+        descriptions: Mapping[tuple[int, int], str] | None = None,
+    ) -> list[AnyMessage] | None:
         tagged = [(index, _refs_of(message)) for index, message in enumerate(messages)]
         tagged = [(index, refs) for index, refs in tagged if refs]
         if not tagged:
@@ -303,7 +381,10 @@ class AttachmentInputMiddleware(AgentMiddleware):
             message = messages[index]
             blocks = _content_blocks(message.content)
             blocks += [
-                self._block(ref, image_allowed=str(ref["id"]) in allowed_images) for ref in refs
+                _note(ref, descriptions[index, position])
+                if descriptions and (index, position) in descriptions
+                else self._block(ref, image_allowed=str(ref["id"]) in allowed_images)
+                for position, ref in enumerate(refs)
             ]
             # The provider gets the blocks, not Moldy's reference key.
             expanded[index] = HumanMessage(content=blocks, id=message.id, name=message.name)
@@ -314,7 +395,24 @@ class AttachmentInputMiddleware(AgentMiddleware):
         return handler(request if expanded is None else request.override(messages=expanded))
 
     async def awrap_model_call(self, request: ModelRequest, handler: Any) -> Any:
-        expanded = await asyncio.to_thread(self._expand, request.messages)
+        descriptions = {}
+        if self._describe_image is not None:
+            recent = [
+                (index, position, ref)
+                for index, message in enumerate(request.messages)
+                for position, ref in enumerate(_refs_of(message))
+                if ref.get("form") == "image_description" and ref["id"] in self._files
+            ][-MAX_IMAGES_PER_CALL:]
+            # Keep private history reads and the extra text in a model request bounded.
+            text_limit = MAX_DESCRIPTION_INPUT_CHARS // max(len(recent), 1)
+            for index, position, ref in recent:
+                note = await self._describe_image(
+                    ref, attachment_question(request.messages[index].content)
+                )
+                descriptions[index, position] = (
+                    note if len(note) <= text_limit else note[: text_limit - 1] + "…"
+                )
+        expanded = await asyncio.to_thread(self._expand, request.messages, descriptions)
         return await handler(request if expanded is None else request.override(messages=expanded))
 
 

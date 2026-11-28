@@ -4,6 +4,7 @@ import pytest
 from httpx import AsyncClient
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.models.agent import AGENT_RUNTIME_PROFILE_SKILL_BUILDER
 from app.models.authz import ResourceGrant
 from tests.authz.d04_support import AuthzSwitch, Unavailable, allow, authz
 from tests.authz.e01_support import (
@@ -11,8 +12,10 @@ from tests.authz.e01_support import (
     OTHER_USER_ID,
     TEST_ORG_ID,
     TEST_USER_ID,
+    THIRD_USER_ID,
     add_agent,
     add_group,
+    add_member,
     add_tool,
     audit_actions,
     base,
@@ -175,3 +178,41 @@ async def test_enforced_openfga_outage_is_503(
     response = await client.get(f"{base('tool', tool.id)}/access")
     assert response.status_code == 503
     assert response.json()["error"]["code"] == "authz_unavailable"
+
+
+@pytest.mark.parametrize("actor", ["owner", "governor", "grantee", "stranger"])
+async def test_previous_builder_grant_can_be_withdrawn_without_sharing_the_agent(
+    client: AsyncClient, db: AsyncSession, authz: AuthzSwitch, actor: str
+) -> None:
+    await add_member(db, THIRD_USER_ID)
+    agent = await add_agent(db, owner=TEST_USER_ID if actor == "owner" else OTHER_USER_ID)
+    agent.runtime_profile = AGENT_RUNTIME_PROFILE_SKILL_BUILDER
+    grant = ResourceGrant(
+        org_id=TEST_ORG_ID,
+        tenant_id=TEST_TENANT_ID,
+        resource_type="agent",
+        resource_id=agent.id,
+        relation="editor",
+        principal_type="user",
+        principal_id=TEST_USER_ID if actor == "grantee" else THIRD_USER_ID,
+    )
+    db.add(grant)
+    await db.commit()
+
+    obj = f"agent:{agent.id}"
+    permissions = allow(("can_run", obj), ("can_edit", obj), ("can_view_config", obj))
+    if actor in {"owner", "governor"}:
+        permissions |= allow(("can_revoke", obj))
+    authz.use(permissions)
+
+    for path in (f"/api/agents/{agent.id}", f"/api/agents/{agent.id}/memory-settings"):
+        assert (await client.get(path)).status_code == (200 if actor == "owner" else 404)
+
+    assert (await client.get(f"{base('agent', agent.id)}/grants")).status_code == 404
+    response = await client.delete(f"/api/grants/{grant.id}")
+    if actor == "stranger":
+        assert response.status_code == 404
+        assert len(await grants(agent.id, state="active")) == 1
+    else:
+        assert response.status_code == 204
+        assert len(await grants(agent.id, state="revoking")) == 1

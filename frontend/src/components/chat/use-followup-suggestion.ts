@@ -1,8 +1,9 @@
 'use client'
 
-import { useEffect, useRef } from 'react'
+import { useContext, useEffect, useRef } from 'react'
 import { useAtomValue, useSetAtom } from 'jotai'
 import { useAuiState } from '@assistant-ui/react'
+import { AgUiFollowupCompletionContext } from '@/lib/ag-ui/followup-completion-context'
 import { useFollowupSuggestionMutation } from '@/lib/hooks/use-conversations'
 import { followupEnabledAtom, setConversationFollowupAtom } from '@/lib/stores/chat-followup'
 import { reportClientError } from '@/lib/logging/client-logger'
@@ -20,6 +21,9 @@ export function useFollowupSuggestion(conversationId: string | null): void {
   const enabled = useAtomValue(followupEnabledAtom)
   const setFollowup = useSetAtom(setConversationFollowupAtom)
   const isRunning = useAuiState((s) => s.thread.isRunning)
+  const localSuccess = useContext(AgUiFollowupCompletionContext)
+  const consumedSuccess = useRef(localSuccess)
+  const previousConversation = useRef(conversationId)
   const prevRunning = useRef(isRunning)
   // TanStack v5의 mutateAsync는 참조 안정 — effect 의존성으로 안전하다.
   const { mutateAsync: fetchSuggestion } = useFollowupSuggestionMutation()
@@ -27,6 +31,11 @@ export function useFollowupSuggestion(conversationId: string | null): void {
   useEffect(() => {
     const wasRunning = prevRunning.current
     prevRunning.current = isRunning
+    if (conversationId !== previousConversation.current) {
+      previousConversation.current = conversationId
+      consumedSuccess.current = localSuccess
+      return
+    }
     if (!conversationId) return
 
     // 런 시작 — 직전 턴의 제안은 더 이상 유효하지 않다.
@@ -35,7 +44,14 @@ export function useFollowupSuggestion(conversationId: string | null): void {
       return
     }
 
-    if (!wasRunning || isRunning || !enabled) return
+    if (isRunning) return
+    // Replays and interrupts can both end the SDK's loading indicator.
+    const justCompleted =
+      localSuccess === undefined
+        ? wasRunning
+        : Boolean(localSuccess && localSuccess !== consumedSuccess.current)
+    consumedSuccess.current = localSuccess
+    if (!justCompleted || !enabled) return
 
     let cancelled = false
     const handlePageHide = () => {
@@ -55,5 +71,5 @@ export function useFollowupSuggestion(conversationId: string | null): void {
       cancelled = true
       window.removeEventListener('pagehide', handlePageHide)
     }
-  }, [conversationId, enabled, fetchSuggestion, isRunning, setFollowup])
+  }, [conversationId, enabled, fetchSuggestion, isRunning, localSuccess, setFollowup])
 }

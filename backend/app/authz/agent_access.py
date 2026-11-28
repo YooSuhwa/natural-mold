@@ -100,6 +100,7 @@ async def require_agent(
             select(Agent)
             .where(
                 Agent.id == agent_id,
+                Agent.runtime_profile == AGENT_RUNTIME_PROFILE_STANDARD,
                 Agent.org_id == ctx.org_id,
                 Agent.tenant_id == ctx.tenant_id,
             )

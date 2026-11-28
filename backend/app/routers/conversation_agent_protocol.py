@@ -1,19 +1,23 @@
 from __future__ import annotations
 
 import uuid
+from collections.abc import Collection
 
 from fastapi import APIRouter, Depends, Header, Query, Request
 from fastapi.responses import JSONResponse, Response
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.agent_runtime.event_broker import registry as broker_registry
 from app.authz.conversation_agent_checks import bind_request_authz
 from app.authz.org_context import OrgContext
 from app.authz.policies import PRIVATE, authz_policy
 from app.authz.service import AuthzService
 from app.dependencies import CurrentUser, get_current_user, get_db, get_org_context, verify_csrf
 from app.routers import conversation_agent_protocol_state as state_api
-from app.routers.conversation_agent_protocol_attach import wait_for_live_broker_or_terminal
+from app.routers.conversation_agent_protocol_attach import (
+    live_broker_for_run,
+    wait_for_live_broker_or_terminal,
+    while_broker_owner,
+)
 from app.routers.conversation_agent_protocol_commands import handle_thread_command
 from app.routers.conversation_agent_protocol_contracts import (
     AgentCommandRequest,
@@ -48,6 +52,11 @@ from app.schemas.conversation_history_protocol import RunMetadata, ThreadStateRe
 from app.services import conversation_run_service
 from app.services.conversation_run_worker import start_conversation_run
 from app.services.conversation_stream_service import sse_response
+from app.services.partial_model_output import (
+    PARTIAL_OUTPUT_KEY,
+    PARTIAL_STREAM_ERROR,
+    read_partial_output,
+)
 
 router = APIRouter(tags=["conversations"])
 
@@ -77,6 +86,23 @@ def _run_metadata(run: object | None) -> RunMetadata | None:
         if error_code == "stream_error" and isinstance(error_message, str) and error_message:
             metadata["error_message"] = error_message
     return metadata
+
+
+def _latest_run_metadata(
+    run: object | None, checkpoint_run_id: str | None, secrets: Collection[str]
+) -> RunMetadata | None:
+    result = _run_metadata(run)
+    if (
+        result is not None
+        and result.get("error_code") == PARTIAL_STREAM_ERROR
+        and result["id"] == checkpoint_run_id
+    ):
+        metadata = getattr(run, "metadata_json", None)
+        if isinstance(metadata, dict):
+            projected = read_partial_output(metadata.get(PARTIAL_OUTPUT_KEY), secrets)
+            if projected is not None:
+                result["partial_output"] = projected
+    return result
 
 
 def _active_thread_next_nodes(run: object | None) -> list[str]:
@@ -120,6 +146,7 @@ async def get_thread_state(
     conversation_id: uuid.UUID,
     thread_id: str,
     request: Request,
+    read_only: bool = False,
     db: AsyncSession = Depends(get_db),
     user: CurrentUser = Depends(get_current_user),
     context: OrgContext = Depends(get_org_context),
@@ -130,12 +157,16 @@ async def get_thread_state(
         thread_id=thread_id,
         context=context,
     )
+    readable_run_ids = await conversation_run_service.readable_conversation_run_ids(
+        db, conversation, context
+    )
     if conversation.agent_lifecycle_state == "purged":
         snapshot = await load_thread_state_snapshot(conversation, context, db=db, secret_values=())
         latest_run = await conversation_run_service.latest_run_for_conversation(
             db,
             conversation_id=conversation.id,
             context=context,
+            readable_run_ids=readable_run_ids,
         )
         latest_metadata = _run_metadata(latest_run)
         values = dict(snapshot.values)
@@ -173,13 +204,15 @@ async def get_thread_state(
         db,
         conversation_id=conversation.id,
         context=context,
+        readable_run_ids=readable_run_ids,
     )
     latest_run = await conversation_run_service.latest_run_for_conversation(
         db,
         conversation_id=conversation.id,
         context=context,
+        readable_run_ids=readable_run_ids,
     )
-    if current_run is not None and current_run.is_active:
+    if not read_only and current_run is not None and current_run.is_active:
         stale = await maybe_mark_stale_active_run(
             db,
             run_id=current_run.id,
@@ -199,7 +232,7 @@ async def get_thread_state(
         checkpoint_by_message_id=snapshot.checkpoint_by_message_id,
         parent_checkpoint_by_message_id=snapshot.parent_checkpoint_by_message_id,
         active_run=_run_metadata(current_run),
-        latest_run=_run_metadata(latest_run),
+        latest_run=_latest_run_metadata(latest_run, snapshot.checkpoint_run_id, secrets),
     )
 
 
@@ -286,20 +319,20 @@ async def subscribe_thread_events(
             extra_headers=protocol_headers(mode="thread"),
         )
 
+    readable_run_ids = await conversation_run_service.readable_conversation_run_ids(
+        db, conversation, context
+    )
     current_run = await conversation_run_service.current_run_for_conversation(
         db,
         conversation_id=conversation.id,
         context=context,
+        readable_run_ids=readable_run_ids,
     )
     if current_run is not None and current_run.is_active:
-        broker = broker_registry.get(str(current_run.id))
-        if broker is None or broker.is_closed:
+        broker = live_broker_for_run(current_run)
+        if broker is None:
             current_run = await wait_for_live_broker_or_terminal(db, current_run.id)
-            broker = (
-                broker_registry.get(str(current_run.id))
-                if current_run is not None and current_run.is_active
-                else None
-            )
+            broker = live_broker_for_run(current_run)
         if current_run is None or not current_run.is_active:
             events = await load_protocol_events(db, conversation.id, context=context)
             return sse_response(
@@ -310,13 +343,13 @@ async def subscribe_thread_events(
                 ),
                 extra_headers=protocol_headers(mode="replay"),
             )
-        if broker is not None and not broker.is_closed:
+        if broker is not None:
+            stream = protocol_broker_generator(
+                broker, thread_id=str(conversation.id), params=params, after_id=after_id
+            )
             return sse_response(
-                protocol_broker_generator(
-                    broker,
-                    thread_id=str(conversation.id),
-                    params=params,
-                    after_id=after_id,
+                while_broker_owner(
+                    stream, broker=broker, conversation_id=conversation.id, context=context
                 ),
                 extra_headers=protocol_headers(mode="live", run_id=str(current_run.id)),
             )
@@ -343,6 +376,7 @@ async def subscribe_thread_events(
                 "error": "RUN_ATTACH_RETRY",
                 "message": "Run is active but its live event stream is not attached yet.",
                 "run_id": str(current_run.id),
+                "last_event_id": current_run.last_event_id,
             },
             status_code=409,
             headers=protocol_headers(run_id=str(current_run.id)),
@@ -364,6 +398,7 @@ async def subscribe_thread_events(
 async def get_compat_thread_state(
     conversation_id: uuid.UUID,
     request: Request,
+    read_only: bool = False,
     db: AsyncSession = Depends(get_db),
     user: CurrentUser = Depends(get_current_user),
     context: OrgContext = Depends(get_org_context),
@@ -377,17 +412,22 @@ async def get_compat_thread_state(
     tasks = await load_pending_interrupt_tasks(db, conversation, user_id=user.id, context=context)
     secrets = await collect_state_secret_values(db, conversation, context)
     snapshot = await load_thread_state_snapshot(conversation, context, db=db, secret_values=secrets)
+    readable_run_ids = await conversation_run_service.readable_conversation_run_ids(
+        db, conversation, context
+    )
     current_run = await conversation_run_service.current_run_for_conversation(
         db,
         conversation_id=conversation.id,
         context=context,
+        readable_run_ids=readable_run_ids,
     )
     latest_run = await conversation_run_service.latest_run_for_conversation(
         db,
         conversation_id=conversation.id,
         context=context,
+        readable_run_ids=readable_run_ids,
     )
-    if current_run is not None and current_run.is_active:
+    if not read_only and current_run is not None and current_run.is_active:
         stale = await maybe_mark_stale_active_run(
             db,
             run_id=current_run.id,
@@ -407,7 +447,7 @@ async def get_compat_thread_state(
         checkpoint_by_message_id=snapshot.checkpoint_by_message_id,
         parent_checkpoint_by_message_id=snapshot.parent_checkpoint_by_message_id,
         active_run=_run_metadata(current_run),
-        latest_run=_run_metadata(latest_run),
+        latest_run=_latest_run_metadata(latest_run, snapshot.checkpoint_run_id, secrets),
     )
     return {
         "thread_id": str(conversation.id),
@@ -417,5 +457,5 @@ async def get_compat_thread_state(
         "checkpoint_by_message_id": snapshot.checkpoint_by_message_id,
         "parent_checkpoint_by_message_id": snapshot.parent_checkpoint_by_message_id,
         "active_run": _run_metadata(current_run),
-        "latest_run": _run_metadata(latest_run),
+        "latest_run": state["metadata"].get("latest_run"),
     }

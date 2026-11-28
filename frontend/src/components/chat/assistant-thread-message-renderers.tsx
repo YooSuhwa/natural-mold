@@ -1,7 +1,9 @@
 'use client'
 
-import { Suspense } from 'react'
+import { Suspense, useContext } from 'react'
 import { MessagePrimitive, useAuiState } from '@assistant-ui/react'
+import { AgUiChatActionContext } from '@/lib/ag-ui/chat-action-context'
+import { storedChatMessageId, wireChatMessageId } from '@/lib/ag-ui/chat-message-identity'
 import { AlertTriangleIcon } from 'lucide-react'
 import { useTranslations } from 'next-intl'
 import { AgentAvatar } from '@/components/agent/agent-avatar'
@@ -39,9 +41,21 @@ import type { TerminalNoticeStatus } from '@/lib/chat/langgraph-runtime/terminal
 import { quotedResourcesFromText } from '@/lib/chat/context/quoted-resource-message'
 import { QuotedResourceMessage } from '@/components/chat/side-chat/quoted-resource-message'
 
+function useTranscriptAnchor() {
+  const agUi = useContext(AgUiChatActionContext)
+  const messageId = useAuiState((s) =>
+    agUi && s.message
+      ? (storedChatMessageId(s.message) ?? wireChatMessageId(s.message))
+      : s.message?.id,
+  )
+  const wireId = useAuiState((s) => (agUi && s.message ? wireChatMessageId(s.message) : undefined))
+  return { messageId, wireId }
+}
+
 function UserMessage() {
-  const { isBuilder, showMessageTimestamp, user } = useAssistantThreadDynamicContext()
-  const messageId = useAuiState((s) => s.message?.id)
+  const { isBuilder, readOnlyConversation, showMessageTimestamp, user } =
+    useAssistantThreadDynamicContext()
+  const { messageId, wireId } = useTranscriptAnchor()
   const text = useAuiState((s) =>
     s.message.content
       .filter((part) => part.type === 'text')
@@ -51,8 +65,8 @@ function UserMessage() {
   const quotedResources = quotedResourcesFromText(text)
   const metaRow = (
     <MessageMetaRow>
-      <BranchPicker />
-      <EditButton />
+      {!readOnlyConversation && <BranchPicker />}
+      {!readOnlyConversation && <EditButton />}
       <CopyButton />
       {showMessageTimestamp && <MessageTimestamp />}
     </MessageMetaRow>
@@ -69,6 +83,7 @@ function UserMessage() {
     <div
       className="group relative flex justify-end gap-3"
       data-moldy-message-id={messageId}
+      data-moldy-wire-message-id={wireId !== messageId ? wireId : undefined}
       data-moldy-message-role="user"
       tabIndex={-1}
     >
@@ -115,9 +130,10 @@ function AssistantMessage() {
     builderAgentSubtitle,
     deepAgentsState,
     isBuilder,
+    readOnlyConversation,
     showMessageTimestamp,
   } = useAssistantThreadDynamicContext()
-  const messageId = useAuiState((s) => s.message?.id)
+  const { messageId, wireId } = useTranscriptAnchor()
   const tChat = useTranslations('chat')
   const terminalNotice = useAuiState(
     (s) =>
@@ -127,10 +143,10 @@ function AssistantMessage() {
   const isFailedNotice = terminalNotice === 'failed'
   const metaRow = isFailedNotice ? null : (
     <MessageMetaRow>
-      <BranchPicker />
+      {!readOnlyConversation && <BranchPicker />}
       <CopyButton />
       <PinSummaryButton />
-      <RegenerateButton />
+      {!readOnlyConversation && <RegenerateButton />}
       <FeedbackButtons />
       <TokenUsagePopover />
       {showMessageTimestamp && <MessageTimestamp />}
@@ -153,6 +169,7 @@ function AssistantMessage() {
     <div
       className="group relative flex gap-3"
       data-moldy-message-id={messageId}
+      data-moldy-wire-message-id={wireId !== messageId ? wireId : undefined}
       data-moldy-message-role="assistant"
       tabIndex={-1}
     >
@@ -173,7 +190,7 @@ function AssistantMessage() {
             <div className="moldy-chat-failed-notice-content min-w-0 flex-1 space-y-2">
               <AssistantMessageParts />
               <MessageRunSummary />
-              <RetryButton />
+              {!readOnlyConversation && <RetryButton />}
             </div>
           </div>
         ) : (

@@ -5,17 +5,12 @@ from __future__ import annotations
 import base64
 import json
 from typing import Any, Final
-from uuid import UUID
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.agent_runtime.protocol_redaction import redact_protocol_data
-from app.agent_runtime.run_secrets import collect_secret_values
-from app.authz.org_context import OrgContext
-from app.credentials import service as credential_service
-from app.credentials.company_use import company_credential_usable
-from app.credentials.run_resolution import RunCredentialResolver
-from app.credentials.run_subject import subject_for_caller
+from app.agent_runtime.run_secrets import collect_secret_values, collect_url_userinfo
+from app.credentials.run_resolution import USABLE_STATUSES
 from app.mcp.apps import (
     normalize_resource_ui_meta,
     normalize_tool_ui_meta,
@@ -23,10 +18,11 @@ from app.mcp.apps import (
     sanitize_result_payload,
     tool_allows_visibility,
 )
+from app.mcp.apps_binding_connection import credential_for_context
 from app.mcp.apps_binding_store import require_live_agent_tree
 from app.mcp.auth import ResolvedMcpAuth, resolve_mcp_auth
 from app.mcp.invocation import call_mcp_tool_once, read_mcp_resource_once
-from app.models.credential import Credential
+from app.schemas.mcp_apps import McpAppArtifact, McpAppWidgetResult
 from app.services.mcp_apps_binding_service import (
     AuthorizedBinding,
     BindingDraft,
@@ -40,6 +36,41 @@ from app.services.mcp_apps_binding_service import (
 MCP_APP_MIME_TYPE: Final = "text/html;profile=mcp-app"
 MAX_APP_HTML_BYTES: Final = 640 * 1024
 MAX_TOOL_ARGUMENT_BYTES: Final = 64 * 1024
+
+
+async def read_widget_result(db: AsyncSession, context: AuthorizedBinding) -> McpAppWidgetResult:
+    """Restore a verified invocation's stored result without opening or refreshing credentials."""
+    credential = await credential_for_context(db, context)
+    if credential is not None and credential.status not in USABLE_STATUSES:
+        raise McpAppsError("mcp_app_auth_unavailable", "MCP authentication is unavailable", 403)
+    binding = context.binding
+    tool_meta = normalize_tool_ui_meta(context.origin_tool.metadata_json)
+    secrets = collect_secret_values(context.server.headers)
+    collect_url_userinfo(context.server.url, secrets)
+    # The runtime masked resolved credentials before minting the binding. Reapply
+    # bounds and masking at read time to cover old rows and current transport headers.
+    if (
+        tool_meta is None
+        or tool_meta["ui"].get("resourceUri") != binding.resource_uri
+        or redact_protocol_data("resources/read", binding.resource_uri, secret_values=secrets)
+        != binding.resource_uri
+    ):
+        raise McpAppsError("mcp_app_context_stale", "MCP App context is stale", 409)
+    content = sanitize_result_payload(binding.structured_content)
+    if binding.structured_content is not None and not isinstance(content, dict):
+        raise McpAppsError("mcp_app_result_invalid", "MCP App result is invalid", 409)
+    return McpAppWidgetResult(
+        mcp_app=McpAppArtifact(
+            binding_id=binding.id,
+            run_id=binding.run_id,
+            resource_uri=binding.resource_uri,
+            tool_meta=tool_meta,
+            result_meta=redact_protocol_data(
+                "tools/call", sanitize_result_meta(binding.result_meta), secret_values=secrets
+            ),
+        ),
+        structured_content=redact_protocol_data("tools/call", content, secret_values=secrets),
+    )
 
 
 async def read_bound_resource(db: AsyncSession, context: AuthorizedBinding) -> dict[str, Any]:
@@ -138,46 +169,16 @@ async def call_bound_tool(
 
 
 async def _auth_for_context(db: AsyncSession, context: AuthorizedBinding) -> ResolvedMcpAuth:
-    """Re-resolved on every call: shared → the server's credential, per_user → the
-    binding subject's own connection (11.3, F-05)."""
-    server, subject_user_id = context.server, context.binding.credential_subject_user_id
-    credential_id, owner_id = server.credential_id, subject_user_id
-    if server.credential_mode == "per_user":
-        subject = subject_for_caller(context.org_context, subject_user_id)
-        bound = await RunCredentialResolver(db, subject).bound(server, "mcp_server")
-        if bound is None:
-            raise McpAppsError(
-                "credential_binding_required", "connect your own account to this server", 409
-            )
-        credential_id, owner_id = bound.id, bound.user_id
-    elif credential_id is not None:
-        credential = await credential_service.get_for_user(db, credential_id, context.org_context)
-        if credential is None:
-            credential = await _company_shared(db, credential_id, context.org_context)
-            owner_id = None  # a company shared credential has no owner account
-        if credential is None:
-            raise McpAppsError("mcp_app_auth_unavailable", "MCP authentication is unavailable", 404)
+    credential = await credential_for_context(db, context)
     auth = await resolve_mcp_auth(
-        db, credential_id=credential_id, user_id=owner_id, static_headers=server.headers
+        db,
+        credential_id=credential.id if credential else None,
+        user_id=credential.user_id if credential else None,
+        static_headers=context.server.headers,
     )
     if auth.error:
         raise McpAppsError("mcp_app_auth_unavailable", "MCP authentication is unavailable", 403)
     return auth
-
-
-async def _company_shared(
-    db: AsyncSession, credential_id: UUID, context: OrgContext
-) -> Credential | None:
-    credential = await db.get(Credential, credential_id)
-    if credential is None or not await company_credential_usable(
-        db,
-        credential,
-        user_id=context.user_id,
-        org_id=context.org_id,
-        tenant_id=context.tenant_id,
-    ):
-        return None
-    return credential
 
 
 def _resource_html(item: dict[str, Any]) -> str:
@@ -208,5 +209,6 @@ __all__ = [
     "list_bound_resources",
     "mint_invocation_binding",
     "read_bound_resource",
+    "read_widget_result",
     "record_runtime_binding",
 ]

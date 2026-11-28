@@ -20,8 +20,6 @@ from app.schemas.conversation_run_input import (
     ConversationRunInputResponse,
 )
 from app.services import conversation_run_queue_service
-from app.services.chat_resource_context_integration import freeze_resource_context_payload
-from app.services.chat_resource_context_sources import ResourceContextScope
 from app.services.conversation_run_queue_promotion import promote_pending_input
 from app.services.conversation_run_queue_worker import dispatch_next_for_conversation
 
@@ -90,23 +88,13 @@ async def edit_conversation_run_input(
     context: OrgContext = Depends(get_org_context),
     _csrf: None = Depends(verify_csrf),
 ) -> ConversationRunInputResponse:
-    conversation = await _executable_conversation(db, conversation_id, context)
-    input_payload = await freeze_resource_context_payload(
-        db,
-        ResourceContextScope(
-            context=context,
-            agent_id=conversation.agent_id,
-            conversation_id=conversation.id,
-        ),
-        payload.input,
-    )
     item = await conversation_run_queue_service.edit_pending_input(
         db,
         conversation_id=conversation_id,
         input_id=input_id,
         context=context,
         expected_revision=payload.expected_revision,
-        input_payload=input_payload,
+        input_payload=payload.input,
     )
     await db.commit()
     return ConversationRunInputResponse.model_validate(item)

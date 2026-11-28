@@ -51,7 +51,7 @@ async def maybe_mark_stale_active_run(
         context=context,
         for_update=True,
     )
-    if run is None or not run.is_active or not _run_is_stale(run):
+    if run is None or not run.is_active or run.owner_generation or not _run_is_stale(run):
         return None
 
     events = await load_protocol_events(db, conversation.id, context=context)

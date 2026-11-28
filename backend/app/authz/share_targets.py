@@ -23,7 +23,7 @@ from app.authz.org_context import OrgContext
 from app.authz.principal import Principal
 from app.authz.service import AuthzService
 from app.authz.service_types import Verdict
-from app.models.agent import Agent
+from app.models.agent import AGENT_RUNTIME_PROFILE_STANDARD, Agent
 from app.models.credential import Credential
 from app.models.mcp_server import McpServer
 from app.models.skill import Skill
@@ -66,13 +66,24 @@ def is_owner(row: ShareRow, ctx: OrgContext) -> bool:
 
 
 async def load_target(
-    db: AsyncSession, ctx: OrgContext, kind: ShareType, resource_id: UUID
+    db: AsyncSession,
+    ctx: OrgContext,
+    kind: ShareType,
+    resource_id: UUID,
+    *,
+    revoking_grant: bool = False,
 ) -> ShareRow | None:
     """The current organization's own row, or ``None`` (missing, foreign, platform)."""
     row = await db.get(kind.model, resource_id, populate_existing=True)
     if row is None or row.org_id != ctx.org_id or row.tenant_id != ctx.tenant_id:
         return None
     if getattr(row, "is_system", False) or row.user_id is None:
+        return None
+    if (
+        isinstance(row, Agent)
+        and row.runtime_profile != AGENT_RUNTIME_PROFILE_STANDARD
+        and not revoking_grant
+    ):
         return None
     if isinstance(row, Credential) and row.scope != "personal":
         return None
@@ -89,8 +100,23 @@ async def authorize_target(
     *,
     min_visible: str | None = None,
 ) -> ShareRow:
-    """8.4 decision for ``permission`` on the target; returns the loaded row."""
+    """8.4 decision for ``permission`` on a shareable target; returns the loaded row."""
     row = await load_target(db, ctx, kind, resource_id)
+    return await require_target_permission(
+        authz, ctx, kind, resource_id, row, permission, min_visible=min_visible
+    )
+
+
+async def require_target_permission(
+    authz: AuthzService,
+    ctx: OrgContext,
+    kind: ShareType,
+    resource_id: UUID,
+    row: ShareRow | None,
+    permission: str,
+    *,
+    min_visible: str | None = None,
+) -> ShareRow:
     legacy = Verdict.ALLOW if row is not None and is_owner(row, ctx) else Verdict.NOT_FOUND
     await authz.require(
         Principal.for_user(ctx),

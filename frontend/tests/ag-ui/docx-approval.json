@@ -1,0 +1,71 @@
+{
+  "toolCallId": "call_e2e_docx",
+  "parentMessageId": "lc_run--01a21d10-4b9e-72a0-9ddd-3276e23fee38",
+  "interrupt": {
+    "id": "5af7bfd19369eda47590fe55d256b709",
+    "reason": "moldy.tool_approval",
+    "message": "도구 실행 요청을 검토해주세요. execute_in_skill — {\"skill_directory\": \"/skills/docx-document\", \"command\": \"node scripts/create_docx.cjs --input examples/e2e-docx.json --output moldy-docx-demo.docx\"}",
+    "responseSchema": {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "type": "object",
+      "properties": {
+        "decisions": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 1,
+          "prefixItems": [
+            {
+              "oneOf": [
+                {
+                  "type": "object",
+                  "properties": {
+                    "type": {
+                      "const": "approve"
+                    }
+                  },
+                  "required": ["type"],
+                  "additionalProperties": false
+                },
+                {
+                  "type": "object",
+                  "properties": {
+                    "type": {
+                      "const": "reject"
+                    },
+                    "message": {
+                      "type": "string"
+                    }
+                  },
+                  "required": ["type"],
+                  "additionalProperties": false
+                }
+              ]
+            }
+          ],
+          "items": false
+        }
+      },
+      "required": ["decisions"],
+      "additionalProperties": false
+    },
+    "metadata": {
+      "moldy": {
+        "action_requests": [
+          {
+            "name": "execute_in_skill",
+            "args": {
+              "skill_directory": "/skills/docx-document",
+              "command": "node scripts/create_docx.cjs --input examples/e2e-docx.json --output moldy-docx-demo.docx"
+            }
+          }
+        ],
+        "review_configs": [
+          {
+            "action_name": "execute_in_skill",
+            "allowed_decisions": ["approve", "reject"]
+          }
+        ]
+      }
+    }
+  }
+}

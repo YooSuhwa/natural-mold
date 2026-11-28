@@ -11,12 +11,13 @@ from langchain_openai import ChatOpenAI
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.agent_runtime.model_client_cache import clear_model_cache
+from app.agent_runtime.openai_prompt_cache import ConversationCacheChatOpenAI
 from app.config import settings
 
 logger = logging.getLogger("app.agent_runtime.model_factory")
 
 PROVIDER_MAP: dict[str, type[BaseChatModel]] = {
-    "openai": ChatOpenAI,
+    "openai": ConversationCacheChatOpenAI,
     "anthropic": ChatAnthropic,
     "google": ChatGoogleGenerativeAI,
     "custom": ChatOpenAI,

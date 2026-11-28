@@ -10,10 +10,11 @@ from fastapi.responses import Response, StreamingResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.agent_runtime import event_names
-from app.agent_runtime.event_broker import EventBroker, slice_events_after
+from app.agent_runtime.event_broker import EventBroker, broker_for_run_owner, slice_events_after
 from app.agent_runtime.event_broker import registry as broker_registry
 from app.agent_runtime.protocol_egress import project_and_redact_protocol_data
 from app.agent_runtime.streaming import format_sse
+from app.authz.conversation_scope import can_read_conversation_run_id
 from app.authz.org_context import OrgContext
 from app.authz.policies import PRIVATE, authz_policy
 from app.config import settings
@@ -29,6 +30,7 @@ from app.error_codes import resume_not_found
 from app.models.conversation import Conversation
 from app.models.conversation_run import RUN_ACTIVE_STATUSES, ConversationRun, utc_now_naive
 from app.models.message_event import MessageEvent
+from app.routers.conversation_agent_protocol_attach import while_broker_owner
 from app.routers.conversation_run_cancel import (
     cancel_owned_conversation_run,
     wait_for_run_terminal,
@@ -136,13 +138,16 @@ async def get_active_conversation_run(
     db: AsyncSession = Depends(get_db),
     user: CurrentUser = Depends(get_current_user),
     context: OrgContext = Depends(get_org_context),
+    conversation: Conversation = Depends(owned_conversation),
 ):
     run = await conversation_run_service.get_active_run(
         db,
         conversation_id=conversation_id,
         context=context,
     )
-    return ConversationRunHistoryResponse.model_validate(run) if run is not None else None
+    if run is None or not await can_read_conversation_run_id(db, conversation, run.id, context):
+        return None
+    return ConversationRunHistoryResponse.model_validate(run)
 
 
 @router.get(
@@ -162,6 +167,8 @@ async def stream_conversation_run(
     conversation: Conversation = Depends(owned_conversation),
 ) -> StreamingResponse:
     after_id = last_event_id or last_event_id_header
+    if not await can_read_conversation_run_id(db, conversation, run_id, context):
+        raise resume_not_found()
     run = await conversation_run_service.get_run_for_user(
         db,
         conversation_id=conversation_id,
@@ -176,17 +183,25 @@ async def stream_conversation_run(
     secrets = tuple(
         await chat_secrets.collect_conversation_secret_values(db, conversation, context)
     )
-    broker = broker_registry.get(run_id_str)
-    if broker is not None and not broker.is_closed:
+    broker = broker_for_run_owner(broker_registry.get(run_id_str), run.owner_generation)
+    if broker is not None and not broker.is_closed and (not run.owner_generation or run.is_active):
         if broker.conversation_id != str(conversation_id):
             raise resume_not_found()
+        # The check above locked the run. A queued worker must be able to start, and an
+        # enrolled worker must lock it on each flush while this stream remains open.
+        await db.commit()
         return sse_response(
-            _broker_run_generator(broker, after_id, secret_values=secrets),
+            while_broker_owner(
+                _broker_run_generator(broker, after_id, secret_values=secrets),
+                broker=broker,
+                conversation_id=conversation_id,
+                context=context,
+            ),
             extra_headers={"X-Run-Id": run_id_str, "X-Resume-Mode": "live"},
         )
 
     if run.status in RUN_ACTIVE_STATUSES:
-        if not _run_is_stale(run):
+        if run.owner_generation or not _run_is_stale(run):
             raise _retryable_attach_error()
         await conversation_run_service.transition_run(
             db,
@@ -233,6 +248,7 @@ async def cancel_conversation_run(
     conversation_id: uuid.UUID,
     run_id: uuid.UUID,
     request: Request,
+    cancel_independent_jobs: bool = Query(False),
     db: AsyncSession = Depends(get_db),
     user: CurrentUser = Depends(get_current_user),
     context: OrgContext = Depends(get_org_context),
@@ -245,6 +261,7 @@ async def cancel_conversation_run(
         user=user,
         context=context,
         request=request,
+        cancel_independent_jobs=cancel_independent_jobs,
     )
     return ConversationRunResponse.model_validate(result.run)
 
@@ -289,7 +306,10 @@ async def get_conversation_run(
     db: AsyncSession = Depends(get_db),
     user: CurrentUser = Depends(get_current_user),
     context: OrgContext = Depends(get_org_context),
+    conversation: Conversation = Depends(owned_conversation),
 ):
+    if not await can_read_conversation_run_id(db, conversation, run_id, context):
+        raise resume_not_found()
     run = await conversation_run_service.get_run_for_user(
         db,
         conversation_id=conversation_id,

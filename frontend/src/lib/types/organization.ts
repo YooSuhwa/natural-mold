@@ -150,10 +150,22 @@ export function isTenantOrganizationAdminPage(
 export type OrgControlPermission = 'can_manage_members' | 'can_manage_policy'
 export type RegistrationPolicy = 'default_org' | 'invite_only' | 'closed'
 
+export interface OrgImageDescriptionPolicy {
+  model_id: string
+  provider: 'openai' | 'openai_compatible' | 'openrouter'
+  base_url: string
+  max_input_bytes: number
+  max_output_tokens: number
+  timeout_seconds: number
+  max_cost_usd: string
+}
+
 export interface OrganizationSettings {
   default_member_role: DefaultMemberRole
   allow_public_share_links: boolean
+  goal_sandbox_enabled?: boolean
   registration_policy: RegistrationPolicy | null
+  image_description?: OrgImageDescriptionPolicy | null
 }
 
 /** `GET /api/orgs/{org_id}`. `updated_at` is the org version every org write must echo. */

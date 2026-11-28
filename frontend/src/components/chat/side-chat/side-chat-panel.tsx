@@ -10,6 +10,7 @@ import { ChatRightRail } from '@/components/chat/right-rail/chat-right-rail'
 import { DialogShell } from '@/components/shared/dialog-shell'
 import { Button } from '@/components/ui/button'
 import { conversationKeys, useMessagesEnvelope } from '@/lib/hooks/use-conversations'
+import { getChatRuntimeMode } from '@/lib/chat/runtime-mode'
 import { streamChat } from '@/lib/sse/stream-chat'
 import type { Agent, Message } from '@/lib/types'
 import type { User } from '@/lib/types/user'
@@ -93,6 +94,7 @@ function SideChatRun({
   const t = useTranslations('chat.sideChat')
   const queryClient = useQueryClient()
   const envelope = useMessagesEnvelope(conversationId)
+  const useStandardRuntime = getChatRuntimeMode() === 'ag_ui'
   const onStreamEnd = useCallback(() => {
     void queryClient.invalidateQueries({ queryKey: conversationKeys.messages(conversationId) })
   }, [queryClient, conversationId])
@@ -102,6 +104,7 @@ function SideChatRun({
   )
   return (
     <ChatRuntimeSection
+      enableRunSteer
       activeConversationId={conversationId}
       activeRun={envelope.data?.active_run ?? null}
       agentId={agent?.id ?? ''}
@@ -110,7 +113,8 @@ function SideChatRun({
       latestRun={envelope.data?.latest_run ?? null}
       messages={envelope.data?.messages ?? EMPTY_MESSAGES}
       modelName={agent?.model?.display_name}
-      useLangGraphRuntime
+      useLangGraphRuntime={!useStandardRuntime}
+      useAgUiRuntime={useStandardRuntime}
       compact
       user={user}
       onRuntimeStatusChange={noStatusChange}

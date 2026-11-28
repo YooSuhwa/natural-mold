@@ -1,7 +1,7 @@
 ---
 name: deep-research
-description: Conduct multi-step, citation-backed web research using Tavily Search.
-version: 0.1.0
+description: Conduct multi-step, citation-backed web research using organization-approved search providers.
+version: 0.2.0
 ---
 
 # Deep Research
@@ -12,10 +12,12 @@ sources, or a citation-backed report.
 
 ## Required Tool
 
-You have a runtime tool named `tavily_search`.
+Use the runtime tool `research_search` for external searches. It selects an approved provider.
 
-If `tavily_search` is unavailable or returns a backend configuration error, stop
-and tell the user that the backend operator must configure `TAVILY_API_KEY`.
+If a search is blocked, the budget is exhausted, or the requested time range is
+unavailable, stop searching and report the limitation. Use the tool's retry
+status when explaining a provider outage. Do not send the query to another
+tool or broaden the requested time range.
 
 ## Workflow
 
@@ -28,10 +30,11 @@ and tell the user that the backend operator must configure `TAVILY_API_KEY`.
    analysis, or a heavily sourced report, create 6-12 search queries that cover
    the main question, opposing evidence, recent updates, and primary-source
    candidates.
-4. Call `tavily_search` for each query. Use `search_depth="advanced"` when
-   accuracy matters more than latency, and keep `max_results` focused.
-5. Track source title, URL, publication date when available, relevance, and the
-   claim each source supports.
+4. Call `research_search` with `query`, a focused `max_results`, and the
+   requested `time_range` when applicable.
+5. Track each result's original URL, title, content snippet, publication date
+   when available, and actual provider. Cite the original source URL with the
+   claim it supports and identify the provider in the report methodology.
 6. Cross-check important claims against at least two independent sources when
    possible.
 7. Treat company pages, official docs, standards bodies, filings, and primary

@@ -2,6 +2,7 @@
 # modules picking them up via ``Base.metadata`` see the new schema.
 # Existing domain models.
 from app.models.access_request import AccessRequest
+from app.models.ag_ui_command_receipt import AgUiCommandReceipt
 from app.models.agent import Agent
 from app.models.agent_api import (
     AgentApiKey,
@@ -23,17 +24,22 @@ from app.models.audit_event import AuditEvent
 from app.models.authz import AuthzOutbox, AuthzRevocation, AuthzShadowDiff, ResourceGrant
 from app.models.authz_reconcile_run import AuthzReconcileRun
 from app.models.builder_session import BuilderSession
+from app.models.chat_image_description import ChatImageDescription
+from app.models.chat_notification_outbox import ChatNotificationOutbox
 from app.models.conversation import Conversation
 from app.models.conversation_artifact import ArtifactVersion, ConversationArtifact
+from app.models.conversation_child_task import ConversationChildInstruction, ConversationChildTask
+from app.models.conversation_goal import ConversationGoal, GoalAttempt, GoalTransitionIntent
 from app.models.conversation_history import (
     ConversationHistoryCheckpoint,
     ConversationHistoryEvent,
     ConversationHistoryManifest,
 )
 from app.models.conversation_pinned_summary import ConversationPinnedSummary
-from app.models.conversation_run import ConversationRun
+from app.models.conversation_run import ConversationRun, ConversationRunToolReceipt
 from app.models.conversation_run_input import ConversationRunInput
 from app.models.conversation_run_metrics import ConversationRunMetrics
+from app.models.conversation_run_steer import ConversationRunSteer
 from app.models.conversation_tool_grant import ConversationToolGrant
 from app.models.credential import Credential
 from app.models.credential_audit_log import CredentialAuditLog
@@ -43,6 +49,7 @@ from app.models.daily_spend_agent import DailySpendAgent
 from app.models.daily_spend_model import DailySpendModel
 from app.models.daily_spend_user import DailySpendUser
 from app.models.emergency_stop import EmergencyStop
+from app.models.goal_sandbox import GoalSandbox, GoalSandboxRead
 from app.models.guardrail_event import GuardrailEvent
 from app.models.guardrail_model_setting import GuardrailModelSetting
 from app.models.guardrail_pseudonym import GuardrailPseudonym
@@ -52,6 +59,8 @@ from app.models.guardrail_template import (
     GuardrailTemplateVersion,
 )
 from app.models.health_check_history import HealthCheckHistory
+from app.models.image_description_charge import ImageDescriptionCharge
+from app.models.independent_chat_job import IndependentChatJob
 from app.models.job import Job, JobWorker
 from app.models.marketplace import (
     MarketplaceInstallation,
@@ -86,6 +95,7 @@ from app.models.organization import (
 from app.models.organization_group import Group, GroupMember, OrgCapabilityGrant, OrgInvitation
 from app.models.organization_identity import SsoConnection, TenantDomain, UserIdentity
 from app.models.refresh_token import RefreshToken
+from app.models.research_search_usage import ResearchSearchUsage
 from app.models.resource_credential_binding import ResourceCredentialBinding
 from app.models.resource_policy import ResourcePolicy
 from app.models.share_link import ShareLink
@@ -111,6 +121,8 @@ from app.models.workflow import Workflow, WorkflowRun, WorkflowStepRun, Workflow
 from app.models.workflow_start import WorkflowSchedule, WorkflowWebhook
 
 __all__ = [
+    "GoalSandbox",
+    "GoalSandboxRead",
     "AgentGuardrailBinding",
     "Organization",
     "OrganizationMember",
@@ -146,13 +158,19 @@ __all__ = [
     "EmergencyStop",
     "AgentUserPreference",
     "AccessRequest",
+    "AgUiCommandReceipt",
     "AuditEvent",
     "AuthzOutbox",
     "AuthzRevocation",
     "AuthzShadowDiff",
     "BuilderSession",
+    "ChatImageDescription",
+    "ImageDescriptionCharge",
     "Conversation",
     "ConversationArtifact",
+    "ConversationChildInstruction",
+    "ConversationChildTask",
+    "ConversationGoal",
     "ConversationHistoryCheckpoint",
     "ConversationHistoryEvent",
     "ConversationHistoryManifest",
@@ -161,6 +179,8 @@ __all__ = [
     "ConversationRunAgent",
     "ConversationRunInput",
     "ConversationRunMetrics",
+    "ConversationRunSteer",
+    "ConversationRunToolReceipt",
     "Credential",
     "CredentialAuditLog",
     "CredentialDefault",
@@ -168,12 +188,15 @@ __all__ = [
     "DailySpendAgent",
     "DailySpendModel",
     "DailySpendUser",
+    "GoalAttempt",
+    "GoalTransitionIntent",
     "GuardrailEvent",
     "GuardrailModelSetting",
     "GuardrailPseudonym",
     "GuardrailTemplate",
     "GuardrailTemplateVersion",
     "HealthCheckHistory",
+    "IndependentChatJob",
     "Job",
     "JobWorker",
     "MarketplaceInstallation",
@@ -193,11 +216,13 @@ __all__ = [
     "MessageEventChunk",
     "MessageFeedback",
     "Model",
+    "ChatNotificationOutbox",
     "Notification",
     "AuthzReconcileRun",
     "RefreshToken",
     "ResourceCredentialBinding",
     "ResourceGrant",
+    "ResearchSearchUsage",
     "ResourcePolicy",
     "ShareLink",
     "Skill",

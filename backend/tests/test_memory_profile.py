@@ -187,6 +187,37 @@ async def test_a_line_whose_source_is_revoked_is_not_read_and_a_delete_removes_i
 
 
 @pytest.mark.asyncio
+async def test_run_profile_checks_pinned_approvals_and_keeps_manual_lines(db: AsyncSession) -> None:
+    agent_id, _ = await _seed_agent(db)
+    context = unit_context(TEST_USER_ID)
+    manual = "문서는 한국어로 쓴다"
+    await memory_profile.replace_lines(
+        db, context, kind="user_profile", agent_id=None, texts=[(None, manual)]
+    )
+    revoked = await _save(db, "기획안을 메일로 받는다")
+    partial = await _save(db, "회의록을 매주 검토한다")
+    for record in (revoked, partial):
+        await memory_profile.pin(db, context, memory_id=record.id)
+
+    async def profile() -> memory_profile.RunProfile:
+        return await memory_profile.for_run(
+            db, context, agent_id=agent_id, user_scope=True, agent_scope=True
+        )
+
+    assert (await profile()).source_ids == {revoked.id, partial.id}
+    assert revoked.approved_at is not None
+    revoked.revoked_at = revoked.approved_at
+    partial.approved_by = None
+    await db.commit()
+
+    result = await profile()
+    assert [line.text for _, line in result.lines] == [manual]
+    assert not result.source_ids
+    assert manual in result.prompt
+    assert revoked.content not in result.prompt and partial.content not in result.prompt
+
+
+@pytest.mark.asyncio
 async def test_another_persons_work_memo_stays_theirs(db: AsyncSession) -> None:
     agent_id, _ = await _seed_agent(db)
     await memory_profile.replace_lines(

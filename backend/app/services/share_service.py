@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import secrets
 import uuid
+from dataclasses import dataclass
 from datetime import UTC, datetime
 
 from sqlalchemy import select, update
@@ -24,22 +25,19 @@ from app.authz.agent_execution_scope import (
     assert_agent_tree_executable,
     load_agent_tree_for_execution,
 )
-from app.authz.conversation_scope import (
-    load_private_conversation,
-    require_private_conversation,
-    resolve_conversation_actor,
-)
+from app.authz.conversation_scope import require_private_conversation, resolve_conversation_actor
 from app.authz.org_context import OrgContext
 from app.authz.private_actor import (
     PrivateResourceActor,
     require_private_actor,
     resolve_private_actor,
 )
+from app.authz.published_conversation import PublishedConversationContext
 from app.authz.scoping import private_scope_predicate, private_scoped
 from app.error_codes import agent_not_found, public_share_links_disabled
 from app.exceptions import AppError
 from app.models.agent import Agent
-from app.models.conversation import Conversation
+from app.models.conversation import INDEPENDENT_JOB_SOURCE, Conversation
 from app.models.organization import Organization, Tenant
 from app.models.share_link import ShareLink
 from app.services.agent_lifecycle_locks import read_agent_tree
@@ -55,6 +53,14 @@ __all__ = [
 def _new_token() -> str:
     """22-char URL-safe token (16 bytes of entropy)."""
     return secrets.token_urlsafe(16)
+
+
+@dataclass(frozen=True, slots=True)
+class PublicShare:
+    link: ShareLink
+    conversation: Conversation
+    agent: Agent
+    context: OrgContext
 
 
 async def get_active_share_for_conversation(
@@ -175,7 +181,12 @@ async def revoke_share(
     await resolve_private_actor(
         db, PrivateResourceActor(context.user_id, context.org_id, context.tenant_id)
     )
-    if await load_private_conversation(db, conversation_id, context) is None:
+    # Withdrawing an existing publication needs the owner's current membership,
+    # even when delegation for the private child conversation has ended.
+    owned = private_scoped(
+        select(Conversation.id).where(Conversation.id == conversation_id), Conversation, context
+    )
+    if await db.scalar(owned) is None:
         return []
     token_result = await db.execute(
         private_scoped(select(ShareLink.share_token), ShareLink, context)
@@ -215,7 +226,7 @@ async def get_share_by_token(db: AsyncSession, token: str) -> ShareLink | None:
 
 async def load_share_with_conversation_and_agent(
     db: AsyncSession, token: str
-) -> tuple[ShareLink, Conversation, Agent] | None:
+) -> PublicShare | None:
     """Single-pass fetch for the public view: share → conversation → agent."""
     with db.no_autoflush:
         result = await db.execute(
@@ -247,11 +258,8 @@ async def load_share_with_conversation_and_agent(
         ):
             return None
         try:
-            await resolve_conversation_actor(db, conversation.id, conversation.user_id)
-            owner_context = OrgContext(
-                org_id=conversation.org_id,
-                tenant_id=conversation.tenant_id,
-                user_id=conversation.user_id,
+            owner_context = await resolve_conversation_actor(
+                db, conversation.id, conversation.user_id
             )
             snapshot = await read_agent_tree(db, conversation.agent_id)
             assert_agent_tree_executable(snapshot, owner_context)
@@ -267,4 +275,11 @@ async def load_share_with_conversation_and_agent(
         )
         if agent is None:
             return None
-        return link, conversation, agent
+        if conversation.source == INDEPENDENT_JOB_SOURCE:
+            owner_context = PublishedConversationContext(
+                user_id=link.created_by,
+                org_id=link.org_id,
+                tenant_id=link.tenant_id,
+                published_conversation_id=link.conversation_id,
+            )
+        return PublicShare(link, conversation, agent, owner_context)

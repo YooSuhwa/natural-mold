@@ -85,6 +85,7 @@ export interface ResolvedDataUI {
  * when the type is unknown or the props fail Zod validation (fail-safe).
  */
 export function resolveDataUI(type: string, rawProps: unknown): ResolvedDataUI | null {
+  if (!Object.hasOwn(DATA_UI_REGISTRY, type)) return null
   const entry = (DATA_UI_REGISTRY as Record<string, DataUIEntry<unknown>>)[type]
   if (!entry) return null
   const parsed = entry.props.safeParse(rawProps)

@@ -94,6 +94,13 @@ def canonical_payload_sha256(value: JsonValue) -> str:
     return hashlib.sha256(_canonical_bytes(value)).hexdigest()
 
 
+def retained_event_sha256(events: list[JsonValue], sequence_start: int) -> str:
+    """Bind an archived span to its offset; existing v1 rows all started at zero."""
+    if not sequence_start:
+        return canonical_payload_sha256(events)
+    return canonical_payload_sha256({"sequence_start": sequence_start, "events": events})
+
+
 def _parse_mapping(value: JsonValue) -> dict[str, JsonValue]:
     parsed = _parse_json(value)
     if not isinstance(parsed, dict):
@@ -133,4 +140,5 @@ __all__ = [
     "canonical_payload_sha256",
     "sanitize_checkpoint_payload",
     "sanitize_event_payloads",
+    "retained_event_sha256",
 ]

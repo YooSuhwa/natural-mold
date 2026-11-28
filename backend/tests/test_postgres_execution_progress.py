@@ -4,9 +4,9 @@ from __future__ import annotations
 
 import json
 import os
+import socket
 import subprocess
 import sys
-import time
 from pathlib import Path
 
 import pytest
@@ -29,6 +29,8 @@ def _child_environment(receipt: Path) -> dict[str, str]:
         {
             "MOLDY_DISABLE_ENV_FILE": "true",
             "PYTHON_DOTENV_DISABLED": "1",
+            # The child runs a synthetic synchronous test with the explicit receipt plugin.
+            "PYTEST_DISABLE_PLUGIN_AUTOLOAD": "1",
             "MOLDY_PG_TEST_RECEIPT": str(receipt),
             "DUMMY_PROGRESS_SECRET": _SECRET,
         }
@@ -48,22 +50,6 @@ def _pytest_command(test_file: Path) -> list[str]:
         "tests.postgres_execution_plugin",
         str(test_file),
     ]
-
-
-def _wait_for_call_phase(receipt: Path) -> None:
-    deadline = time.monotonic() + 10
-    while time.monotonic() < deadline:
-        if receipt.is_file():
-            try:
-                progress = load_progress_receipt(receipt, require_finished=False)["progress"]
-            except ProgressReceiptError:
-                # The child is still publishing this poll's receipt; the final load stays strict.
-                time.sleep(0.02)
-                continue
-            if progress["active_phase"] == "call":
-                return
-        time.sleep(0.02)
-    raise AssertionError("pytest child did not publish call-phase progress")
 
 
 def test_completed_child_preserves_normal_receipt_contract(tmp_path: Path) -> None:
@@ -96,29 +82,36 @@ def test_terminated_child_retains_atomic_call_progress_without_values(tmp_path: 
     receipt = tmp_path / "blocked-receipt.json"
     test_file.write_text(
         "import os\n"
-        "import time\n"
+        "import socket\n"
         "def test_blocked():\n"
         "    print(os.environ['DUMMY_PROGRESS_SECRET'])\n"
         "    print(\"SELECT * FROM credentials WHERE value='progress-secret'\")\n"
-        "    time.sleep(30)\n",
+        "    with socket.socket(fileno=int(os.environ['READY_FD'])) as channel:\n"
+        "        channel.sendall(b'R')\n"
+        "        channel.recv(1)\n",
         encoding="utf-8",
     )
-    child = subprocess.Popen(  # noqa: S603 - fixed interpreter and pytest arguments
-        _pytest_command(test_file),
-        cwd=BACKEND_ROOT,
-        env=_child_environment(receipt),
-        text=True,
-        stdout=subprocess.DEVNULL,
-        stderr=subprocess.DEVNULL,
-    )
-    try:
-        _wait_for_call_phase(receipt)
-        child.terminate()
-        child.wait(timeout=10)
-    finally:
-        if child.poll() is None:
-            child.kill()
-            child.wait(timeout=5)
+    parent_end, child_end = socket.socketpair()
+    with parent_end, child_end:
+        child = subprocess.Popen(  # noqa: S603 - fixed interpreter and pytest arguments
+            _pytest_command(test_file),
+            cwd=BACKEND_ROOT,
+            env={**_child_environment(receipt), "READY_FD": str(child_end.fileno())},
+            pass_fds=(child_end.fileno(),),
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+        )
+        child_end.close()
+        try:
+            # The running test signals independently of the receipt we are verifying.
+            parent_end.settimeout(20)
+            assert parent_end.recv(1) == b"R", "pytest child exited before the call phase"
+            child.terminate()
+            child.wait(timeout=10)
+        finally:
+            if child.poll() is None:
+                child.kill()
+                child.wait(timeout=5)
 
     payload = load_progress_receipt(receipt, require_finished=False)
     progress = payload["progress"]

@@ -26,6 +26,8 @@ from app.agent_runtime.model_provider_registry import (
     TEST_COMPLETION_TOKEN_CAP,
     is_gpt5_family,
 )
+from app.agent_runtime.openai_prompt_cache import ConversationCacheChatOpenAI, prompt_cache_options
+from app.chat_gateway_origin import gateway_origin
 from app.outbound.client import outbound_http_client, outbound_sync_http_client
 
 logger = logging.getLogger("app.agent_runtime.model_factory")
@@ -110,6 +112,17 @@ def create_chat_model(
     )
     _apply_openai_compatible_base_url(provider, kwargs)
 
+    if cls is ConversationCacheChatOpenAI:
+        kwargs.update(
+            prompt_cache_options(provider, kwargs.get("base_url"), extra.get("prompt_cache_key"))
+        )
+
+    single_send = extra.get("_moldy_single_send") is True
+    if single_send:
+        # The direct chat retry middleware allocates every candidate send.
+        # Google's SDK counts attempts; OpenAI and Anthropic count retries.
+        kwargs["max_retries"] = 1 if provider == "google" else 0
+        kwargs["metadata"] = {"moldy_provider": provider}
     kwargs["stream_usage"] = True
     cw = int(context_window) if isinstance(context_window, int) and context_window > 0 else None
     cache_key = _model_cache_key(
@@ -128,6 +141,13 @@ def create_chat_model(
     _apply_openai_ssl_clients(cls, kwargs)
 
     model = cls(**kwargs)
+    if single_send:
+        # Keep the constructed SDK origin private. model_copy retains it for
+        # bound tools, and a later mutation of the client cannot replace it.
+        client = getattr(model, "root_async_client", None)
+        object.__setattr__(
+            model, "_moldy_stream_retry_origin", gateway_origin(getattr(client, "base_url", None))
+        )
     _apply_context_window_profile(model, cw)
     _MODEL_CACHE[cache_key] = model
     _MODEL_CACHE.move_to_end(cache_key)
@@ -235,7 +255,7 @@ def _apply_openai_compatible_base_url(provider: str, kwargs: dict[str, Any]) -> 
 def _apply_openai_ssl_clients(cls: type[BaseChatModel], kwargs: dict[str, Any]) -> None:
     """ChatOpenAI 계열만 truststore 기반 SSL client 주입 (사내 VPN / corp proxy 호환)."""
 
-    if cls is model_attr("ChatOpenAI"):
+    if cls is model_attr("ChatOpenAI") or cls is ConversationCacheChatOpenAI:
         # 11.9: the shared outbound constructors (httpx default 5s; the SDK sets its own).
         kwargs["http_async_client"] = outbound_http_client(timeout=5.0)
         kwargs["http_client"] = outbound_sync_http_client(timeout=5.0)

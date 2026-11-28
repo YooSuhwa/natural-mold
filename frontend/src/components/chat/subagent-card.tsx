@@ -7,12 +7,14 @@ import {
   type SubagentDiscoverySnapshot,
 } from '@langchain/react'
 import type { BaseMessage } from '@langchain/core/messages'
+import { AgUiSubagentDetails, isAgUiSubagentSnapshot } from './ag-ui-subagent-details'
 import { PanelRightOpenIcon } from 'lucide-react'
 import { useAtomValue, useSetAtom } from 'jotai'
 import { useTranslations } from 'next-intl'
 import { CollapsiblePill, type PillStatus } from '@/components/chat/tool-ui/collapsible-pill'
 import { useChatConversationId } from '@/components/chat/conversation-context'
 import {
+  useRequiresProjectedSubagent,
   useSubagentInlinePolicy,
   useSubagentSnapshot,
   useSubagentStream,
@@ -29,6 +31,7 @@ export interface SubagentCardFallback {
 interface SubagentCardProps {
   readonly fallback: SubagentCardFallback
   readonly toolCallId: string
+  readonly parentMessageId?: string
   readonly turnToolCallIds?: readonly string[]
 }
 
@@ -114,7 +117,11 @@ function SubagentHeaderMeta({
         </span>
       ) : null}
       {lead && namespaceLabel ? <span aria-hidden>·</span> : null}
-      {namespaceLabel ? <span className="shrink-0 font-mono">{namespaceLabel}</span> : null}
+      {namespaceLabel ? (
+        <span className="max-w-1/3 truncate font-mono" title={namespaceLabel}>
+          {namespaceLabel}
+        </span>
+      ) : null}
     </span>
   )
 }
@@ -182,29 +189,47 @@ function SubagentDetails({
   )
 }
 
-export function SubagentCard({ fallback, toolCallId, turnToolCallIds }: SubagentCardProps) {
+export function SubagentCard({
+  fallback,
+  toolCallId,
+  parentMessageId,
+  turnToolCallIds,
+}: SubagentCardProps) {
   const t = useTranslations('chat.toolUi.subAgent')
   const setRail = useSetAtom(chatRightRailAtom)
   const conversationId = useChatConversationId()
-  const subagent = useSubagentSnapshot(toolCallId)
-  const inlinePolicy = useSubagentInlinePolicy(toolCallId, turnToolCallIds)
+  const subagent = useSubagentSnapshot(toolCallId, parentMessageId)
+  const inlinePolicy = useSubagentInlinePolicy(toolCallId, turnToolCallIds, parentMessageId)
   const stream = useSubagentStream()
   const subagentNames = useAtomValue(chatSubagentNamesAtom)
+  const requiresProjection = useRequiresProjectedSubagent()
+  const projected = isAgUiSubagentSnapshot(subagent) ? subagent : null
+  if (requiresProjection && !projected) return null
   const rawAgentName = subagent?.name ?? fallback.agentName
   const agentName = resolveSubagentDisplayName(
     conversationId ? subagentNames[conversationId] : undefined,
     rawAgentName,
   )
-  const input = subagent?.taskInput ?? fallback.input
-  const status = subagent ? SNAPSHOT_STATUS[subagent.status] : fallback.status
-  const outputSummary =
-    subagent?.status === 'complete' ? outputSummaryLine(formatUnknown(subagent.output)) : ''
+  const input = subagent?.taskInput ?? (projected ? '' : fallback.input)
+  const status =
+    projected?.outcome === 'cancelled'
+      ? 'cancelled'
+      : subagent
+        ? SNAPSHOT_STATUS[subagent.status]
+        : fallback.status
+  const hasSummary =
+    subagent?.status === 'complete' && (!projected || typeof subagent.output === 'string')
+  const outputSummary = hasSummary ? outputSummaryLine(formatUnknown(subagent.output)) : ''
   const canRenderScopedDetails =
-    subagent !== null && stream !== null && inlinePolicy.canRenderInlineDetails
+    subagent !== null &&
+    (stream !== null || projected !== null) &&
+    inlinePolicy.canRenderInlineDetails
   const openRail = () =>
     setRail({
       mode: 'subagent',
-      subagent: { conversationId, toolCallId, agentName, input },
+      subagent: projected
+        ? { conversationId, toolCallId, subagentRunId: projected.subagentRunId, agentName: '' }
+        : { conversationId, toolCallId, agentName, input },
     })
 
   return (
@@ -222,9 +247,11 @@ export function SubagentCard({ fallback, toolCallId, turnToolCallIds }: Subagent
       defaultExpanded={canRenderScopedDetails ? inlinePolicy.defaultExpanded : false}
       onClick={canRenderScopedDetails ? undefined : openRail}
       renderBody={
-        canRenderScopedDetails
-          ? () => <SubagentDetails stream={stream} subagent={subagent} />
-          : undefined
+        canRenderScopedDetails && projected
+          ? () => <AgUiSubagentDetails child={projected} />
+          : canRenderScopedDetails && stream
+            ? () => <SubagentDetails stream={stream} subagent={subagent} />
+            : undefined
       }
       trailing={
         <button
