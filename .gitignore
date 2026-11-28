@@ -105,3 +105,7 @@ backend/app/data/model_catalog/sources/
 
 # I-09 internal TLS certificates (scripts/internal-tls-certs.sh)
 certs/
+
+# verify-moldy skill run state/evidence
+.verify-moldy/
+frontend/.next-verify/

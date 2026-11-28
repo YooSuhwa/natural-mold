@@ -33,6 +33,24 @@ documents:
   - path: .agents/skills/langgraph-persistence/SKILL.md
     lifecycle: reference/spec
     status: reference
+  - path: .agents/skills/verify-moldy/SKILL.md
+    lifecycle: reference/spec
+    status: reference
+  - path: .agents/skills/verify-moldy/features/README.md
+    lifecycle: reference/spec
+    status: reference
+  - path: .agents/skills/verify-moldy/features/agent-create.md
+    lifecycle: reference/spec
+    status: reference
+  - path: .agents/skills/verify-moldy/features/auth-login.md
+    lifecycle: reference/spec
+    status: reference
+  - path: .agents/skills/verify-moldy/features/chat-send.md
+    lifecycle: reference/spec
+    status: reference
+  - path: .agents/skills/verify-moldy/features/hitl-approval.md
+    lifecycle: reference/spec
+    status: reference
   - path: AGENTS.md
     lifecycle: canonical-current
     status: current
